@@ -100,4 +100,29 @@ class AdminController extends Controller
         Audit::log('admin.service_toggled', $svc, ['is_active' => $svc->is_active], actorType: 'admin');
         return ApiResponse::ok(null, 'Service updated.');
     }
+
+    public function toggleUserRole(Request $request, string $publicId)
+    {
+        $request->validate(['role' => ['required', 'string', 'in:admin,user']]);
+
+        $user = User::where('public_id', $publicId)->firstOrFail();
+
+        // Prevent demoting yourself
+        if ($user->id === $request->user()->id) {
+            return ApiResponse::fail('You cannot change your own role.', null, 403);
+        }
+
+        $newRole = $request->input('role');
+        $oldRole = $user->getRoleNames()->first() ?? 'user';
+
+        // Remove all roles and assign the new one
+        $user->syncRoles([$newRole]);
+
+        Audit::log('admin.user_role_changed', $user, [
+            'from' => $oldRole,
+            'to'   => $newRole,
+        ], actorType: 'admin');
+
+        return ApiResponse::ok(null, "User role updated to {$newRole}.");
+    }
 }

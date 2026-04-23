@@ -64,9 +64,10 @@ Route::prefix('v1')->group(function () {
 
         // Admin
         Route::middleware('role:admin')->prefix('admin')->group(function () {
-            Route::get('/users',                       [AdminController::class, 'users']);
-            Route::post('/users/{publicId}/suspend',   [AdminController::class, 'suspendUser']);
-            Route::post('/users/{publicId}/unsuspend', [AdminController::class, 'unsuspendUser']);
+            Route::get('/users',                          [AdminController::class, 'users']);
+            Route::post('/users/{publicId}/suspend',      [AdminController::class, 'suspendUser']);
+            Route::post('/users/{publicId}/unsuspend',    [AdminController::class, 'unsuspendUser']);
+            Route::post('/users/{publicId}/toggle-role',  [AdminController::class, 'toggleUserRole']);
             Route::get('/transactions',                [AdminController::class, 'transactions']);
             Route::get('/metrics',                     [AdminController::class, 'metrics']);
             Route::post('/services/{code}/toggle',     [AdminController::class, 'toggleService']);
