@@ -4,9 +4,9 @@ namespace App\Support;
 
 use Illuminate\Http\JsonResponse;
 
-trait ApiResponse
+class ApiResponse
 {
-    protected function ok(mixed $data = null, string $message = 'OK', int $status = 200): JsonResponse
+    public static function ok(mixed $data = null, string $message = 'OK', int $status = 200): JsonResponse
     {
         return response()->json([
             'success' => true,
@@ -15,7 +15,7 @@ trait ApiResponse
         ], $status);
     }
 
-    protected function fail(string $message, mixed $data = null, int $status = 400): JsonResponse
+    public static function fail(string $message, mixed $data = null, int $status = 400): JsonResponse
     {
         return response()->json([
             'success' => false,
