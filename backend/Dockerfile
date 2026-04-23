@@ -80,8 +80,10 @@ COPY --from=vendor /app/vendor ./vendor
 COPY . .
 
 # Now run the deferred composer scripts that need the full source tree.
-RUN composer dump-autoload --optimize --no-dev --classmap-authoritative \
-    && mkdir -p storage/framework/{cache/data,sessions,views,testing} storage/logs bootstrap/cache \
+RUN mkdir -p storage/framework/cache/data storage/framework/sessions \
+        storage/framework/views storage/framework/testing \
+        storage/logs bootstrap/cache \
+    && composer dump-autoload --optimize --no-dev --classmap-authoritative \
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R ug+rwX storage bootstrap/cache
 
