@@ -22,7 +22,7 @@ Route::prefix('v1')->group(function () {
             ->name('verification.verify');
     });
 
-    // Webhooks (no auth, but rate-limited and signature-verified internally)
+    // Webhooks
     Route::middleware('throttle:webhooks')->group(function () {
         Route::post('/webhooks/flutterwave', [WebhookController::class, 'flutterwave']);
         Route::post('/webhooks/nowpayments', [WebhookController::class, 'nowpayments']);
@@ -39,38 +39,49 @@ Route::prefix('v1')->group(function () {
 
         // Wallet
         Route::middleware('throttle:api')->group(function () {
-            Route::get('/wallet',                 [WalletController::class, 'show']);
-            Route::get('/wallet/transactions',    [WalletController::class, 'transactions']);
+            Route::get('/wallet',                   [WalletController::class, 'show']);
+            Route::get('/wallet/transactions',      [WalletController::class, 'transactions']);
             Route::get('/wallet/transactions/{id}', [WalletController::class, 'transaction']);
         });
 
-        // Funding (idempotency required, payments rate limit)
+        // Funding
         Route::middleware(['throttle:payments', 'idempotent'])->group(function () {
             Route::post('/wallet/fund', [WalletController::class, 'fund']);
         });
 
         // Services
         Route::middleware('throttle:api')->group(function () {
-            Route::get('/services',           [ServiceController::class, 'index']);
-            Route::get('/services/{code}',    [ServiceController::class, 'show']);
-            Route::get('/orders',             [ServiceController::class, 'orders']);
-            Route::get('/orders/{id}',        [ServiceController::class, 'order']);
+            Route::get('/services',        [ServiceController::class, 'index']);
+            Route::get('/services/{code}', [ServiceController::class, 'show']);
+            Route::get('/orders',          [ServiceController::class, 'orders']);
+            Route::get('/orders/{id}',     [ServiceController::class, 'order']);
         });
 
-        // Service purchases (idempotency required)
+        // Service purchases
         Route::middleware(['throttle:services', 'idempotent'])->group(function () {
             Route::post('/services/virtual-number/purchase', [ServiceController::class, 'purchaseVirtualNumber']);
         });
 
         // Admin
         Route::middleware('role:admin')->prefix('admin')->group(function () {
-            Route::get('/users',                          [AdminController::class, 'users']);
-            Route::post('/users/{publicId}/suspend',      [AdminController::class, 'suspendUser']);
-            Route::post('/users/{publicId}/unsuspend',    [AdminController::class, 'unsuspendUser']);
-            Route::post('/users/{publicId}/toggle-role',  [AdminController::class, 'toggleUserRole']);
-            Route::get('/transactions',                [AdminController::class, 'transactions']);
-            Route::get('/metrics',                     [AdminController::class, 'metrics']);
-            Route::post('/services/{code}/toggle',     [AdminController::class, 'toggleService']);
+            // Metrics
+            Route::get('/metrics', [AdminController::class, 'metrics']);
+
+            // Users
+            Route::get('/users',                                [AdminController::class, 'users']);
+            Route::post('/users/{publicId}/suspend',            [AdminController::class, 'suspendUser']);
+            Route::post('/users/{publicId}/unsuspend',          [AdminController::class, 'unsuspendUser']);
+            Route::post('/users/{publicId}/toggle-role',        [AdminController::class, 'toggleUserRole']);
+            Route::post('/users/{publicId}/adjust-wallet',      [AdminController::class, 'adjustWallet']);
+            Route::get('/users/{publicId}/transactions',        [AdminController::class, 'userTransactions']);
+
+            // Transactions
+            Route::get('/transactions', [AdminController::class, 'transactions']);
+
+            // Services
+            Route::get('/services',                             [AdminController::class, 'services']);
+            Route::post('/services/{code}/toggle',              [AdminController::class, 'toggleService']);
+            Route::post('/services/{code}/markup',              [AdminController::class, 'updateServiceMarkup']);
         });
     });
 });
