@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body { font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11'; }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
+           transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-ink-900 text-white hover:bg-ink-800 active:scale-[0.98] shadow-soft;
+  }
+  .btn-brand {
+    @apply btn bg-brand-500 text-ink-950 hover:bg-brand-400 active:scale-[0.98] font-semibold;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-ink-700 hover:bg-ink-100;
+  }
+  .btn-outline {
+    @apply btn border border-ink-200 text-ink-800 bg-white hover:border-ink-300 hover:bg-ink-50;
+  }
+  .input {
+    @apply block w-full rounded-lg border border-ink-200 bg-white px-3.5 py-2.5 text-sm
+           text-ink-900 placeholder:text-ink-400 shadow-sm
+           focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-400/20
+           disabled:bg-ink-50 disabled:cursor-not-allowed;
+  }
+  .label {
+    @apply text-sm font-medium text-ink-700 mb-1.5 block;
+  }
+  .card {
+    @apply rounded-2xl border border-ink-100 bg-white shadow-soft;
+  }
+  .card-pad { @apply card p-6; }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+  .badge-success { @apply badge bg-brand-50 text-brand-700; }
+  .badge-warning { @apply badge bg-amber-50 text-amber-700; }
+  .badge-danger  { @apply badge bg-rose-50 text-rose-700; }
+  .badge-muted   { @apply badge bg-ink-100 text-ink-700; }
+}
+
+/* Subtle glass effect for marketing surfaces */
+.glass {
+  background: linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.45) 100%);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+/* Premium gradient backdrop for the landing page */
+.bg-aurora {
+  background:
+    radial-gradient(60% 50% at 20% 0%, rgba(58, 213, 145, 0.18) 0%, transparent 60%),
+    radial-gradient(50% 50% at 100% 30%, rgba(22, 187, 116, 0.12) 0%, transparent 60%),
+    radial-gradient(80% 60% at 50% 100%, rgba(2, 43, 28, 0.08) 0%, transparent 70%),
+    #f6f7f9;
+}
