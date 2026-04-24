@@ -126,7 +126,7 @@ class AdminController extends Controller
             $tx = $this->wallets->fundFromPayment(
                 wallet: $wallet,
                 amount: $amount,
-                cashAccountCode: ChartOfAccounts::CASH_FLUTTERWAVE,
+                cashAccountCode: ChartOfAccounts::SUSPENSE,
                 idempotencyKey: $idempotencyKey,
                 description: '[Admin] ' . $request->input('reason'),
             );

@@ -19,6 +19,7 @@ class ChartOfAccounts
     public const EXPENSE_PROVIDER   = 'expense.provider_cost';
     public const PENDING_ORDERS     = 'liability.pending_orders';
     public const REFUND_POOL        = 'liability.refund_pool';
+    public const SUSPENSE           = 'suspense.clearing';
 
     /** System accounts that must exist for the app to function. */
     public const SYSTEM_ACCOUNTS = [
@@ -28,6 +29,7 @@ class ChartOfAccounts
         self::EXPENSE_PROVIDER => ['name' => 'Provider Cost',             'type' => AccountType::EXPENSE],
         self::PENDING_ORDERS   => ['name' => 'Pending Order Obligations', 'type' => AccountType::LIABILITY],
         self::REFUND_POOL      => ['name' => 'Refund Liability Pool',     'type' => AccountType::LIABILITY],
+        self::SUSPENSE         => ['name' => 'Suspense / Clearing',       'type' => AccountType::ASSET],
     ];
 
     public function system(string $code, string $currency = 'USD'): LedgerAccount
