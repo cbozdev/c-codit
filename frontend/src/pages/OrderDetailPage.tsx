@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -34,8 +34,7 @@ export default function OrderDetailPage() {
   const phoneNumber = delivery?.phone_number as string | null;
   const smsCode     = delivery?.sms_code as string | null;
   const isVirtualNumber = order.data?.service?.code?.includes('vnum') ||
-                          order.data?.service?.category === 'virtual_number' ||
-                          !!phoneNumber;
+                          !!(phoneNumber);
   const isCompleted = order.data?.status === 'completed';
   const isRefunded  = order.data?.status === 'refunded';
 
