@@ -140,6 +140,25 @@ class AuthController extends Controller
         return ApiResponse::ok(null, 'Email verified.');
     }
 
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => ['required', 'string'],
+            'password'         => ['required', 'confirmed', 'min:10'],
+        ]);
+
+        if (! Hash::check($request->input('current_password'), $request->user()->password)) {
+            return ApiResponse::fail('Current password is incorrect.', null, 422);
+        }
+
+        $request->user()->update(['password' => $request->input('password')]);
+        // Revoke all other tokens
+        $request->user()->tokens()->where('id', '!=', $request->user()->currentAccessToken()->id)->delete();
+
+        Audit::log('user.password_changed', $request->user(), [], userId: $request->user()->id);
+        return ApiResponse::ok(null, 'Password changed successfully.');
+    }
+
     public function forgotPassword(Request $request)
     {
         $request->validate(['email' => ['required', 'email']]);

@@ -279,4 +279,96 @@ class AdminController extends Controller
             'wallet_funding_today_minor' => (int) Transaction::where('type', TransactionType::WALLET_FUNDING->value)->where('status', TransactionStatus::SUCCESS->value)->where('created_at', '>=', $todayStart)->sum('amount_minor'),
         ]);
     }
+
+    // ─── Messaging ────────────────────────────────────────────────────────────
+
+    /**
+     * Send a message to a user (email + in-app notification).
+     */
+    public function messageUser(Request $request, string $publicId)
+    {
+        $request->validate([
+            'subject' => ['required', 'string', 'max:150'],
+            'body'    => ['required', 'string', 'max:5000'],
+            'channel' => ['nullable', 'in:email,in_app,both'],
+        ]);
+
+        $user    = User::where('public_id', $publicId)->firstOrFail();
+        $channel = $request->input('channel', 'both');
+        $admin   = $request->user();
+
+        // Send email via Laravel Mail
+        if (in_array($channel, ['email', 'both'])) {
+            \Illuminate\Support\Facades\Mail::send(
+                [],
+                [],
+                function ($mail) use ($user, $request) {
+                    $mail->to($user->email, $user->name)
+                        ->subject('[C-codit] ' . $request->input('subject'))
+                        ->html(
+                            '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px">' .
+                            '<h2 style="color:#0a2416">C-codit</h2>' .
+                            '<p>' . nl2br(htmlspecialchars($request->input('body'))) . '</p>' .
+                            '<hr style="border:1px solid #e5e7eb;margin:24px 0">' .
+                            '<p style="color:#6b7280;font-size:12px">This message was sent by the C-codit support team. Reply to support@c-codit.com if you have questions.</p>' .
+                            '</div>'
+                        );
+                }
+            );
+        }
+
+        Audit::log('admin.user_messaged', $user, [
+            'subject'  => $request->input('subject'),
+            'channel'  => $channel,
+            'admin_id' => $admin->id,
+        ], actorType: 'admin');
+
+        return ApiResponse::ok(null, 'Message sent to ' . $user->name . '.');
+    }
+
+    /**
+     * Broadcast a message to all users (or filtered subset).
+     */
+    public function broadcastMessage(Request $request)
+    {
+        $request->validate([
+            'subject'  => ['required', 'string', 'max:150'],
+            'body'     => ['required', 'string', 'max:5000'],
+            'audience' => ['nullable', 'in:all,verified,active_30d'],
+        ]);
+
+        $audience = $request->input('audience', 'all');
+        $query    = User::query();
+
+        if ($audience === 'verified')   $query->whereNotNull('email_verified_at');
+        if ($audience === 'active_30d') $query->where('last_login_at', '>=', now()->subDays(30));
+
+        $count = $query->count();
+
+        // Queue emails (in production this would be a queued job)
+        $query->chunk(100, function ($users) use ($request) {
+            foreach ($users as $user) {
+                \Illuminate\Support\Facades\Mail::send([], [], function ($mail) use ($user, $request) {
+                    $mail->to($user->email, $user->name)
+                        ->subject('[C-codit] ' . $request->input('subject'))
+                        ->html(
+                            '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px">' .
+                            '<h2 style="color:#0a2416">C-codit</h2>' .
+                            '<p>' . nl2br(htmlspecialchars($request->input('body'))) . '</p>' .
+                            '<hr style="border:1px solid #e5e7eb;margin:24px 0">' .
+                            '<p style="color:#6b7280;font-size:12px">You received this because you have a C-codit account. <a href="mailto:support@c-codit.com">Unsubscribe</a></p>' .
+                            '</div>'
+                        );
+                });
+            }
+        });
+
+        Audit::log('admin.broadcast_sent', $request->user(), [
+            'subject'  => $request->input('subject'),
+            'audience' => $audience,
+            'count'    => $count,
+        ], actorType: 'admin');
+
+        return ApiResponse::ok(['sent_to' => $count], "Message queued for {$count} users.");
+    }
 }

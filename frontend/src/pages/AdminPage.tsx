@@ -37,7 +37,7 @@ type AdminService = {
   markup_percent: number;
 };
 
-type Tab = 'metrics' | 'users' | 'transactions' | 'services';
+type Tab = 'metrics' | 'users' | 'transactions' | 'services' | 'messages';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ink-200 overflow-x-auto">
-        {(['metrics', 'users', 'transactions', 'services'] as Tab[]).map((t) => (
+        {(['metrics', 'users', 'transactions', 'services', 'messages'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2.5 text-sm font-medium capitalize whitespace-nowrap border-b-2 transition -mb-px ${
               tab === t
@@ -69,6 +69,7 @@ export default function AdminPage() {
       {tab === 'users'        && <UsersTab />}
       {tab === 'transactions' && <TransactionsTab />}
       {tab === 'services'     && <ServicesTab />}
+      {tab === 'messages'     && <MessagesTab />}
     </div>
   );
 }
@@ -708,6 +709,86 @@ function ServicesTab() {
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+// ─── Messages Tab ─────────────────────────────────────────────────────────────
+
+function MessagesTab() {
+  const [subject, setSubject]   = useState('');
+  const [body, setBody]         = useState('');
+  const [audience, setAudience] = useState('all');
+  const [result, setResult]     = useState<string | null>(null);
+
+  const broadcast = useMutation({
+    mutationFn: () => apiCall<{ sent_to: number }>({
+      method: 'POST',
+      url: '/admin/broadcast',
+      data: { subject, body, audience },
+    }),
+    onSuccess: (data) => {
+      setResult(`✅ Message queued for ${data.sent_to} users.`);
+      setSubject(''); setBody('');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="card-pad space-y-4">
+        <h3 className="font-semibold dark:text-white">Broadcast message to users</h3>
+        <p className="text-sm text-ink-600 dark:text-ink-400">Send an email to a group of users.</p>
+
+        <div>
+          <label className="label">Audience</label>
+          <select className="input" value={audience} onChange={(e) => setAudience(e.target.value)}>
+            <option value="all">All users</option>
+            <option value="verified">Verified email only</option>
+            <option value="active_30d">Active in last 30 days</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="label">Subject</label>
+          <input className="input" placeholder="e.g. Important update about your account"
+            value={subject} onChange={(e) => setSubject(e.target.value)} />
+        </div>
+
+        <div>
+          <label className="label">Message body</label>
+          <textarea className="input h-40 resize-none" placeholder="Write your message here…"
+            value={body} onChange={(e) => setBody(e.target.value)} />
+          <p className="text-xs text-ink-500 mt-1">{body.length}/5000 characters</p>
+        </div>
+
+        {result && (
+          <div className="p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-sm text-brand-800 dark:text-brand-300">
+            {result}
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (confirm(`Send this message to ${audience === 'all' ? 'ALL users' : audience}? This cannot be undone.`)) {
+                broadcast.mutate();
+              }
+            }}
+            disabled={!subject.trim() || !body.trim() || broadcast.isPending}
+            className="btn-primary">
+            {broadcast.isPending ? 'Sending…' : '📢 Send broadcast'}
+          </button>
+          <p className="text-xs text-ink-500">Emails are sent immediately.</p>
+        </div>
+      </div>
+
+      <div className="card-pad">
+        <h3 className="font-semibold dark:text-white mb-2">Message a specific user</h3>
+        <p className="text-sm text-ink-600 dark:text-ink-400">
+          Go to the <strong>Users</strong> tab, find a user, and click their name to send them a direct message.
+        </p>
+      </div>
     </div>
   );
 }

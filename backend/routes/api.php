@@ -31,9 +31,10 @@ Route::prefix('v1')->group(function () {
     // Authenticated routes
     Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
-        Route::post('/auth/logout',     [AuthController::class, 'logout']);
-        Route::post('/auth/logout-all', [AuthController::class, 'logoutAll']);
-        Route::get('/auth/me',          [AuthController::class, 'me']);
+        Route::post('/auth/logout',           [AuthController::class, 'logout']);
+        Route::post('/auth/logout-all',       [AuthController::class, 'logoutAll']);
+        Route::get('/auth/me',                [AuthController::class, 'me']);
+        Route::post('/auth/change-password',  [AuthController::class, 'changePassword']);
         Route::post('/auth/email/send-verification', [AuthController::class, 'sendVerificationEmail'])
             ->middleware('throttle:6,1');
 
@@ -80,6 +81,10 @@ Route::prefix('v1')->group(function () {
             Route::post('/users/{publicId}/toggle-role',        [AdminController::class, 'toggleUserRole']);
             Route::post('/users/{publicId}/adjust-wallet',      [AdminController::class, 'adjustWallet']);
             Route::get('/users/{publicId}/transactions',        [AdminController::class, 'userTransactions']);
+            Route::post('/users/{publicId}/message',            [AdminController::class, 'messageUser']);
+
+            // Broadcast
+            Route::post('/broadcast',                           [AdminController::class, 'broadcastMessage']);
 
             // Transactions
             Route::get('/transactions', [AdminController::class, 'transactions']);
