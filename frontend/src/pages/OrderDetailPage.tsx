@@ -56,7 +56,6 @@ export default function OrderDetailPage() {
   const urgentTime  = timeLeft < 120 && timeLeft > 0;
   const isExpired   = timeLeft === 0 && !!provisionedAt && !smsCode;
   const isVirtualNumber = !!phoneNumber || o?.service?.code?.includes('vnum');
-  const isCompleted = o?.status === 'completed';
   const isRefunded  = o?.status === 'refunded';
 
   // Pull service name from request metadata
