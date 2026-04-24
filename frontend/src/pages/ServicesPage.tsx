@@ -158,6 +158,7 @@ export default function ServicesPage() {
   const purchase = useMutation({
     mutationFn: () => {
       if (!selected) throw new Error('No service selected.');
+      const networks = UTILITY_NETWORKS[selected.code];
       return apiCall<ServiceOrder>({
         url: '/services/virtual-number/purchase',
         method: 'POST',

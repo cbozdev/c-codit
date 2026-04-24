@@ -10,18 +10,151 @@ class ServicesSeeder extends Seeder
     public function run(): void
     {
         $services = [
-            ['code' => 'vnum_5sim',        'name' => '5sim Virtual Numbers',        'provider' => '5sim',         'category' => 'virtual_number', 'description' => 'Buy disposable virtual numbers via 5sim.'],
-            ['code' => 'vnum_smsactivate', 'name' => 'SMS-Activate Virtual Numbers','provider' => 'smsactivate', 'category' => 'virtual_number', 'description' => 'Buy disposable virtual numbers via sms-activate.'],
-            ['code' => 'esim',             'name' => 'eSIM',                        'provider' => 'internal',     'category' => 'esim',           'description' => 'Travel eSIMs (coming soon).', 'is_active' => false],
-            ['code' => 'giftcard',         'name' => 'Gift Cards',                  'provider' => 'internal',     'category' => 'giftcard',       'description' => 'Digital gift cards (coming soon).', 'is_active' => false],
-            ['code' => 'utility_bills',    'name' => 'Utility Bills (Flutterwave)', 'provider' => 'flutterwave',  'category' => 'utility',        'description' => 'Pay airtime/data/utility bills via Flutterwave.', 'is_active' => false],
+            // ── Virtual Numbers ──────────────────────────────────────────
+            [
+                'code'     => 'vnum_5sim',
+                'name'     => '5sim Virtual Numbers',
+                'provider' => '5sim',
+                'category' => 'virtual_number',
+                'description' => 'Disposable phone numbers for SMS verification via 5sim. 200+ countries.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'vnum_smsactivate',
+                'name'     => 'SMS-Activate Virtual Numbers',
+                'provider' => 'smsactivate',
+                'category' => 'virtual_number',
+                'description' => 'Disposable phone numbers via sms-activate.org. 190+ countries.',
+                'is_active' => true,
+            ],
+
+            // ── eSIM ─────────────────────────────────────────────────────
+            [
+                'code'     => 'esim_travel',
+                'name'     => 'Travel eSIM',
+                'provider' => 'internal',
+                'category' => 'esim',
+                'description' => 'Data-only eSIMs for 190+ countries. Install instantly.',
+                'is_active' => false,
+            ],
+
+            // ── Gift Cards ────────────────────────────────────────────────
+            [
+                'code'     => 'giftcard_amazon',
+                'name'     => 'Amazon Gift Card',
+                'provider' => 'internal',
+                'category' => 'giftcard',
+                'description' => 'Amazon gift card codes. Valid in US, UK, DE and more.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'giftcard_google',
+                'name'     => 'Google Play Gift Card',
+                'provider' => 'internal',
+                'category' => 'giftcard',
+                'description' => 'Google Play credit for apps, games and subscriptions.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'giftcard_apple',
+                'name'     => 'Apple Gift Card',
+                'provider' => 'internal',
+                'category' => 'giftcard',
+                'description' => 'App Store & iTunes credit. Works on iPhone, iPad, Mac.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'giftcard_netflix',
+                'name'     => 'Netflix Gift Card',
+                'provider' => 'internal',
+                'category' => 'giftcard',
+                'description' => 'Netflix subscription credit. Redeem on any Netflix account.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'giftcard_steam',
+                'name'     => 'Steam Gift Card',
+                'provider' => 'internal',
+                'category' => 'giftcard',
+                'description' => 'Steam Wallet codes for games and in-game content.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'giftcard_xbox',
+                'name'     => 'Xbox Gift Card',
+                'provider' => 'internal',
+                'category' => 'giftcard',
+                'description' => 'Microsoft Store credit for Xbox games and subscriptions.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'giftcard_spotify',
+                'name'     => 'Spotify Gift Card',
+                'provider' => 'internal',
+                'category' => 'giftcard',
+                'description' => 'Spotify Premium subscription gift cards.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'giftcard_jumia',
+                'name'     => 'Jumia Gift Voucher',
+                'provider' => 'internal',
+                'category' => 'giftcard',
+                'description' => 'Jumia shopping vouchers for Nigeria, Kenya, Ghana.',
+                'is_active' => true,
+            ],
+
+            // ── Utility Bills ─────────────────────────────────────────────
+            [
+                'code'     => 'utility_airtime_ng',
+                'name'     => 'Nigerian Airtime',
+                'provider' => 'flutterwave',
+                'category' => 'utility',
+                'description' => 'Top up MTN, Airtel, Glo and 9mobile airtime instantly.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'utility_data_ng',
+                'name'     => 'Nigerian Data Bundles',
+                'provider' => 'flutterwave',
+                'category' => 'utility',
+                'description' => 'Buy data bundles for MTN, Airtel, Glo and 9mobile.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'utility_electricity',
+                'name'     => 'Electricity Bills',
+                'provider' => 'flutterwave',
+                'category' => 'utility',
+                'description' => 'Pay EKEDC, IKEDC, AEDC, PHEDC and other electricity bills.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'utility_dstv',
+                'name'     => 'DSTV / GOtv',
+                'provider' => 'flutterwave',
+                'category' => 'utility',
+                'description' => 'Pay DSTV, GOtv and Showmax subscriptions.',
+                'is_active' => true,
+            ],
+            [
+                'code'     => 'utility_startimes',
+                'name'     => 'StarTimes',
+                'provider' => 'flutterwave',
+                'category' => 'utility',
+                'description' => 'Pay StarTimes TV subscription.',
+                'is_active' => true,
+            ],
         ];
 
+        // Remove old generic service records that conflict
+        Service::whereIn('code', ['esim', 'giftcard', 'utility_bills'])->delete();
+
         foreach ($services as $row) {
-            Service::updateOrCreate(['code' => $row['code']], array_merge([
-                'is_active' => true,
-                'currency'  => 'USD',
-            ], $row));
+            Service::updateOrCreate(
+                ['code' => $row['code']],
+                array_merge(['currency' => 'USD', 'markup_percent' => 15], $row)
+            );
         }
     }
 }

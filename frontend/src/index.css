@@ -5,17 +5,22 @@
 @layer base {
   html, body, #root { height: 100%; }
   body { font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11'; }
+  html.dark body {
+    background-color: #13161f;
+    color: #d5dae3;
+  }
 }
 
 @layer components {
+  /* ── Buttons ── */
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
            transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-ink-900 text-white hover:bg-ink-800 active:scale-[0.98] shadow-soft
-           dark:bg-ink-100 dark:text-ink-900 dark:hover:bg-white;
+    @apply btn bg-ink-900 text-white hover:bg-ink-800 active:scale-[0.98]                shadow-soft
+           dark:bg-white dark:text-ink-900 dark:hover:bg-ink-100;
   }
   .btn-brand {
     @apply btn bg-brand-500 text-ink-950 hover:bg-brand-400 active:scale-[0.98] font-semibold;
@@ -26,32 +31,60 @@
   }
   .btn-outline {
     @apply btn border border-ink-200 text-ink-800 bg-white hover:border-ink-300 hover:bg-ink-50
-           dark:border-ink-700 dark:text-ink-200 dark:bg-ink-900 dark:hover:bg-ink-800;
+           dark:border-ink-700 dark:text-ink-200 dark:bg-transparent dark:hover:bg-ink-800;
   }
+
+  /* ── Form elements ── */
   .input {
     @apply block w-full rounded-lg border border-ink-200 bg-white px-3.5 py-2.5 text-sm
            text-ink-900 placeholder:text-ink-400 shadow-sm
            focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-400/20
            disabled:bg-ink-50 disabled:cursor-not-allowed
            dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100
-           dark:placeholder:text-ink-500 dark:focus:border-brand-400;
+           dark:placeholder:text-ink-500 dark:focus:border-brand-500;
   }
   .label {
     @apply text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5 block;
   }
+
+  /* ── Cards ── */
   .card {
-    @apply rounded-2xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 shadow-soft;
+    @apply rounded-2xl border border-ink-100 bg-white shadow-soft
+           dark:border-ink-800 dark:bg-ink-900;
   }
   .card-pad { @apply card p-6; }
+
+  /* ── Badges ── */
   .badge {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium;
   }
-  .badge-success { @apply badge bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400; }
-  .badge-warning { @apply badge bg-amber-50  text-amber-700  dark:bg-amber-900/30  dark:text-amber-400; }
-  .badge-danger  { @apply badge bg-rose-50   text-rose-700   dark:bg-rose-900/30   dark:text-rose-400; }
-  .badge-muted   { @apply badge bg-ink-100   text-ink-700    dark:bg-ink-800       dark:text-ink-400; }
+  .badge-success {
+    @apply badge bg-brand-50 text-brand-700
+           dark:bg-brand-950/40 dark:text-brand-400;
+  }
+  .badge-warning {
+    @apply badge bg-amber-50 text-amber-700
+           dark:bg-amber-950/40 dark:text-amber-400;
+  }
+  .badge-danger {
+    @apply badge bg-rose-50 text-rose-700
+           dark:bg-rose-950/40 dark:text-rose-400;
+  }
+  .badge-muted {
+    @apply badge bg-ink-100 text-ink-600
+           dark:bg-ink-800 dark:text-ink-400;
+  }
+
+  /* ── Page headings ── */
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight text-ink-900 dark:text-white;
+  }
+  .page-subtitle {
+    @apply text-sm text-ink-600 dark:text-ink-400 mt-1;
+  }
 }
 
+/* ── Special backgrounds ── */
 .glass {
   background: linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.45) 100%);
   backdrop-filter: blur(12px) saturate(140%);
@@ -68,11 +101,20 @@
 
 html.dark .bg-aurora {
   background:
-    radial-gradient(60% 50% at 20% 0%,  rgba(58,213,145,0.10) 0%, transparent 60%),
-    radial-gradient(50% 50% at 100% 30%, rgba(22,187,116,0.07) 0%, transparent 60%),
+    radial-gradient(60% 50% at 20% 0%,   rgba(58,213,145,0.09) 0%, transparent 60%),
+    radial-gradient(50% 50% at 100% 30%,  rgba(22,187,116,0.06) 0%, transparent 60%),
     #13161f;
 }
 
-/* Dark mode page background */
-html.dark body { background-color: #13161f; color: #d5dae3; }
-html.dark .bg-ink-50 { background-color: #13161f; }
+/* ── Dark mode overrides for elements that need it ── */
+html.dark .bg-ink-50    { background-color: #13161f; }
+html.dark .bg-white     { background-color: #1f2330; }
+html.dark .text-ink-900 { color: #eceef2; }
+html.dark .text-ink-800 { color: #d5dae3; }
+html.dark .text-ink-700 { color: #b1b9c9; }
+html.dark .text-ink-600 { color: #8993a9; }
+html.dark .border-ink-100 { border-color: #3a4051; }
+html.dark .border-ink-200 { border-color: #444c60; }
+html.dark .hover\:bg-ink-50:hover  { background-color: #1f2330; }
+html.dark .hover\:bg-ink-100:hover { background-color: #3a4051; }
+html.dark .divide-ink-100 > * + * { border-color: #3a4051; }
