@@ -110,6 +110,40 @@ const UTILITY_NETWORKS: Record<string, string[]> = {
   utility_startimes:     ['StarTimes'],
 };
 
+// Data bundle plans per network (in NGN)
+const DATA_PLANS: Record<string, { label: string; code: string; amount: string }[]> = {
+  MTN: [
+    { label: '100MB - ₦100',    code: 'MTN100MB',   amount: '100' },
+    { label: '200MB - ₦200',    code: 'MTN200MB',   amount: '200' },
+    { label: '500MB - ₦300',    code: 'MTN500MB',   amount: '300' },
+    { label: '1GB - ₦500',      code: 'MTN1GB',     amount: '500' },
+    { label: '2GB - ₦1,000',    code: 'MTN2GB',     amount: '1000' },
+    { label: '5GB - ₦2,000',    code: 'MTN5GB',     amount: '2000' },
+    { label: '10GB - ₦3,000',   code: 'MTN10GB',    amount: '3000' },
+  ],
+  Airtel: [
+    { label: '100MB - ₦100',    code: 'AIR100MB',   amount: '100' },
+    { label: '500MB - ₦300',    code: 'AIR500MB',   amount: '300' },
+    { label: '1GB - ₦500',      code: 'AIR1GB',     amount: '500' },
+    { label: '2GB - ₦1,000',    code: 'AIR2GB',     amount: '1000' },
+    { label: '5GB - ₦2,000',    code: 'AIR5GB',     amount: '2000' },
+    { label: '10GB - ₦3,000',   code: 'AIR10GB',    amount: '3000' },
+  ],
+  Glo: [
+    { label: '100MB - ₦50',     code: 'GLO100MB',   amount: '50' },
+    { label: '1GB - ₦500',      code: 'GLO1GB',     amount: '500' },
+    { label: '2GB - ₦1,000',    code: 'GLO2GB',     amount: '1000' },
+    { label: '5GB - ₦2,000',    code: 'GLO5GB',     amount: '2000' },
+    { label: '10GB - ₦2,500',   code: 'GLO10GB',    amount: '2500' },
+  ],
+  '9mobile': [
+    { label: '500MB - ₦200',    code: '9M500MB',    amount: '200' },
+    { label: '1.5GB - ₦1,000',  code: '9M15GB',     amount: '1000' },
+    { label: '3GB - ₦2,000',    code: '9M3GB',      amount: '2000' },
+    { label: '5GB - ₦3,000',    code: '9M5GB',      amount: '3000' },
+  ],
+};
+
 // Icons per category
 const CAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   virtual_number: Smartphone,
@@ -139,6 +173,8 @@ export default function ServicesPage() {
   const [phoneNumber, setPhoneNumber]     = useState('');
   const [smartcardNumber, setSmartcardNumber] = useState('');
   const [billAmount, setBillAmount]       = useState('500');
+  const [dataPlan, setDataPlan]           = useState('');
+  const [meterType, setMeterType]         = useState<'prepaid'|'postpaid'>('prepaid');
   const [ordersExpanded, setOrdersExpanded] = useState(true);
 
   const services = useQuery({
@@ -174,6 +210,8 @@ export default function ServicesPage() {
         if (phoneNumber) baseData.phone_number = phoneNumber;
         if (meterNumber) baseData.meter_number = meterNumber;
         if (smartcardNumber) baseData.smartcard_number = smartcardNumber;
+        if (dataPlan) baseData.plan_code = dataPlan;
+        if (selected.code === 'utility_electricity') baseData.meter_type = meterType;
       } else if (selected.category === 'giftcard') {
         baseData.denomination = denomination;
       }
@@ -312,13 +350,17 @@ export default function ServicesPage() {
               billAmount={billAmount}
               setBillAmount={setBillAmount}
               network={network}
-              setNetwork={setNetwork}
+              setNetwork={(n) => { setNetwork(n); setDataPlan(''); }}
               phoneNumber={phoneNumber}
               setPhoneNumber={setPhoneNumber}
               meterNumber={meterNumber}
               setMeterNumber={setMeterNumber}
               smartcardNumber={smartcardNumber}
               setSmartcardNumber={setSmartcardNumber}
+              dataPlan={dataPlan}
+              setDataPlan={setDataPlan}
+              meterType={meterType}
+              setMeterType={setMeterType}
               onPurchase={() => purchase.mutate()}
               isPending={purchase.isPending}
             />
@@ -489,20 +531,36 @@ function GiftCardForm({ service, denomination, setDenomination, onPurchase, isPe
 
 // ─── Utility Bill Form ────────────────────────────────────────────────────────
 
-function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, phoneNumber, setPhoneNumber, meterNumber, setMeterNumber, smartcardNumber, setSmartcardNumber, onPurchase, isPending }: {
+function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, phoneNumber, setPhoneNumber, meterNumber, setMeterNumber, smartcardNumber, setSmartcardNumber, dataPlan, setDataPlan, meterType, setMeterType, onPurchase, isPending }: {
   service: Service;
   billAmount: string; setBillAmount: (v: string) => void;
   network: string; setNetwork: (v: string) => void;
   phoneNumber: string; setPhoneNumber: (v: string) => void;
   meterNumber: string; setMeterNumber: (v: string) => void;
   smartcardNumber: string; setSmartcardNumber: (v: string) => void;
+  dataPlan: string; setDataPlan: (v: string) => void;
+  meterType: 'prepaid'|'postpaid'; setMeterType: (v: 'prepaid'|'postpaid') => void;
   onPurchase: () => void; isPending: boolean;
 }) {
-  const networks = UTILITY_NETWORKS[service.code] ?? [];
+  const networks      = UTILITY_NETWORKS[service.code] ?? [];
   const isElectricity = service.code === 'utility_electricity';
-  const isAirtimeOrData = service.code === 'utility_airtime_ng' || service.code === 'utility_data_ng';
-  const isTV = service.code === 'utility_dstv' || service.code === 'utility_startimes';
-  const QUICK_AMOUNTS = isAirtimeOrData ? ['100', '200', '500', '1000', '2000'] : ['1000', '2000', '5000', '10000', '20000'];
+  const isData        = service.code === 'utility_data_ng';
+  const isAirtime     = service.code === 'utility_airtime_ng';
+  const isTV          = service.code === 'utility_dstv' || service.code === 'utility_startimes';
+  const plans         = isData ? (DATA_PLANS[network] ?? []) : [];
+  const QUICK_AMOUNTS = isAirtime ? ['100', '200', '500', '1000', '2000'] : isElectricity ? ['1000', '2000', '5000', '10000', '20000'] : [];
+
+  function selectPlan(plan: { code: string; amount: string }) {
+    setDataPlan(plan.code);
+    setBillAmount(plan.amount);
+  }
+
+  const canSubmit = !isPending &&
+    (isData ? !!dataPlan : Number(billAmount) >= 50) &&
+    (isAirtime ? !!phoneNumber : true) &&
+    (isData    ? !!phoneNumber : true) &&
+    (isElectricity ? !!meterNumber : true) &&
+    (isTV ? !!smartcardNumber : true);
 
   return (
     <>
@@ -510,12 +568,14 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
         <Receipt className="h-4 w-4 text-brand-600" /> {service.name}
       </h3>
       <div className="space-y-4">
+
+        {/* Network selector */}
         {networks.length > 0 && (
           <div>
             <label className="label">Provider / Network</label>
             <div className="flex flex-wrap gap-2">
               {networks.map((n) => (
-                <button key={n} onClick={() => setNetwork(n)}
+                <button key={n} onClick={() => { setNetwork(n); setDataPlan(''); }}
                   className={clsx(
                     'px-4 py-2 rounded-lg border text-sm font-medium transition',
                     network === n
@@ -529,41 +589,27 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
           </div>
         )}
 
-        {/* Amount */}
-        <div>
-          <label className="label">Amount (₦ NGN)</label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-500 font-medium">₦</span>
-            <input type="number" min="50" step="50"
-              className="input pl-7"
-              value={billAmount}
-              onChange={(e) => setBillAmount(e.target.value)}
-              placeholder="Enter amount in Naira"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {QUICK_AMOUNTS.map((a) => (
-              <button key={a} onClick={() => setBillAmount(a)}
-                className={clsx(
-                  'px-3 py-1.5 text-xs rounded-full border transition',
-                  billAmount === a
-                    ? 'bg-ink-900 text-white border-ink-900'
-                    : 'border-ink-200 text-ink-600 hover:border-ink-400 dark:border-ink-700 dark:text-ink-400',
-                )}>
-                ₦{Number(a).toLocaleString()}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {isAirtimeOrData && (
+        {/* Electricity — prepaid / postpaid toggle */}
+        {isElectricity && (
           <div>
-            <label className="label">Phone number</label>
-            <input className="input" placeholder="e.g. 08012345678" type="tel"
-              value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
+            <label className="label">Meter type</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['prepaid', 'postpaid'] as const).map((t) => (
+                <button key={t} onClick={() => setMeterType(t)}
+                  className={clsx(
+                    'py-2.5 rounded-lg border text-sm font-medium capitalize transition',
+                    meterType === t
+                      ? 'bg-ink-900 text-white border-ink-900 dark:bg-white dark:text-ink-900'
+                      : 'border-ink-200 text-ink-700 hover:border-ink-400 dark:border-ink-700 dark:text-ink-300',
+                  )}>
+                  {t}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
+        {/* Electricity — meter number */}
         {isElectricity && (
           <div>
             <label className="label">Meter number</label>
@@ -572,6 +618,70 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
           </div>
         )}
 
+        {/* Data bundles — plan selector */}
+        {isData && network && (
+          <div>
+            <label className="label">Select data plan</label>
+            {plans.length === 0 ? (
+              <p className="text-sm text-ink-500">Select a network first.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {plans.map((p) => (
+                  <button key={p.code} onClick={() => selectPlan(p)}
+                    className={clsx(
+                      'p-3 rounded-lg border text-left transition',
+                      dataPlan === p.code
+                        ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30'
+                        : 'border-ink-200 hover:border-ink-400 dark:border-ink-700',
+                    )}>
+                    <div className="font-medium text-sm dark:text-white">{p.label.split(' - ')[0]}</div>
+                    <div className="text-xs text-ink-500 dark:text-ink-400">₦{Number(p.amount).toLocaleString()}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Amount — for airtime and electricity only (not data — plan sets amount) */}
+        {(isAirtime || isElectricity) && (
+          <div>
+            <label className="label">Amount (₦ NGN)</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-500 font-medium">₦</span>
+              <input type="number" min="50" step="50"
+                className="input pl-7"
+                value={billAmount}
+                onChange={(e) => setBillAmount(e.target.value)}
+                placeholder="Enter amount in Naira"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {QUICK_AMOUNTS.map((a) => (
+                <button key={a} onClick={() => setBillAmount(a)}
+                  className={clsx(
+                    'px-3 py-1.5 text-xs rounded-full border transition',
+                    billAmount === a
+                      ? 'bg-ink-900 text-white border-ink-900'
+                      : 'border-ink-200 text-ink-600 hover:border-ink-400 dark:border-ink-700 dark:text-ink-400',
+                  )}>
+                  ₦{Number(a).toLocaleString()}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Phone number for airtime and data */}
+        {(isAirtime || isData) && (
+          <div>
+            <label className="label">Phone number</label>
+            <input className="input" placeholder="e.g. 08012345678" type="tel"
+              value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
+          </div>
+        )}
+
+        {/* TV smartcard */}
         {isTV && (
           <div>
             <label className="label">Smartcard / IUC number</label>
@@ -581,22 +691,18 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
         )}
 
         <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800 text-sm text-ink-600 dark:text-ink-400">
-          ℹ Utility bill payments via Flutterwave. Processed instantly after wallet deduction.
-          Your wallet is in USD — amount is converted at current NGN/USD rate.
+          ℹ Powered by Flutterwave. Processed instantly. Wallet is in USD — amount converted at current NGN/USD rate.
         </div>
 
-        <button
-          onClick={onPurchase}
-          disabled={isPending || !billAmount || Number(billAmount) < 50 || (!isTV && !phoneNumber && !meterNumber && !smartcardNumber)}
-          className="btn-brand"
-        >
-          {isPending ? 'Processing…' : `Pay ₦${Number(billAmount || 0).toLocaleString()}`}
+        <button onClick={onPurchase} disabled={!canSubmit} className="btn-brand">
+          {isPending ? 'Processing…' : isData && dataPlan
+            ? `Buy ${plans.find(p => p.code === dataPlan)?.label ?? 'data'}`
+            : `Pay ₦${Number(billAmount || 0).toLocaleString()}`}
         </button>
       </div>
     </>
   );
 }
-
 // ─── Order Row ────────────────────────────────────────────────────────────────
 
 function OrderRow({ order }: { order: ServiceOrder }) {
