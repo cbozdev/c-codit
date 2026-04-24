@@ -113,3 +113,97 @@ class ServiceController extends Controller
         return ApiResponse::ok(new ServiceOrderResource($order));
     }
 }
+
+    public function cancel(Request $request, string $publicId)
+    {
+        $order = ServiceOrder::where('public_id', $publicId)
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        if (! in_array($order->status, ['completed', 'provisioning', 'pending'])) {
+            return ApiResponse::fail('This order cannot be cancelled.', null, 422);
+        }
+        if ($order->status === 'refunded') {
+            return ApiResponse::fail('Already refunded.', null, 422);
+        }
+
+        $holdTx = $order->transaction;
+        if (! $holdTx) {
+            return ApiResponse::fail('No transaction found for this order.', null, 422);
+        }
+
+        // Try to cancel with provider first
+        try {
+            if ($order->provider_order_id) {
+                $provider = $order->service->provider;
+                if ($provider === '5sim') {
+                    app(\App\Services\Sms\FiveSimService::class)->cancel($order->provider_order_id);
+                } elseif ($provider === 'smsactivate') {
+                    app(\App\Services\Sms\SmsActivateService::class)->cancel($order->provider_order_id);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('cancel.provider_cancel_failed', ['order' => $publicId, 'error' => $e->getMessage()]);
+        }
+
+        // Refund the wallet
+        $wallets = app(\App\Services\Wallet\WalletService::class);
+        $wallets->refundSuspense(
+            $holdTx,
+            'cancel_refund:' . $order->public_id,
+            'Number cancelled by user',
+        );
+
+        $order->update([
+            'status'         => 'refunded',
+            'failure_reason' => 'Cancelled by user',
+            'refunded_at'    => now(),
+        ]);
+
+        \App\Support\Audit::log('service.cancelled', $order);
+
+        app(\App\Http\Resources\ServiceOrderResource::class, ['resource' => $order->fresh()->loadMissing('service')]);
+
+        return ApiResponse::ok(
+            new \App\Http\Resources\ServiceOrderResource($order->fresh()->loadMissing('service')),
+            'Order cancelled and wallet refunded.'
+        );
+    }
+
+    public function fetchCode(Request $request, string $publicId)
+    {
+        $order = ServiceOrder::where('public_id', $publicId)
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        if ($order->status !== 'completed') {
+            return ApiResponse::fail('Order is not active.', null, 422);
+        }
+
+        if (! $order->provider_order_id) {
+            return ApiResponse::fail('No provider order ID.', null, 422);
+        }
+
+        $code = null;
+        try {
+            $provider = $order->service->provider;
+            if ($provider === '5sim') {
+                $code = app(\App\Services\Sms\FiveSimService::class)->fetchCode($order->provider_order_id);
+            } elseif ($provider === 'smsactivate') {
+                $code = app(\App\Services\Sms\SmsActivateService::class)->fetchCode($order->provider_order_id);
+            }
+        } catch (\Throwable $e) {
+            return ApiResponse::fail('Could not check for code: ' . $e->getMessage(), null, 500);
+        }
+
+        if ($code) {
+            $delivery = array_merge((array) $order->delivery, ['sms_code' => $code]);
+            $order->update(['delivery' => $delivery]);
+            \App\Support\Audit::log('service.code_received', $order);
+        }
+
+        return ApiResponse::ok([
+            'code'     => $code,
+            'delivery' => $order->fresh()->delivery,
+        ], $code ? 'Code received!' : 'No code yet.');
+    }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { apiCall, newIdempotencyKey } from '@/lib/api';
@@ -599,45 +600,53 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
 // ─── Order Row ────────────────────────────────────────────────────────────────
 
 function OrderRow({ order }: { order: ServiceOrder }) {
+  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
-
-  function copyNumber(num: string) {
-    navigator.clipboard.writeText(num);
-    setCopied(true);
-    toast.success('Copied!');
-    setTimeout(() => setCopied(false), 2000);
-  }
+  const delivery = order.delivery as Record<string, unknown> | null;
+  const phoneNumber = delivery?.phone_number as string | null;
+  const smsCode = delivery?.sms_code as string | null;
 
   return (
     <li className="py-3.5 flex items-start justify-between gap-4">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <button onClick={() => navigate(`/orders/${order.id}`)}
+          className="flex items-center gap-2 hover:text-brand-600 transition text-left">
           <div className="font-medium text-sm dark:text-white truncate">
             {order.service?.name ?? 'Service'}
           </div>
           <StatusBadge status={order.status} />
-        </div>
+        </button>
         <div className="text-xs text-ink-500 dark:text-ink-400 mt-0.5 flex items-center gap-1">
           <Clock className="h-3 w-3" /> {formatDate(order.created_at)}
         </div>
 
-        {/* Delivery */}
-        {order.delivery?.phone_number && (
+        {/* Phone number */}
+        {phoneNumber && (
           <div className="mt-2 flex items-center gap-2">
-            <span className="font-mono text-sm font-semibold dark:text-white">
-              {order.delivery.phone_number}
-            </span>
-            <button onClick={() => copyNumber(order.delivery!.phone_number!)}
-              className={clsx(
-                'p-1 rounded transition',
-                copied ? 'text-brand-600' : 'text-ink-400 hover:text-ink-700 dark:hover:text-ink-200',
-              )}>
+            <span className="font-mono text-sm font-semibold dark:text-white">{phoneNumber}</span>
+            <button onClick={() => { navigator.clipboard.writeText(phoneNumber); setCopied(true); toast.success('Copied!'); setTimeout(() => setCopied(false), 2000); }}
+              className={clsx('p-1 rounded transition', copied ? 'text-brand-600' : 'text-ink-400 hover:text-ink-700')}>
               {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             </button>
           </div>
         )}
 
-        {/* Failure reason */}
+        {/* SMS Code */}
+        {smsCode && (
+          <div className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-brand-50 dark:bg-brand-950/30 rounded-lg border border-brand-200 dark:border-brand-900">
+            <CheckCircle2 className="h-4 w-4 text-brand-600 shrink-0" />
+            <span className="font-mono font-bold text-brand-700 dark:text-brand-300 text-lg tracking-widest">{smsCode}</span>
+          </div>
+        )}
+
+        {/* Waiting for code */}
+        {phoneNumber && !smsCode && order.status === 'completed' && (
+          <button onClick={() => navigate(`/orders/${order.id}`)}
+            className="mt-2 text-xs text-ink-500 dark:text-ink-400 hover:text-brand-600 flex items-center gap-1">
+            <Clock className="h-3 w-3" /> Tap to check for SMS code →
+          </button>
+        )}
+
         {order.failure_reason && (
           <div className="mt-1.5 flex items-start gap-1 text-xs text-rose-600 dark:text-rose-400">
             <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -650,9 +659,7 @@ function OrderRow({ order }: { order: ServiceOrder }) {
         <div className="font-mono font-medium text-sm dark:text-white">
           {formatMoney(order.amount_minor, order.currency)}
         </div>
-        {order.refunded_at && (
-          <div className="text-xs text-brand-600 mt-0.5">Refunded</div>
-        )}
+        {order.refunded_at && <div className="text-xs text-brand-600 mt-0.5">Refunded</div>}
       </div>
     </li>
   );
