@@ -26,15 +26,35 @@ export default function OrderDetailPage() {
   const order = useQuery({
     queryKey: ['order', id],
     queryFn: () => apiCall<ServiceOrder>({ url: `/orders/${id}` }),
-    refetchInterval: (data) => {
-      const delivery = data?.state.data?.delivery as Record<string, unknown> | null;
-      const smsCode = delivery?.sms_code as string | null;
-      const status = data?.state.data?.status;
-      // Keep polling only if active and no code yet
-      if (status === 'completed' && !smsCode) return 5000;
-      return false;
-    },
   });
+
+  // Actively poll 5sim for SMS code every 5 seconds when waiting
+  useEffect(() => {
+    const delivery = order.data?.delivery as Record<string, unknown> | null;
+    const smsCode  = delivery?.sms_code as string | null;
+    const status   = order.data?.status;
+
+    if (status !== 'completed' || smsCode) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiCall<{ code: string | null }>({
+          method: 'POST',
+          url: `/orders/${id}/fetch-code`,
+        });
+        if (res.code) {
+          // Code arrived — refetch order to get updated delivery
+          qc.invalidateQueries({ queryKey: ['order', id] });
+          qc.invalidateQueries({ queryKey: ['orders'] });
+          clearInterval(interval);
+        }
+      } catch {
+        // Silently ignore polling errors
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [order.data?.status, (order.data?.delivery as Record<string, unknown> | null)?.sms_code, id, qc]);
 
   // Tick every second for the timer — uses a fixed reference point
   useEffect(() => {
@@ -229,11 +249,26 @@ export default function OrderDetailPage() {
           {!smsCode && !isRefunded && (
             <div className="flex items-center gap-3 mt-4">
               <button
-                onClick={() => order.refetch()}
-                disabled={order.isFetching}
+                onClick={async () => {
+                  try {
+                    const res = await apiCall<{ code: string | null }>({
+                      method: 'POST',
+                      url: `/orders/${id}/fetch-code`,
+                    });
+                    if (res.code) {
+                      toast.success('Code received!');
+                      qc.invalidateQueries({ queryKey: ['order', id] });
+                      qc.invalidateQueries({ queryKey: ['orders'] });
+                    } else {
+                      toast('No code yet. Keep waiting…', { icon: '⏳' });
+                    }
+                  } catch (e) {
+                    toast.error((e as Error).message ?? 'Could not check for code.');
+                  }
+                }}
                 className="btn-outline flex-1 text-sm border-ink-700 text-ink-300 hover:bg-ink-800"
               >
-                <RefreshCw className={clsx('h-4 w-4', order.isFetching && 'animate-spin')} />
+                <RefreshCw className="h-4 w-4" />
                 Check for code
               </button>
               <button
