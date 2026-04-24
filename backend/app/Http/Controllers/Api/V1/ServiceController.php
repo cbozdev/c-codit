@@ -112,7 +112,6 @@ class ServiceController extends Controller
             ->firstOrFail();
         return ApiResponse::ok(new ServiceOrderResource($order));
     }
-}
 
     public function cancel(Request $request, string $publicId)
     {
@@ -207,3 +206,4 @@ class ServiceController extends Controller
             'delivery' => $order->fresh()->delivery,
         ], $code ? 'Code received!' : 'No code yet.');
     }
+}
