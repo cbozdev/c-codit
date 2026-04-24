@@ -59,6 +59,7 @@ Route::prefix('v1')->group(function () {
 
         // Service purchases
         Route::middleware(['throttle:services', 'idempotent'])->group(function () {
+            Route::post('/services/purchase', [ServiceController::class, 'purchase']);
             Route::post('/services/virtual-number/purchase', [ServiceController::class, 'purchaseVirtualNumber']);
         });
 

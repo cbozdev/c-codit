@@ -45,5 +45,7 @@ return [
         'markup_percent'     => (float) env('PLATFORM_MARKUP_PERCENT', 15),
         'wallet_max_balance' => (int) env('WALLET_MAX_BALANCE', 1_000_000),
         'daily_debit_limit'  => (int) env('WALLET_DAILY_DEBIT_LIMIT', 50_000),
+        'rub_usd_rate'       => (float) env('PLATFORM_RUB_USD_RATE', 0.011),
+        'ngn_usd_rate'       => (float) env('PLATFORM_NGN_USD_RATE', 0.00065),
     ],
 ];

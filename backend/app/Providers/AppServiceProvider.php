@@ -25,7 +25,10 @@ class AppServiceProvider extends ServiceProvider
         foreach ([
             LedgerService::class, ChartOfAccounts::class, WalletService::class,
             FlutterwaveService::class, NowPaymentsService::class, PaymentOrchestrator::class,
-            FiveSimService::class, SmsActivateService::class, ServicePurchaseService::class,
+            FiveSimService::class, SmsActivateService::class,
+            \App\Services\FlutterwaveBillsService::class,
+            \App\Services\GiftCardService::class,
+            ServicePurchaseService::class,
         ] as $class) {
             $this->app->singleton($class);
         }

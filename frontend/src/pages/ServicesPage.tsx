@@ -136,6 +136,8 @@ export default function ServicesPage() {
   const [network, setNetwork]             = useState('');
   const [meterNumber, setMeterNumber]     = useState('');
   const [phoneNumber, setPhoneNumber]     = useState('');
+  const [smartcardNumber, setSmartcardNumber] = useState('');
+  const [billAmount, setBillAmount]       = useState('500');
   const [ordersExpanded, setOrdersExpanded] = useState(true);
 
   const services = useQuery({
@@ -158,30 +160,44 @@ export default function ServicesPage() {
   const purchase = useMutation({
     mutationFn: () => {
       if (!selected) throw new Error('No service selected.');
+
+      // Build request payload based on service category
+      const baseData: Record<string, unknown> = { service_code: selected.code };
+
+      if (selected.category === 'virtual_number') {
+        baseData.service = providerSvc;
+        baseData.country = country;
+      } else if (selected.category === 'utility') {
+        baseData.amount = billAmount;
+        baseData.network = network;
+        if (phoneNumber) baseData.phone_number = phoneNumber;
+        if (meterNumber) baseData.meter_number = meterNumber;
+        if (smartcardNumber) baseData.smartcard_number = smartcardNumber;
+      } else if (selected.category === 'giftcard') {
+        baseData.denomination = denomination;
+      }
+
       return apiCall<ServiceOrder>({
-        url: '/services/virtual-number/purchase',
+        url: '/services/purchase',
         method: 'POST',
         headers: { 'Idempotency-Key': newIdempotencyKey() },
-        data: {
-          service_code: selected.code,
-          service: providerSvc,
-          country,
-          ...(denomination ? { denomination } : {}),
-          ...(network ? { network } : {}),
-          ...(meterNumber ? { meter_number: meterNumber } : {}),
-          ...(phoneNumber ? { phone_number: phoneNumber } : {}),
-        },
+        data: baseData,
       });
     },
     onSuccess(order) {
-      const delivery = order.delivery;
+      const delivery = order.delivery as Record<string, unknown> | null;
       if (delivery?.phone_number) {
-        toast.success(`Number: ${delivery.phone_number}`);
+        toast.success(`Number assigned: ${delivery.phone_number}`);
+      } else if (delivery?.token) {
+        toast.success(`Token: ${delivery.token} — check your orders for details.`);
+      } else if (delivery?.note) {
+        toast.success(String(delivery.note));
       } else {
         toast.success('Order placed successfully!');
       }
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['wallet'] });
+    },
     },
     onError(err) {
       const msg = (err as Error).message ?? 'Purchase failed.';
@@ -293,12 +309,16 @@ export default function ServicesPage() {
           {selected.category === 'utility' && (
             <UtilityForm
               service={selected}
+              billAmount={billAmount}
+              setBillAmount={setBillAmount}
               network={network}
               setNetwork={setNetwork}
               phoneNumber={phoneNumber}
               setPhoneNumber={setPhoneNumber}
               meterNumber={meterNumber}
               setMeterNumber={setMeterNumber}
+              smartcardNumber={smartcardNumber}
+              setSmartcardNumber={setSmartcardNumber}
               onPurchase={() => purchase.mutate()}
               isPending={purchase.isPending}
             />
@@ -469,15 +489,20 @@ function GiftCardForm({ service, denomination, setDenomination, onPurchase, isPe
 
 // ─── Utility Bill Form ────────────────────────────────────────────────────────
 
-function UtilityForm({ service, network, setNetwork, phoneNumber, setPhoneNumber, meterNumber, setMeterNumber, onPurchase, isPending }: {
-  service: Service; network: string; setNetwork: (v: string) => void;
+function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, phoneNumber, setPhoneNumber, meterNumber, setMeterNumber, smartcardNumber, setSmartcardNumber, onPurchase, isPending }: {
+  service: Service;
+  billAmount: string; setBillAmount: (v: string) => void;
+  network: string; setNetwork: (v: string) => void;
   phoneNumber: string; setPhoneNumber: (v: string) => void;
   meterNumber: string; setMeterNumber: (v: string) => void;
+  smartcardNumber: string; setSmartcardNumber: (v: string) => void;
   onPurchase: () => void; isPending: boolean;
 }) {
   const networks = UTILITY_NETWORKS[service.code] ?? [];
   const isElectricity = service.code === 'utility_electricity';
   const isAirtimeOrData = service.code === 'utility_airtime_ng' || service.code === 'utility_data_ng';
+  const isTV = service.code === 'utility_dstv' || service.code === 'utility_startimes';
+  const QUICK_AMOUNTS = isAirtimeOrData ? ['100', '200', '500', '1000', '2000'] : ['1000', '2000', '5000', '10000', '20000'];
 
   return (
     <>
@@ -504,10 +529,37 @@ function UtilityForm({ service, network, setNetwork, phoneNumber, setPhoneNumber
           </div>
         )}
 
+        {/* Amount */}
+        <div>
+          <label className="label">Amount (₦ NGN)</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-500 font-medium">₦</span>
+            <input type="number" min="50" step="50"
+              className="input pl-7"
+              value={billAmount}
+              onChange={(e) => setBillAmount(e.target.value)}
+              placeholder="Enter amount in Naira"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {QUICK_AMOUNTS.map((a) => (
+              <button key={a} onClick={() => setBillAmount(a)}
+                className={clsx(
+                  'px-3 py-1.5 text-xs rounded-full border transition',
+                  billAmount === a
+                    ? 'bg-ink-900 text-white border-ink-900'
+                    : 'border-ink-200 text-ink-600 hover:border-ink-400 dark:border-ink-700 dark:text-ink-400',
+                )}>
+                ₦{Number(a).toLocaleString()}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {isAirtimeOrData && (
           <div>
             <label className="label">Phone number</label>
-            <input className="input" placeholder="e.g. 08012345678"
+            <input className="input" placeholder="e.g. 08012345678" type="tel"
               value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
           </div>
         )}
@@ -520,12 +572,25 @@ function UtilityForm({ service, network, setNetwork, phoneNumber, setPhoneNumber
           </div>
         )}
 
+        {isTV && (
+          <div>
+            <label className="label">Smartcard / IUC number</label>
+            <input className="input" placeholder="Enter your smartcard number"
+              value={smartcardNumber} onChange={(e) => setSmartcardNumber(e.target.value)} />
+          </div>
+        )}
+
         <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800 text-sm text-ink-600 dark:text-ink-400">
-          ℹ Utility bill payments are powered by Flutterwave and processed instantly.
+          ℹ Utility bill payments via Flutterwave. Processed instantly after wallet deduction.
+          Your wallet is in USD — amount is converted at current NGN/USD rate.
         </div>
 
-        <button onClick={onPurchase} disabled={isPending} className="btn-brand">
-          {isPending ? 'Processing…' : 'Pay bill'}
+        <button
+          onClick={onPurchase}
+          disabled={isPending || !billAmount || Number(billAmount) < 50 || (!isTV && !phoneNumber && !meterNumber && !smartcardNumber)}
+          className="btn-brand"
+        >
+          {isPending ? 'Processing…' : `Pay ₦${Number(billAmount || 0).toLocaleString()}`}
         </button>
       </div>
     </>

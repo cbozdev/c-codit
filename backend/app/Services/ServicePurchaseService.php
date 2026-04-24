@@ -13,15 +13,18 @@ use App\Support\Audit;
 use App\Support\Money;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
  * End-to-end service purchase flow with automatic refund on provider failure.
  *
+ * Supported providers: 5sim, smsactivate, flutterwave (bills), internal (gift cards)
+ *
  * Steps:
- *   1. Pre-check availability & price (no DB lock).
+ *   1. Pre-check availability & price.
  *   2. Hold funds in suspense (wallet debited atomically).
- *   3. Call provider (outside DB transaction — external IO).
+ *   3. Call provider (outside DB transaction).
  *   4. Success → settleSuspense + attach delivery.
  *      Failure → refundSuspense and mark order refunded.
  */
@@ -31,6 +34,8 @@ class ServicePurchaseService
         private readonly WalletService $wallets,
         private readonly FiveSimService $fiveSim,
         private readonly SmsActivateService $smsActivate,
+        private readonly FlutterwaveBillsService $flutterwaveBills,
+        private readonly GiftCardService $giftCards,
     ) {}
 
     public function purchase(
@@ -40,20 +45,38 @@ class ServicePurchaseService
         string $idempotencyKey,
     ): ServiceOrder {
         if (! $service->is_active) {
-            throw new RuntimeException('This service is currently disabled.');
+            throw new RuntimeException('This service is currently unavailable.');
         }
         if ($existing = ServiceOrder::where('idempotency_key', $idempotencyKey)->first()) {
             return $existing;
         }
 
-        $provider = $this->providerFor($service);
+        // Route to the correct handler based on provider
+        return match ($service->provider) {
+            '5sim'        => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->fiveSim),
+            'smsactivate' => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsActivate),
+            'flutterwave' => $this->purchaseUtilityBill($user, $service, $request, $idempotencyKey),
+            'internal'    => $this->purchaseGiftCard($user, $service, $request, $idempotencyKey),
+            default       => throw new RuntimeException("Unsupported service provider: {$service->provider}"),
+        };
+    }
 
+    // ─── Virtual Numbers ──────────────────────────────────────────────────────
+
+    private function purchaseVirtualNumber(
+        User $user,
+        Service $service,
+        array $request,
+        string $idempotencyKey,
+        $provider,
+    ): ServiceOrder {
         $price = $provider->getPrice((string) $request['service'], (string) $request['country']);
         if (! $price) {
-            throw new ServiceUnavailableException('Service not available for this country.');
+            throw new ServiceUnavailableException('No numbers available for this service/country combination.');
         }
 
         $finalAmount = $this->applyMarkup($price, $service);
+        $wallet = $this->wallets->getOrCreate($user, $finalAmount->currency);
 
         $order = ServiceOrder::create([
             'user_id'         => $user->id,
@@ -64,8 +87,6 @@ class ServicePurchaseService
             'request'         => $request,
             'idempotency_key' => $idempotencyKey,
         ]);
-
-        $wallet = $this->wallets->getOrCreate($user, $finalAmount->currency);
 
         $holdTx = $this->wallets->holdForPurchase(
             wallet: $wallet,
@@ -78,29 +99,9 @@ class ServicePurchaseService
         $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
 
         try {
-            $result = $provider->purchase(
-                (string) $request['service'],
-                (string) $request['country'],
-            );
+            $result = $provider->purchase((string) $request['service'], (string) $request['country']);
         } catch (\Throwable $e) {
-            Log::channel('payments')->error('service.provider_failed', [
-                'service' => $service->code,
-                'order'   => $order->public_id,
-                'error'   => $e->getMessage(),
-            ]);
-            DB::transaction(function () use ($order, $holdTx, $e) {
-                $this->wallets->refundSuspense(
-                    $holdTx,
-                    'svcrefund:'.$order->public_id,
-                    'Provider failed: '.mb_substr($e->getMessage(), 0, 200),
-                );
-                $order->update([
-                    'status'         => 'refunded',
-                    'failure_reason' => mb_substr($e->getMessage(), 0, 255),
-                    'refunded_at'    => now(),
-                ]);
-            });
-            Audit::log('service.refunded', $order, ['reason' => $e->getMessage()]);
+            $this->refundOrder($order, $holdTx, $e->getMessage());
             throw $e;
         }
 
@@ -110,7 +111,7 @@ class ServicePurchaseService
                 'status'            => 'completed',
                 'provider_order_id' => $result['provider_order_id'] ?? null,
                 'provider_response' => $result['raw'] ?? null,
-                'delivery' => [
+                'delivery'          => [
                     'phone_number' => $result['phone_number'] ?? null,
                     'expires_at'   => $result['expires_at'] ?? null,
                 ],
@@ -122,13 +123,179 @@ class ServicePurchaseService
         return $order->fresh();
     }
 
-    private function providerFor(Service $service)
+    // ─── Utility Bills (Flutterwave) ──────────────────────────────────────────
+
+    private function purchaseUtilityBill(
+        User $user,
+        Service $service,
+        array $request,
+        string $idempotencyKey,
+    ): ServiceOrder {
+        $currency = 'NGN';
+        $amountNgn = (float) ($request['amount'] ?? 100);
+        // Convert to minor units (kobo)
+        $amountMinor = (int) round($amountNgn * 100);
+
+        $wallet = $this->wallets->getOrCreate($user, 'USD');
+
+        // Convert NGN amount to USD for wallet deduction (using approximate rate)
+        // In production, use a real FX rate API
+        $ngnUsdRate = (float) config('services.platform.ngn_usd_rate', 0.00065);
+        $usdMinor = (int) round($amountMinor * $ngnUsdRate);
+        $finalAmount = Money::minor(max($usdMinor, 100), 'USD'); // minimum $1
+
+        $order = ServiceOrder::create([
+            'user_id'         => $user->id,
+            'service_id'      => $service->id,
+            'status'          => 'pending',
+            'amount_minor'    => $finalAmount->amountMinor,
+            'currency'        => 'USD',
+            'request'         => $request,
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        $holdTx = $this->wallets->holdForPurchase(
+            wallet: $wallet,
+            amount: $finalAmount,
+            idempotencyKey: 'svcorder:'.$order->public_id,
+            reference: $order,
+            description: "Bill: {$service->name}",
+        );
+
+        $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
+
+        $txRef = 'bill-'.(string) Str::ulid();
+
+        try {
+            $result = match ($service->code) {
+                'utility_airtime_ng' => $this->flutterwaveBills->buyAirtime(
+                    phone: (string) $request['phone_number'],
+                    network: (string) $request['network'],
+                    amount: $amountNgn,
+                    txRef: $txRef,
+                ),
+                'utility_data_ng' => $this->flutterwaveBills->buyData(
+                    phone: (string) $request['phone_number'],
+                    network: (string) $request['network'],
+                    itemCode: (string) ($request['plan_code'] ?? 'BIL103'),
+                    txRef: $txRef,
+                ),
+                'utility_electricity' => $this->flutterwaveBills->payElectricity(
+                    meterNumber: (string) $request['meter_number'],
+                    disco: (string) $request['network'],
+                    amount: $amountNgn,
+                    txRef: $txRef,
+                ),
+                'utility_dstv', 'utility_startimes' => $this->flutterwaveBills->payTV(
+                    smartcardNumber: (string) $request['smartcard_number'],
+                    provider: (string) $request['network'],
+                    plan: (string) ($request['plan'] ?? ''),
+                    txRef: $txRef,
+                ),
+                default => throw new RuntimeException("Unknown utility service: {$service->code}"),
+            };
+        } catch (\Throwable $e) {
+            $this->refundOrder($order, $holdTx, $e->getMessage());
+            throw $e;
+        }
+
+        DB::transaction(function () use ($order, $holdTx, $result, $txRef) {
+            $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
+            $order->update([
+                'status'            => 'completed',
+                'provider_order_id' => $txRef,
+                'provider_response' => $result,
+                'delivery'          => [
+                    'token'         => $result['token'] ?? null,
+                    'units'         => $result['units'] ?? null,
+                    'reference'     => $txRef,
+                    'message'       => $result['message'] ?? 'Payment successful',
+                ],
+                'provisioned_at' => now(),
+            ]);
+        });
+
+        Audit::log('service.utility_bill_paid', $order);
+        return $order->fresh();
+    }
+
+    // ─── Gift Cards ───────────────────────────────────────────────────────────
+
+    private function purchaseGiftCard(
+        User $user,
+        Service $service,
+        array $request,
+        string $idempotencyKey,
+    ): ServiceOrder {
+        $denomination = (float) ($request['denomination'] ?? 10);
+        $priceMinor = $this->giftCards->getPrice($service->code, $denomination);
+        $finalAmount = Money::minor($priceMinor, 'USD');
+
+        $wallet = $this->wallets->getOrCreate($user, 'USD');
+
+        $order = ServiceOrder::create([
+            'user_id'         => $user->id,
+            'service_id'      => $service->id,
+            'status'          => 'pending',
+            'amount_minor'    => $finalAmount->amountMinor,
+            'currency'        => 'USD',
+            'request'         => $request,
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        $holdTx = $this->wallets->holdForPurchase(
+            wallet: $wallet,
+            amount: $finalAmount,
+            idempotencyKey: 'svcorder:'.$order->public_id,
+            reference: $order,
+            description: "Gift Card: {$service->name} \${$denomination}",
+        );
+
+        $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
+
+        try {
+            $result = $this->giftCards->purchase($service->code, $denomination);
+        } catch (\Throwable $e) {
+            $this->refundOrder($order, $holdTx, $e->getMessage());
+            throw $e;
+        }
+
+        DB::transaction(function () use ($order, $holdTx, $result) {
+            $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
+            $order->update([
+                'status'            => 'completed',
+                'provider_order_id' => $result['provider_order_id'] ?? null,
+                'delivery'          => $result,
+                'provisioned_at'    => now(),
+            ]);
+        });
+
+        Audit::log('service.gift_card_purchased', $order);
+        return $order->fresh();
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private function refundOrder($order, $holdTx, string $reason): void
     {
-        return match ($service->provider) {
-            '5sim'        => $this->fiveSim,
-            'smsactivate' => $this->smsActivate,
-            default       => throw new RuntimeException("Unsupported service provider: {$service->provider}"),
-        };
+        Log::channel('payments')->error('service.provider_failed', [
+            'service' => $order->service_id,
+            'order'   => $order->public_id,
+            'error'   => $reason,
+        ]);
+        DB::transaction(function () use ($order, $holdTx, $reason) {
+            $this->wallets->refundSuspense(
+                $holdTx,
+                'svcrefund:'.$order->public_id,
+                'Provider failed: '.mb_substr($reason, 0, 200),
+            );
+            $order->update([
+                'status'         => 'refunded',
+                'failure_reason' => mb_substr($reason, 0, 255),
+                'refunded_at'    => now(),
+            ]);
+        });
+        Audit::log('service.refunded', $order, ['reason' => $reason]);
     }
 
     private function applyMarkup(Money $providerCost, Service $service): Money
