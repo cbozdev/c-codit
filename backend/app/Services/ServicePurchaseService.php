@@ -114,6 +114,8 @@ class ServicePurchaseService
                 'delivery'          => [
                     'phone_number' => $result['phone_number'] ?? null,
                     'expires_at'   => $result['expires_at'] ?? null,
+                    'service_name' => ucfirst($request['service'] ?? ''),
+                    'country'      => ucfirst($request['country'] ?? ''),
                 ],
                 'provisioned_at' => now(),
             ]);
@@ -183,13 +185,13 @@ class ServicePurchaseService
                 'utility_electricity' => $this->flutterwaveBills->payElectricity(
                     meterNumber: (string) $request['meter_number'],
                     disco: (string) $request['network'],
+                    meterType: (string) ($request['meter_type'] ?? 'prepaid'),
                     amount: $amountNgn,
                     txRef: $txRef,
                 ),
                 'utility_dstv', 'utility_startimes' => $this->flutterwaveBills->payTV(
                     smartcardNumber: (string) $request['smartcard_number'],
                     provider: (string) $request['network'],
-                    plan: (string) ($request['plan'] ?? ''),
                     txRef: $txRef,
                 ),
                 default => throw new RuntimeException("Unknown utility service: {$service->code}"),

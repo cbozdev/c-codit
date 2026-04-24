@@ -542,6 +542,9 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
   meterType: 'prepaid'|'postpaid'; setMeterType: (v: 'prepaid'|'postpaid') => void;
   onPurchase: () => void; isPending: boolean;
 }) {
+  const [meterCustomer, setMeterCustomer] = useState<string | null>(null);
+  const [validatingMeter, setValidatingMeter] = useState(false);
+
   const networks      = UTILITY_NETWORKS[service.code] ?? [];
   const isElectricity = service.code === 'utility_electricity';
   const isData        = service.code === 'utility_data_ng';
@@ -549,6 +552,29 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
   const isTV          = service.code === 'utility_dstv' || service.code === 'utility_startimes';
   const plans         = isData ? (DATA_PLANS[network] ?? []) : [];
   const QUICK_AMOUNTS = isAirtime ? ['100', '200', '500', '1000', '2000'] : isElectricity ? ['1000', '2000', '5000', '10000', '20000'] : [];
+
+  async function validateMeter() {
+    if (!meterNumber || !network) return;
+    setValidatingMeter(true);
+    setMeterCustomer(null);
+    try {
+      const res = await apiCall<{ customer_name: string | null }>({
+        method: 'POST',
+        url: '/services/validate-meter',
+        data: { meter_number: meterNumber, disco: network, meter_type: meterType },
+      });
+      if (res.customer_name) {
+        setMeterCustomer(res.customer_name);
+        toast.success('Meter validated: ' + res.customer_name);
+      } else {
+        toast.error('Could not find customer for this meter number.');
+      }
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Meter validation failed');
+    } finally {
+      setValidatingMeter(false);
+    }
+  }
 
   function selectPlan(plan: { code: string; amount: string }) {
     setDataPlan(plan.code);
@@ -575,7 +601,7 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
             <label className="label">Provider / Network</label>
             <div className="flex flex-wrap gap-2">
               {networks.map((n) => (
-                <button key={n} onClick={() => { setNetwork(n); setDataPlan(''); }}
+                <button key={n} onClick={() => { setNetwork(n); setDataPlan(''); setMeterCustomer(null); }}
                   className={clsx(
                     'px-4 py-2 rounded-lg border text-sm font-medium transition',
                     network === n
@@ -595,7 +621,7 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
             <label className="label">Meter type</label>
             <div className="grid grid-cols-2 gap-2">
               {(['prepaid', 'postpaid'] as const).map((t) => (
-                <button key={t} onClick={() => setMeterType(t)}
+                <button key={t} onClick={() => { setMeterType(t); setMeterCustomer(null); }}
                   className={clsx(
                     'py-2.5 rounded-lg border text-sm font-medium capitalize transition',
                     meterType === t
@@ -609,12 +635,29 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
           </div>
         )}
 
-        {/* Electricity — meter number */}
+        {/* Electricity — meter number with validation */}
         {isElectricity && (
           <div>
             <label className="label">Meter number</label>
-            <input className="input" placeholder="Enter your meter number"
-              value={meterNumber} onChange={(e) => setMeterNumber(e.target.value)} />
+            <div className="flex gap-2">
+              <input className="input flex-1" placeholder="Enter your meter number"
+                value={meterNumber}
+                onChange={(e) => { setMeterNumber(e.target.value); setMeterCustomer(null); }} />
+              <button
+                onClick={validateMeter}
+                disabled={!meterNumber || !network || validatingMeter}
+                className="btn-outline px-3 text-xs whitespace-nowrap">
+                {validatingMeter
+                  ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Checking…</>
+                  : 'Verify'}
+              </button>
+            </div>
+            {meterCustomer && (
+              <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-brand-50 dark:bg-brand-950/30 rounded-lg border border-brand-200 dark:border-brand-800 text-sm">
+                <CheckCircle2 className="h-4 w-4 text-brand-600 shrink-0" />
+                <span className="text-brand-800 dark:text-brand-300 font-medium">{meterCustomer}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -623,7 +666,7 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
           <div>
             <label className="label">Select data plan</label>
             {plans.length === 0 ? (
-              <p className="text-sm text-ink-500">Select a network first.</p>
+              <p className="text-sm text-ink-500">No plans available for this network.</p>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 {plans.map((p) => (
@@ -643,7 +686,7 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
           </div>
         )}
 
-        {/* Amount — for airtime and electricity only (not data — plan sets amount) */}
+        {/* Amount — for airtime and electricity only */}
         {(isAirtime || isElectricity) && (
           <div>
             <label className="label">Amount (₦ NGN)</label>

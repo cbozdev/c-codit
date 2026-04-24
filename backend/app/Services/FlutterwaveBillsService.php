@@ -2,117 +2,130 @@
 
 namespace App\Services;
 
-use App\Services\Support\ExternalHttp;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
- * Flutterwave Bills Payment API.
- * Handles airtime, data, electricity, TV subscriptions.
- * Docs: https://developer.flutterwave.com/docs/collecting-payments/bills
+ * Flutterwave Bills Payment API v3.
+ * Docs: https://developer.flutterwave.com/reference/endpoints/bills
+ *
+ * Correct endpoint: POST /v3/bills
+ * Correct biller codes from Flutterwave docs.
  */
 class FlutterwaveBillsService
 {
-    private function client()
+    private string $baseUrl = 'https://api.flutterwave.com/v3';
+    private string $secretKey;
+
+    public function __construct()
     {
-        return ExternalHttp::for('flutterwave_bills', config('services.flutterwave.base_url'))
-            ->withToken(config('services.flutterwave.secret_key'));
+        $this->secretKey = (string) config('services.flutterwave.secret_key');
     }
 
-    /**
-     * Get available bill categories and billers.
-     */
-    public function getBillers(string $category): array
+    private function post(string $path, array $data): array
     {
-        $res = $this->client()->get('/bill-categories', ['type' => $category]);
-        $body = ExternalHttp::ensureSuccessful($res, 'flutterwave_bills.categories');
-        return $body['data'] ?? [];
-    }
-
-    /**
-     * Validate a customer (meter number, smartcard, phone number).
-     */
-    public function validateCustomer(string $itemCode, string $customerId, string $code = 'BIL136'): array
-    {
-        $res = $this->client()->get('/bill-items/' . $itemCode . '/validate', [
-            'code' => $code,
-            'customer' => $customerId,
+        Log::channel('payments')->info('flutterwave_bills.request', [
+            'path' => $path,
+            'data' => $data,
         ]);
-        $body = ExternalHttp::ensureSuccessful($res, 'flutterwave_bills.validate');
-        return $body['data'] ?? [];
-    }
 
-    /**
-     * Pay a bill.
-     * Returns: ['status' => 'success'|'failed', 'tx_ref' => ..., 'amount' => ...]
-     */
-    public function payBill(array $params): array
-    {
-        $res = $this->client()->post('/bills', $params);
-        $body = ExternalHttp::ensureSuccessful($res, 'flutterwave_bills.pay');
+        $res = Http::withToken($this->secretKey)
+            ->acceptJson()
+            ->post($this->baseUrl . $path, $data);
 
+        Log::channel('payments')->info('flutterwave_bills.response', [
+            'status' => $res->status(),
+            'body'   => $res->json(),
+        ]);
+
+        if ($res->failed()) {
+            $msg = $res->json('message') ?? $res->json('error') ?? 'HTTP ' . $res->status();
+            throw new RuntimeException('Flutterwave Bills API error: ' . $msg);
+        }
+
+        $body = $res->json();
         if (($body['status'] ?? '') !== 'success') {
-            throw new RuntimeException('Bill payment failed: ' . ($body['message'] ?? 'Unknown error'));
+            throw new RuntimeException('Flutterwave Bills failed: ' . ($body['message'] ?? 'Unknown error'));
         }
 
         return $body['data'] ?? [];
     }
 
-    /**
-     * Get bill categories for a specific type.
-     * Types: AIRTIME, DATA_BUNDLE, POWER, CABLE, INTERNET
-     */
-    public function getAirtimeBillers(): array
+    private function get(string $path, array $query = []): array
     {
-        return $this->getBillers('AIRTIME');
+        $res = Http::withToken($this->secretKey)
+            ->acceptJson()
+            ->get($this->baseUrl . $path, $query);
+
+        if ($res->failed()) {
+            throw new RuntimeException('Flutterwave Bills API error: ' . ($res->json('message') ?? 'HTTP ' . $res->status()));
+        }
+        return $res->json('data') ?? [];
+    }
+
+    /**
+     * Validate a customer before billing.
+     * Returns customer name / account details.
+     */
+    public function validateCustomer(string $itemCode, string $customerId): array
+    {
+        return $this->get("/bill-items/{$itemCode}/validate", ['customer' => $customerId]);
     }
 
     /**
      * Buy airtime.
+     * Flutterwave biller codes: MTN=BIL099, Airtel=BIL102, Glo=BIL103, 9mobile=BIL104
      */
     public function buyAirtime(string $phone, string $network, float $amount, string $txRef): array
     {
-        // Network codes: MTN=BIL099, Airtel=BIL102, Glo=BIL103, 9mobile=BIL104
-        $networkCodes = [
+        $billerCodes = [
             'MTN'     => 'BIL099',
             'Airtel'  => 'BIL102',
             'Glo'     => 'BIL103',
             '9mobile' => 'BIL104',
         ];
 
-        $code = $networkCodes[$network] ?? 'BIL099';
-
-        return $this->payBill([
-            'country'    => 'NG',
-            'customer'   => $phone,
-            'amount'     => $amount,
-            'type'       => 'AIRTIME',
-            'reference'  => $txRef,
-            'code'       => $code,
+        return $this->post('/bills', [
+            'country'   => 'NG',
+            'customer'  => $phone,
+            'amount'    => (int) $amount,
+            'type'      => 'AIRTIME',
+            'reference' => $txRef,
+            'biller_code' => $billerCodes[$network] ?? 'BIL099',
         ]);
     }
 
     /**
      * Buy data bundle.
      */
-    public function buyData(string $phone, string $network, string $itemCode, string $txRef): array
+    public function buyData(string $phone, string $network, string $planCode, float $amount, string $txRef): array
     {
-        return $this->payBill([
-            'country'    => 'NG',
-            'customer'   => $phone,
-            'amount'     => 0, // Amount is determined by the data plan
-            'type'       => 'DATA_BUNDLE',
-            'reference'  => $txRef,
-            'code'       => $itemCode,
+        $billerCodes = [
+            'MTN'     => 'BIL108',
+            'Airtel'  => 'BIL110',
+            'Glo'     => 'BIL111',
+            '9mobile' => 'BIL112',
+        ];
+
+        return $this->post('/bills', [
+            'country'   => 'NG',
+            'customer'  => $phone,
+            'amount'    => (int) $amount,
+            'type'      => 'DATA_BUNDLE',
+            'reference' => $txRef,
+            'biller_code' => $billerCodes[$network] ?? 'BIL108',
+            'plan_code'   => $planCode,
         ]);
     }
 
     /**
-     * Pay electricity bill.
+     * Pay electricity bill (prepaid or postpaid).
      */
-    public function payElectricity(string $meterNumber, string $disco, float $amount, string $txRef): array
+    public function payElectricity(string $meterNumber, string $disco, string $meterType, float $amount, string $txRef): array
     {
-        // DISCO codes
-        $discoCodes = [
+        // Prepaid biller codes
+        $prepaidCodes = [
             'EKEDC'  => 'BIL136',
             'IKEDC'  => 'BIL137',
             'AEDC'   => 'BIL138',
@@ -121,41 +134,70 @@ class FlutterwaveBillsService
             'BEDC'   => 'BIL141',
             'KEDCO'  => 'BIL142',
         ];
+        // Postpaid biller codes
+        $postpaidCodes = [
+            'EKEDC'  => 'BIL119',
+            'IKEDC'  => 'BIL120',
+            'AEDC'   => 'BIL121',
+            'PHEDC'  => 'BIL122',
+            'EEDC'   => 'BIL123',
+            'BEDC'   => 'BIL124',
+            'KEDCO'  => 'BIL125',
+        ];
 
-        $code = $discoCodes[$disco] ?? 'BIL136';
+        $billerCode = $meterType === 'postpaid'
+            ? ($postpaidCodes[$disco] ?? 'BIL119')
+            : ($prepaidCodes[$disco]  ?? 'BIL136');
 
-        return $this->payBill([
-            'country'    => 'NG',
-            'customer'   => $meterNumber,
-            'amount'     => $amount,
-            'type'       => 'POWER',
-            'reference'  => $txRef,
-            'code'       => $code,
+        return $this->post('/bills', [
+            'country'     => 'NG',
+            'customer'    => $meterNumber,
+            'amount'      => (int) $amount,
+            'type'        => 'POWER',
+            'reference'   => $txRef,
+            'biller_code' => $billerCode,
         ]);
     }
 
     /**
-     * Pay TV subscription (DSTV/GOtv).
+     * Validate electricity meter — returns customer name.
      */
-    public function payTV(string $smartcardNumber, string $provider, string $plan, string $txRef): array
+    public function validateMeter(string $meterNumber, string $disco, string $meterType = 'prepaid'): array
     {
-        $providerCodes = [
-            'DSTV'     => 'BIL119',
-            'GOtv'     => 'BIL120',
-            'Showmax'  => 'BIL121',
-            'StarTimes'=> 'BIL122',
+        $prepaidCodes = [
+            'EKEDC' => 'BIL136', 'IKEDC' => 'BIL137', 'AEDC' => 'BIL138',
+            'PHEDC' => 'BIL139', 'EEDC'  => 'BIL140', 'BEDC' => 'BIL141', 'KEDCO' => 'BIL142',
+        ];
+        $postpaidCodes = [
+            'EKEDC' => 'BIL119', 'IKEDC' => 'BIL120', 'AEDC' => 'BIL121',
+            'PHEDC' => 'BIL122', 'EEDC'  => 'BIL123', 'BEDC' => 'BIL124', 'KEDCO' => 'BIL125',
+        ];
+        $itemCode = $meterType === 'postpaid'
+            ? ($postpaidCodes[$disco] ?? 'BIL119')
+            : ($prepaidCodes[$disco]  ?? 'BIL136');
+
+        return $this->validateCustomer($itemCode, $meterNumber);
+    }
+
+    /**
+     * Pay TV subscription.
+     */
+    public function payTV(string $smartcardNumber, string $provider, string $txRef): array
+    {
+        $billerCodes = [
+            'DSTV'      => 'BIL119',
+            'GOtv'      => 'BIL120',
+            'Showmax'   => 'BIL121',
+            'StarTimes' => 'BIL122',
         ];
 
-        $code = $providerCodes[$provider] ?? 'BIL119';
-
-        return $this->payBill([
-            'country'    => 'NG',
-            'customer'   => $smartcardNumber,
-            'amount'     => 0,
-            'type'       => 'CABLE',
-            'reference'  => $txRef,
-            'code'       => $code,
-            'plan'       => $plan,
+        return $this->post('/bills', [
+            'country'     => 'NG',
+            'customer'    => $smartcardNumber,
+            'amount'      => 0,
+            'type'        => 'CABLE',
+            'reference'   => $txRef,
+            'biller_code' => $billerCodes[$provider] ?? 'BIL119',
         ]);
     }
 }

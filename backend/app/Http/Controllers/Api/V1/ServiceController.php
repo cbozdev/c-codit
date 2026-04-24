@@ -113,17 +113,41 @@ class ServiceController extends Controller
         return ApiResponse::ok(new ServiceOrderResource($order));
     }
 
+    public function validateMeter(Request $request)
+    {
+        $request->validate([
+            'meter_number' => ['required', 'string'],
+            'disco'        => ['required', 'string'],
+            'meter_type'   => ['nullable', 'in:prepaid,postpaid'],
+        ]);
+
+        try {
+            $result = app(\App\Services\FlutterwaveBillsService::class)->validateMeter(
+                meterNumber: $request->input('meter_number'),
+                disco:       $request->input('disco'),
+                meterType:   $request->input('meter_type', 'prepaid'),
+            );
+            return ApiResponse::ok([
+                'customer_name'   => $result['name'] ?? $result['customer_name'] ?? null,
+                'customer_number' => $result['address'] ?? $result['meter_number'] ?? $request->input('meter_number'),
+                'meter_type'      => $request->input('meter_type', 'prepaid'),
+            ]);
+        } catch (\Throwable $e) {
+            return ApiResponse::fail('Could not validate meter: ' . $e->getMessage(), null, 422);
+        }
+    }
+
     public function cancel(Request $request, string $publicId)
     {
         $order = ServiceOrder::where('public_id', $publicId)
             ->where('user_id', $request->user()->id)
             ->firstOrFail();
 
-        if (! in_array($order->status, ['completed', 'provisioning', 'pending'])) {
-            return ApiResponse::fail('This order cannot be cancelled.', null, 422);
-        }
         if ($order->status === 'refunded') {
             return ApiResponse::fail('Already refunded.', null, 422);
+        }
+        if (! in_array($order->status, ['completed', 'provisioning', 'pending'])) {
+            return ApiResponse::fail('This order cannot be cancelled.', null, 422);
         }
 
         $holdTx = $order->transaction;
@@ -131,10 +155,10 @@ class ServiceController extends Controller
             return ApiResponse::fail('No transaction found for this order.', null, 422);
         }
 
-        // Try to cancel with provider first
+        // Try to cancel with provider first (best-effort)
         try {
             if ($order->provider_order_id) {
-                $provider = $order->service->provider;
+                $provider = $order->service->provider ?? '';
                 if ($provider === '5sim') {
                     app(\App\Services\Sms\FiveSimService::class)->cancel($order->provider_order_id);
                 } elseif ($provider === 'smsactivate') {
@@ -145,23 +169,42 @@ class ServiceController extends Controller
             \Log::warning('cancel.provider_cancel_failed', ['order' => $publicId, 'error' => $e->getMessage()]);
         }
 
-        // Refund the wallet
+        // Refund the wallet — handle both PROCESSING (hold) and SUCCESS (settled) states
         $wallets = app(\App\Services\Wallet\WalletService::class);
-        $wallets->refundSuspense(
-            $holdTx,
-            'cancel_refund:' . $order->public_id,
-            'Number cancelled by user',
-        );
+        \Illuminate\Support\Facades\DB::transaction(function () use ($wallets, $holdTx, $order) {
+            $freshTx   = $holdTx->fresh();
+            $txStatus  = $freshTx->status;
+            // Normalise to string whether it's an enum or a plain string
+            $statusStr = $txStatus instanceof \BackedEnum ? $txStatus->value : (string) $txStatus;
 
-        $order->update([
-            'status'         => 'refunded',
-            'failure_reason' => 'Cancelled by user',
-            'refunded_at'    => now(),
-        ]);
+            if ($statusStr === 'processing') {
+                // Transaction still in suspense — use normal refund path
+                $wallets->refundSuspense(
+                    $freshTx,
+                    'cancel_refund:' . $order->public_id,
+                    'Number cancelled by user',
+                );
+            } else {
+                // Transaction already settled — credit wallet directly
+                $wallet = $freshTx->wallet;
+                $amount = \App\Support\Money::minor($freshTx->amount_minor, $freshTx->currency);
+                $wallets->fundFromPayment(
+                    wallet: $wallet,
+                    amount: $amount,
+                    cashAccountCode: \App\Services\Ledger\ChartOfAccounts::SUSPENSE,
+                    idempotencyKey: 'cancel_refund:' . $order->public_id,
+                    description: 'Refund: number cancelled by user',
+                );
+            }
+
+            $order->update([
+                'status'         => 'refunded',
+                'failure_reason' => 'Cancelled by user',
+                'refunded_at'    => now(),
+            ]);
+        });
 
         \App\Support\Audit::log('service.cancelled', $order);
-
-        app(\App\Http\Resources\ServiceOrderResource::class, ['resource' => $order->fresh()->loadMissing('service')]);
 
         return ApiResponse::ok(
             new \App\Http\Resources\ServiceOrderResource($order->fresh()->loadMissing('service')),
