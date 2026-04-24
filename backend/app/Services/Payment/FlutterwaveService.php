@@ -3,6 +3,7 @@
 namespace App\Services\Payment;
 
 use App\Enums\PaymentProvider;
+use Illuminate\Support\Facades\Log;
 use App\Enums\PaymentStatus;
 use App\Models\Payment;
 use App\Models\User;
@@ -25,10 +26,12 @@ class FlutterwaveService implements PaymentGateway
         $txRef = 'ccd-'.strtolower((string) Str::ulid());
 
         $payload = [
-            'tx_ref'       => $txRef,
-            'amount'       => $amount->toDecimal(),
-            'currency'     => $amount->currency,
-            'redirect_url' => rtrim((string) config('app.frontend_url'), '/').'/wallet/confirm',
+            'tx_ref'          => $txRef,
+            'amount'          => $amount->toDecimal(),
+            'currency'        => $amount->currency,
+            // Show ALL payment methods including Nigerian bank transfer, USSD, mobile money
+            'payment_options' => 'card,banktransfer,ussd,mobilemoneyghana,mobilemoneyrwanda,mobilemoneyzambia,mobilemoneyuganda,credit',
+            'redirect_url'    => rtrim((string) config('app.frontend_url'), '/').'/wallet/confirm',
             'customer' => [
                 'email'       => $user->email,
                 'name'        => $user->name,
@@ -37,6 +40,7 @@ class FlutterwaveService implements PaymentGateway
             'customizations' => [
                 'title'       => config('app.name'),
                 'description' => $options['description'] ?? 'Wallet funding',
+                'logo'        => rtrim((string) config('app.frontend_url'), '/').'/favicon.svg',
             ],
             'meta' => [
                 'user_public_id' => $user->public_id,
@@ -71,17 +75,34 @@ class FlutterwaveService implements PaymentGateway
 
     public function verifyWebhook(string $rawBody, array $headers): bool
     {
-        $header = $headers['verif-hash'][0] ?? $headers['Verif-Hash'][0] ?? null;
-        if (! $header) return false;
+        // Flutterwave sends the secret as 'verif-hash' header
+        // Try all possible capitalisation/format variations
+        $header = $headers['verif-hash'][0]
+            ?? $headers['verif_hash'][0]
+            ?? $headers['Verif-Hash'][0]
+            ?? $headers['VERIF-HASH'][0]
+            ?? null;
+
         $expected = (string) config('services.flutterwave.webhook_secret');
-        return $expected !== '' && hash_equals($expected, (string) $header);
+
+        Log::channel('webhooks')->info('flutterwave.signature_check', [
+            'header_found'    => $header !== null,
+            'header_value'    => $header ? substr((string)$header, 0, 8).'...' : null,
+            'expected_length' => strlen($expected),
+            'actual_length'   => $header ? strlen((string)$header) : 0,
+        ]);
+
+        if (! $header || $expected === '') {
+            return false;
+        }
+
+        return hash_equals($expected, (string) $header);
     }
 
     public function parseWebhook(array $payload): ?array
     {
         $data = $payload['data'] ?? [];
         if (empty($data['tx_ref'])) return null;
-
         return [
             'status'              => $this->mapStatus($data['status'] ?? ''),
             'provider_reference'  => $data['tx_ref'],

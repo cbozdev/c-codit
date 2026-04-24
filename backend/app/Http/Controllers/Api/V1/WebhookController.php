@@ -26,9 +26,20 @@ class WebhookController extends Controller
     private function handle(Request $request, PaymentProvider $provider)
     {
         $raw = $request->getContent();
+
+        // Build headers — try multiple formats Flutterwave may use
         $headers = collect($request->headers->all())
             ->mapWithKeys(fn ($v, $k) => [strtolower((string) $k) => $v])
             ->all();
+
+        // Log incoming webhook details for debugging
+        Log::channel('webhooks')->info('webhook.received', [
+            'provider'       => $provider->value,
+            'header_keys'    => array_keys($headers),
+            'verif_hash'     => $headers['verif-hash'][0] ?? $headers['verif_hash'][0] ?? 'NOT_FOUND',
+            'body_length'    => strlen((string) $raw),
+            'configured_secret_length' => strlen((string) config('services.flutterwave.webhook_secret')),
+        ]);
 
         try {
             $this->orchestrator->handleWebhook($provider, (string) $raw, $headers);
@@ -37,10 +48,14 @@ class WebhookController extends Controller
                 'provider' => $provider->value,
                 'error'    => $e->getMessage(),
             ]);
-            // Return 200 to providers we can't recover for to avoid retry storms when WE failed.
-            // Return 4xx only for invalid signatures (a security signal).
-            if (str_contains($e->getMessage(), 'signature')) {
-                return ApiResponse::fail('Invalid signature.', null, 400);
+
+            if (str_contains($e->getMessage(), 'signature') || str_contains($e->getMessage(), 'Invalid webhook')) {
+                // Still return 200 to Flutterwave so they don't keep retrying with a bad sig
+                // But log it clearly
+                Log::channel('webhooks')->error('webhook.signature_failed', [
+                    'provider' => $provider->value,
+                ]);
+                return ApiResponse::ok(null, 'Received.');
             }
             return ApiResponse::fail('Webhook processing failed.', null, 500);
         }
