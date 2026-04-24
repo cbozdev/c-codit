@@ -7,7 +7,7 @@ import type { Paginated, Transaction, Wallet } from '@/types/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import {
   ArrowDownToLine, ArrowUpRight, Wallet as WalletIcon,
-  Smartphone, Receipt, Gift, Phone,
+  Smartphone, Gift, Phone,
 } from 'lucide-react';
 
 export default function DashboardPage() {
