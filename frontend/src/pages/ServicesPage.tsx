@@ -198,7 +198,6 @@ export default function ServicesPage() {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['wallet'] });
     },
-    },
     onError(err) {
       const msg = (err as Error).message ?? 'Purchase failed.';
       if (msg.includes('Insufficient')) {
