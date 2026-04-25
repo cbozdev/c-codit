@@ -66,9 +66,8 @@ export default function WalletPage() {
 
   const cur        = CURRENCIES.find((c) => c.value === currency) ?? CURRENCIES[0];
   const numericAmt = parseFloat(amount || '0');
-  // NowPayments: $5 minimum (using USDT which has lowest minimums)
-  const cryptoMin  = payCurrency.startsWith('usdt') ? 5 : 20;
-  const minAmount  = provider === 'nowpayments' ? cryptoMin : cur.min;
+  // $5 minimum for all crypto
+  const minAmount  = provider === 'nowpayments' ? 5 : cur.min;
   const canSubmit  = !fund.isPending && numericAmt >= minAmount;
 
   function handleCurrencyChange(val: string) {
@@ -205,8 +204,7 @@ export default function WalletPage() {
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
               </div>
               <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2">
-                ⚠ Minimum: <strong>${payCurrency.startsWith('usdt') ? '5' : '$20'} USD</strong>
-                {payCurrency.startsWith('usdt') ? ' · USDT has the lowest minimum and fastest confirmation.' : ' · This coin has a higher network minimum.'}
+                ⚠ Minimum: <strong>$5 USD</strong> for all cryptocurrencies.
               </div>
             </div>
           )}
@@ -237,7 +235,7 @@ export default function WalletPage() {
             )}
             <div className="flex flex-wrap gap-2 mt-3">
               {(provider === 'nowpayments'
-                ? payCurrency.startsWith('usdt') ? [5, 10, 25, 50, 100] : [20, 50, 100, 250]
+                ? [5, 10, 25, 50, 100, 250]
                 : cur.quick
               ).map((q) => (
                 <button key={q} type="button" onClick={() => setAmount(String(q))}
