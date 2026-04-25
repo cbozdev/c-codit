@@ -43,16 +43,22 @@ const PROVIDER_SERVICES = [
     { value: 'yahoo', label: 'Yahoo' },
   ]},
   { group: 'Dating Apps', items: [
-    { value: 'tinder', label: 'Tinder' },
-    { value: 'bumble', label: 'Bumble' },
-    { value: 'badoo', label: 'Badoo' },
-    { value: 'hinge', label: 'Hinge' },
-    { value: 'pof', label: 'Plenty of Fish (POF)' },
-    { value: 'okcupid', label: 'OkCupid' },
-    { value: 'happn', label: 'Happn' },
-    { value: 'lovoo', label: 'LOVOO' },
-    { value: 'zoosk', label: 'Zoosk' },
-    { value: 'meetic', label: 'Meetic' },
+    { value: 'tinder',    label: 'Tinder' },
+    { value: 'bumble',    label: 'Bumble' },
+    { value: 'badoo',     label: 'Badoo' },
+    { value: 'hinge',     label: 'Hinge' },
+    { value: 'match',     label: 'Match.com' },
+    { value: 'pof',       label: 'Plenty of Fish (POF)' },
+    { value: 'okcupid',   label: 'OkCupid' },
+    { value: 'happn',     label: 'Happn' },
+    { value: 'lovoo',     label: 'LOVOO' },
+    { value: 'zoosk',     label: 'Zoosk' },
+    { value: 'meetic',    label: 'Meetic' },
+    { value: 'grindr',    label: 'Grindr' },
+    { value: 'tagged',    label: 'Tagged' },
+    { value: 'meetme',    label: 'MeetMe' },
+    { value: 'skout',     label: 'Skout' },
+    { value: 'mamba',     label: 'Mamba' },
   ]},
   { group: 'Finance & Crypto', items: [
     { value: 'paypal', label: 'PayPal' },
@@ -389,10 +395,18 @@ export default function ServicesPage() {
 
           {/* eSIM */}
           {selected.category === 'esim' && (
-            <div className="text-center py-6">
-              <Globe className="h-12 w-12 text-ink-300 mx-auto mb-3" />
-              <p className="font-medium dark:text-white">eSIM coming soon</p>
-              <p className="text-sm text-ink-500 mt-1">We're integrating eSIM providers. Check back soon.</p>
+            <div className="text-center py-8">
+              <Globe className="h-14 w-14 text-brand-400 mx-auto mb-4" />
+              <p className="font-semibold text-lg dark:text-white">eSIM — Coming Soon</p>
+              <p className="text-sm text-ink-500 dark:text-ink-400 mt-2 max-w-sm mx-auto">
+                Global data eSIMs for 190+ countries are coming. Instant digital delivery, no physical SIM needed.
+              </p>
+              <div className="mt-6 p-4 rounded-xl bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 max-w-sm mx-auto">
+                <p className="text-sm font-medium text-brand-800 dark:text-brand-300 mb-1">Get notified when it launches</p>
+                <p className="text-xs text-brand-700 dark:text-brand-400">
+                  Email <a href="mailto:support@c-codit.com" className="underline font-medium">support@c-codit.com</a> to join the waitlist.
+                </p>
+              </div>
             </div>
           )}
         </div>

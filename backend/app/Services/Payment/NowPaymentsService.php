@@ -28,13 +28,15 @@ class NowPaymentsService implements PaymentGateway
 
     public function initiate(User $user, Money $amount, string $idempotencyKey, array $options = []): Payment
     {
-        // NowPayments minimum is $20 USD to cover all crypto minimums
-        $minorMin = 2000; // $20.00 in cents
+        // Set minimum based on crypto type
+        // USDT minimum is $5, BTC/ETH need higher due to network fees
+        $payCurrency = $options['pay_currency'] ?? 'usdttrc20';
+        $isStablecoin = str_starts_with($payCurrency, 'usdt') || str_starts_with($payCurrency, 'usdc');
+        $minorMin = $isStablecoin ? 500 : 2000; // $5 for USDT, $20 for others
+
         if ($amount->amountMinor < $minorMin) {
             $amount = Money::minor($minorMin, 'USD');
         }
-
-        $payCurrency = $options['pay_currency'] ?? 'usdttrc20';
         $txRef       = 'np-' . (string) Str::ulid();
 
         $payload = [
