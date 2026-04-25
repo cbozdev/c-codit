@@ -67,7 +67,7 @@ export default function WalletPage() {
 
   const cur         = CURRENCIES.find((c) => c.value === currency) ?? CURRENCIES[0];
   const numericAmt  = parseFloat(amount || '0');
-  const minAmount  = provider === 'nowpayments' ? 10 : 1;
+  const minAmount  = provider === 'nowpayments' ? 20 : 1;
   const canSubmit  = !fund.isPending && numericAmt >= minAmount;
 
   function handleCurrencyChange(val: string) {
@@ -182,17 +182,19 @@ export default function WalletPage() {
             </div>
           )}
 
-          {/* Crypto currency selector */}
-          {provider === 'nowpayments' && (
-            <div>
-              <label className="label">Pay with</label>
-              <select value={payCurrency} onChange={(e) => setPayCurrency(e.target.value)} className="input">
-                {CRYPTO_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
+              {provider === 'nowpayments' && (
+                <div>
+                  <label className="label">Pay with</label>
+                  <select value={payCurrency} onChange={(e) => setPayCurrency(e.target.value)} className="input">
+                    {CRYPTO_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                    ⚠ Minimum deposit is <strong>$20 USD</strong> for crypto payments due to blockchain network fees.
+                  </p>
+                </div>
+              )}
 
           {/* Amount */}
           <div>
@@ -220,7 +222,7 @@ export default function WalletPage() {
             </div>
             {/* Quick amount buttons */}
             <div className="flex flex-wrap gap-2 mt-3">
-              {(provider === 'nowpayments' ? [5, 10, 25, 50, 100, 250] : cur.quick).map((q) => (
+              {(provider === 'nowpayments' ? [20, 50, 100, 250, 500] : cur.quick).map((q) => (
                 <button
                   key={q}
                   type="button"

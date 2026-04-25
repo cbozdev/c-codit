@@ -37,7 +37,7 @@ type AdminService = {
   markup_percent: number;
 };
 
-type Tab = 'metrics' | 'users' | 'transactions' | 'services' | 'messages';
+type Tab = 'metrics' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ink-200 overflow-x-auto">
-        {(['metrics', 'users', 'transactions', 'services', 'messages'] as Tab[]).map((t) => (
+        {(['metrics', 'users', 'transactions', 'services', 'messages', 'livechat'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2.5 text-sm font-medium capitalize whitespace-nowrap border-b-2 transition -mb-px ${
               tab === t
@@ -70,6 +70,7 @@ export default function AdminPage() {
       {tab === 'transactions' && <TransactionsTab />}
       {tab === 'services'     && <ServicesTab />}
       {tab === 'messages'     && <MessagesTab />}
+      {tab === 'livechat'     && <LiveChatTab />}
     </div>
   );
 }
@@ -117,6 +118,7 @@ function UsersTab() {
   const [roleTarget, setRoleTarget]     = useState<AdminUser | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<AdminUser | null>(null);
   const [txTarget, setTxTarget]         = useState<AdminUser | null>(null);
+  const [msgTarget, setMsgTarget]       = useState<AdminUser | null>(null);
 
   const users = useQuery({
     queryKey: ['admin', 'users', search],
@@ -213,6 +215,10 @@ function UsersTab() {
                         <button onClick={() => setTxTarget(u)} className="btn-ghost text-xs text-ink-600 px-2 py-1">
                           <Eye className="h-3.5 w-3.5" /> Txns
                         </button>
+                        {/* Message user */}
+                        <button onClick={() => setMsgTarget(u)} className="btn-ghost text-xs text-ink-600 px-2 py-1">
+                          ✉ Message
+                        </button>
                         {/* Wallet adjust */}
                         <button onClick={() => setAdjustTarget(u)} className="btn-ghost text-xs text-brand-700 px-2 py-1">
                           <Wallet className="h-3.5 w-3.5" /> Adjust
@@ -303,6 +309,11 @@ function UsersTab() {
             </>
           )}
         </Modal>
+      )}
+
+      {/* User message modal */}
+      {msgTarget && (
+        <UserMessageModal user={msgTarget} onClose={() => setMsgTarget(null)} />
       )}
 
       {/* Wallet adjust modal */}
@@ -713,6 +724,49 @@ function ServicesTab() {
   );
 }
 
+// ─── User Message Modal ───────────────────────────────────────────────────────
+
+function UserMessageModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const [subject, setSubject] = useState('');
+  const [body, setBody]       = useState('');
+
+  const send = useMutation({
+    mutationFn: () => apiCall<null>({
+      method: 'POST',
+      url: `/admin/users/${user.id}/message`,
+      data: { subject, body, channel: 'email' },
+    }),
+    onSuccess: () => { toast.success(`Message sent to ${user.name}.`); onClose(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <Modal onClose={onClose}>
+      <h3 className="font-semibold text-lg dark:text-white">Message {user.name}</h3>
+      <p className="text-sm text-ink-500 dark:text-ink-400 mt-0.5">{user.email}</p>
+      <div className="mt-4 space-y-3">
+        <div>
+          <label className="label">Subject</label>
+          <input className="input" placeholder="e.g. Important update about your account"
+            value={subject} onChange={(e) => setSubject(e.target.value)} autoFocus />
+        </div>
+        <div>
+          <label className="label">Message</label>
+          <textarea className="input h-32 resize-none" placeholder="Write your message…"
+            value={body} onChange={(e) => setBody(e.target.value)} />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-4 justify-end">
+        <button onClick={onClose} className="btn-outline">Cancel</button>
+        <button onClick={() => send.mutate()} disabled={!subject.trim() || !body.trim() || send.isPending}
+          className="btn-primary">
+          {send.isPending ? 'Sending…' : '✉ Send message'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Messages Tab ─────────────────────────────────────────────────────────────
 
 function MessagesTab() {
@@ -723,8 +777,7 @@ function MessagesTab() {
 
   const broadcast = useMutation({
     mutationFn: () => apiCall<{ sent_to: number }>({
-      method: 'POST',
-      url: '/admin/broadcast',
+      method: 'POST', url: '/admin/broadcast',
       data: { subject, body, audience },
     }),
     onSuccess: (data) => {
@@ -737,9 +790,8 @@ function MessagesTab() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="card-pad space-y-4">
-        <h3 className="font-semibold dark:text-white">Broadcast message to users</h3>
-        <p className="text-sm text-ink-600 dark:text-ink-400">Send an email to a group of users.</p>
-
+        <h3 className="font-semibold dark:text-white">Broadcast to users</h3>
+        <p className="text-sm text-ink-600 dark:text-ink-400">Send an email to a group of users. To message a single user, go to the Users tab and click ✉ Message.</p>
         <div>
           <label className="label">Audience</label>
           <select className="input" value={audience} onChange={(e) => setAudience(e.target.value)}>
@@ -748,46 +800,98 @@ function MessagesTab() {
             <option value="active_30d">Active in last 30 days</option>
           </select>
         </div>
-
         <div>
           <label className="label">Subject</label>
-          <input className="input" placeholder="e.g. Important update about your account"
-            value={subject} onChange={(e) => setSubject(e.target.value)} />
+          <input className="input" placeholder="e.g. Important update" value={subject} onChange={(e) => setSubject(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Message body</label>
+          <textarea className="input h-40 resize-none" placeholder="Write your message…" value={body} onChange={(e) => setBody(e.target.value)} />
+          <p className="text-xs text-ink-500 mt-1">{body.length}/5000 characters</p>
+        </div>
+        {result && (
+          <div className="p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-sm text-brand-800 dark:text-brand-300">{result}</div>
+        )}
+        <button
+          onClick={() => { if (confirm(`Send to ${audience}? Cannot be undone.`)) broadcast.mutate(); }}
+          disabled={!subject.trim() || !body.trim() || broadcast.isPending}
+          className="btn-primary">
+          {broadcast.isPending ? 'Sending…' : '📢 Send broadcast'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Live Chat Settings Tab ───────────────────────────────────────────────────
+
+function LiveChatTab() {
+  const [widgetId, setWidgetId] = useState(
+    localStorage.getItem('admin_tawk_id') ?? ''
+  );
+  const [saved, setSaved] = useState(false);
+
+  function save() {
+    localStorage.setItem('admin_tawk_id', widgetId);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    toast.success('Live chat settings saved. Refresh the page to apply.');
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="card-pad space-y-4">
+        <h3 className="font-semibold dark:text-white">Tawk.to Live Chat</h3>
+        <p className="text-sm text-ink-600 dark:text-ink-400">
+          Connect your Tawk.to account to enable live chat for all users.
+          The chat widget will appear on the bottom-right of every page.
+        </p>
+
+        <div className="p-4 rounded-lg bg-ink-50 dark:bg-ink-800 space-y-2 text-sm">
+          <p className="font-medium dark:text-white">Setup steps:</p>
+          <ol className="list-decimal ml-4 space-y-1 text-ink-600 dark:text-ink-400">
+            <li>Sign up free at <a href="https://tawk.to" target="_blank" rel="noreferrer" className="text-brand-700 dark:text-brand-400 underline">tawk.to</a></li>
+            <li>Create a property for C-codit</li>
+            <li>Go to <strong>Administration → Channels → Chat Widget</strong></li>
+            <li>Copy your <strong>Property ID</strong> (looks like <code>6abc123.../1abc123d</code>)</li>
+            <li>Paste it below and save</li>
+          </ol>
         </div>
 
         <div>
-          <label className="label">Message body</label>
-          <textarea className="input h-40 resize-none" placeholder="Write your message here…"
-            value={body} onChange={(e) => setBody(e.target.value)} />
-          <p className="text-xs text-ink-500 mt-1">{body.length}/5000 characters</p>
+          <label className="label">Tawk.to Property ID</label>
+          <input className="input font-mono" placeholder="e.g. 6abc123def456/1abc123d"
+            value={widgetId} onChange={(e) => setWidgetId(e.target.value)} />
+          <p className="text-xs text-ink-500 mt-1">
+            Found in your Tawk.to dashboard under Administration → Chat Widget → Direct Chat Link
+          </p>
         </div>
 
-        {result && (
-          <div className="p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-sm text-brand-800 dark:text-brand-300">
-            {result}
-          </div>
-        )}
-
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => {
-              if (confirm(`Send this message to ${audience === 'all' ? 'ALL users' : audience}? This cannot be undone.`)) {
-                broadcast.mutate();
-              }
-            }}
-            disabled={!subject.trim() || !body.trim() || broadcast.isPending}
-            className="btn-primary">
-            {broadcast.isPending ? 'Sending…' : '📢 Send broadcast'}
+          <button onClick={save} disabled={!widgetId.trim()} className="btn-primary">
+            {saved ? '✓ Saved' : 'Save & apply'}
           </button>
-          <p className="text-xs text-ink-500">Emails are sent immediately.</p>
+          {widgetId && (
+            <a href={`https://embed.tawk.to/${widgetId}`} target="_blank" rel="noreferrer"
+              className="btn-outline text-sm">
+              Test widget ↗
+            </a>
+          )}
+        </div>
+
+        <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-400">
+          💡 For the widget to load on the live site, the Tawk.to Property ID also needs to be added to <code>index.html</code> in your codebase. Contact your developer to update the script tag.
         </div>
       </div>
 
-      <div className="card-pad">
-        <h3 className="font-semibold dark:text-white mb-2">Message a specific user</h3>
-        <p className="text-sm text-ink-600 dark:text-ink-400">
-          Go to the <strong>Users</strong> tab, find a user, and click their name to send them a direct message.
-        </p>
+      <div className="card-pad space-y-3">
+        <h3 className="font-semibold dark:text-white">Current chat status</h3>
+        <div className="flex items-center gap-3">
+          <div className={`h-2.5 w-2.5 rounded-full ${(window as any).Tawk_API ? 'bg-brand-500' : 'bg-ink-300'}`} />
+          <span className="text-sm text-ink-600 dark:text-ink-400">
+            {(window as any).Tawk_API ? 'Tawk.to widget is active' : 'Tawk.to not configured yet'}
+          </span>
+        </div>
       </div>
     </div>
   );

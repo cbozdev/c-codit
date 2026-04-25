@@ -14,6 +14,7 @@ use App\Services\Wallet\WalletService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
@@ -63,6 +64,13 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Schema::defaultStringLength(191);
+
+        // Register Resend HTTP transport (bypasses SMTP limitations)
+        Mail::extend('resend', function () {
+            return new \App\Mail\ResendTransport(
+                (string) config('services.resend.api_key', env('MAIL_PASSWORD'))
+            );
+        });
 
         $this->configureRateLimiting();
     }
