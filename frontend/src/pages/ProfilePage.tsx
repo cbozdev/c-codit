@@ -72,7 +72,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Email verification */}
-        {!user.email_verified_at && (
+        {!user.email_verified && (
           <div className="mt-4 flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
             <Mail className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
             <div className="flex-1">
@@ -84,7 +84,7 @@ export default function ProfilePage() {
             </button>
           </div>
         )}
-        {user.email_verified_at && (
+        {user.email_verified && (
           <div className="mt-2 flex items-center gap-2 text-sm text-brand-700 dark:text-brand-400">
             <CheckCircle2 className="h-4 w-4" /> Email verified
           </div>
