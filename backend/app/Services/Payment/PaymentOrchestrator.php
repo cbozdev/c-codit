@@ -124,10 +124,24 @@ class PaymentOrchestrator
 
                     $wallet = $this->wallets->getOrCreate($payment->user);
 
-                    // Credit the wallet with the payment's stored amount (already in wallet currency)
+                    // Ensure we always credit in wallet currency (USD)
+                    // Payment may have been made in NGN but wallet is USD
+                    $creditCurrency = $wallet->currency ?? 'USD';
+                    $creditAmount   = $payment->currency === $creditCurrency
+                        ? $payment->amount_minor
+                        : $payment->amount_minor; // Amount already stored in USD at payment initiation
+
+                    Log::channel('payments')->info('payment.crediting_wallet', [
+                        'payment_id'       => $payment->public_id,
+                        'payment_currency' => $payment->currency,
+                        'wallet_currency'  => $creditCurrency,
+                        'amount_minor'     => $creditAmount,
+                    ]);
+
+                    // Credit the wallet with the payment's stored amount (always in USD)
                     $this->wallets->fundFromPayment(
                         wallet: $wallet,
-                        amount: Money::minor($payment->amount_minor, $payment->currency),
+                        amount: Money::minor($creditAmount, $creditCurrency),
                         cashAccountCode: $cashAccountCode,
                         idempotencyKey: 'payment_fund:'.$payment->public_id,
                         reference: $payment,

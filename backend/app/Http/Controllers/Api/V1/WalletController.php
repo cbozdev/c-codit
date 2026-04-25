@@ -32,37 +32,53 @@ class WalletController extends Controller
 
     public function fund(FundWalletRequest $request)
     {
-        $user = $request->user();
-        $currency = strtoupper((string) ($request->input('currency') ?: config('services.platform.base_currency')));
-        $amount = Money::fromDecimal((string) $request->input('amount'), $currency);
+        $user         = $request->user();
+        $currency     = strtoupper((string) ($request->input('currency') ?: 'NGN'));
+        $inputAmount  = (float) $request->input('amount');
+
+        // Always store in USD so wallet credit is consistent regardless of payment currency
+        $usdAmount    = $this->convertToUsd($inputAmount, $currency);
+        $walletAmount = Money::fromDecimal((string) $usdAmount, 'USD');
 
         $idempotencyKey = (string) $request->header('Idempotency-Key');
-        // The idempotent middleware also gates this; we re-use the key for payment row dedup.
-        $providerKey = $idempotencyKey ?: 'fund:'.$user->id.':'.bin2hex(random_bytes(16));
+        $providerKey    = $idempotencyKey ?: 'fund:'.$user->id.':'.bin2hex(random_bytes(16));
 
         $gateway = $this->payments->for(PaymentProvider::from((string) $request->input('provider')));
 
         $payment = $gateway->initiate(
             user: $user,
-            amount: $amount,
+            amount: $walletAmount,
             idempotencyKey: $providerKey,
             options: [
-                'pay_currency' => $request->input('pay_currency'),
-                'description'  => 'Wallet funding',
-                'purpose'      => 'wallet_fund',
+                'pay_currency'      => $request->input('pay_currency'),
+                'original_amount'   => $inputAmount,
+                'original_currency' => $currency,
+                'description'       => 'Wallet funding',
+                'purpose'           => 'wallet_fund',
             ],
         );
 
         return ApiResponse::ok([
-            'payment_id'    => $payment->public_id,
-            'provider'      => $payment->provider instanceof \BackedEnum ? $payment->provider->value : $payment->provider,
-            'checkout_url'  => $payment->checkout_url,
-            'reference'     => $payment->provider_reference,
-            'amount'        => number_format($payment->amount_minor / 100, 2, '.', ''),
-            'currency'      => $payment->currency,
-            'expires_at'    => $payment->expires_at?->toIso8601String(),
+            'payment_id'   => $payment->public_id,
+            'provider'     => $payment->provider instanceof \BackedEnum ? $payment->provider->value : $payment->provider,
+            'checkout_url' => $payment->checkout_url,
+            'reference'    => $payment->provider_reference,
+            'amount'       => number_format($payment->amount_minor / 100, 2, '.', ''),
+            'currency'     => $payment->currency,
+            'expires_at'   => $payment->expires_at?->toIso8601String(),
         ], 'Payment initiated.');
     }
+
+    private function convertToUsd(float $amount, string $currency): float
+    {
+        if ($currency === 'USD') return round($amount, 2);
+        $rates = [
+            'NGN' => 0.00065, 'GHS' => 0.065, 'KES' => 0.0077,
+            'ZAR' => 0.055,   'GBP' => 1.27,  'EUR' => 1.08,
+        ];
+        return max(0.01, round($amount * ($rates[$currency] ?? 1.0), 2));
+    }
+
 
     public function transactions(Request $request)
     {

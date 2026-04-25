@@ -50,8 +50,8 @@ class NowPaymentsService implements PaymentGateway
             'is_fee_paid_by_user' => false,
         ];
 
-        // Add customer metadata
-        $payload['customer_id'] = $user->public_id ?? $user->id;
+        // Store user reference in metadata only - customer_id not supported by NowPayments API
+        $payload['order_description'] = 'C-codit wallet funding - user:' . ($user->public_id ?? $user->id);
 
         $res  = $this->client()->post($this->baseUrl . '/payment', $payload);
         $body = $res->json();
