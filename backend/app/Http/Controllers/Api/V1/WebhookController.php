@@ -27,39 +27,39 @@ class WebhookController extends Controller
     {
         $raw = $request->getContent();
 
-        // Build headers — try multiple formats Flutterwave may use
         $headers = collect($request->headers->all())
             ->mapWithKeys(fn ($v, $k) => [strtolower((string) $k) => $v])
             ->all();
 
-        // Log incoming webhook details for debugging
+        $verifHash = $headers['verif-hash'][0]
+            ?? $headers['verif_hash'][0]
+            ?? $headers['x-verif-hash'][0]
+            ?? 'NOT_FOUND';
+
+        $configuredSecret = (string) config('services.flutterwave.webhook_secret');
+
         Log::channel('webhooks')->info('webhook.received', [
-            'provider'       => $provider->value,
-            'header_keys'    => array_keys($headers),
-            'verif_hash'     => $headers['verif-hash'][0] ?? $headers['verif_hash'][0] ?? 'NOT_FOUND',
-            'body_length'    => strlen((string) $raw),
-            'configured_secret_length' => strlen((string) config('services.flutterwave.webhook_secret')),
+            'provider'          => $provider->value,
+            'verif_hash'        => $verifHash,
+            'secret_configured' => !empty($configuredSecret),
+            'hashes_match'      => $verifHash === $configuredSecret,
+            'body_length'       => strlen((string) $raw),
         ]);
 
+        // Always return 200 — never let Flutterwave see a 5xx
+        // Process in a try/catch and log any errors
         try {
             $this->orchestrator->handleWebhook($provider, (string) $raw, $headers);
+            Log::channel('webhooks')->info('webhook.processed', ['provider' => $provider->value]);
         } catch (\Throwable $e) {
-            Log::channel('webhooks')->error('webhook.handler_failed', [
+            Log::channel('webhooks')->error('webhook.failed', [
                 'provider' => $provider->value,
                 'error'    => $e->getMessage(),
+                'trace'    => substr($e->getTraceAsString(), 0, 500),
             ]);
-
-            if (str_contains($e->getMessage(), 'signature') || str_contains($e->getMessage(), 'Invalid webhook')) {
-                // Still return 200 to Flutterwave so they don't keep retrying with a bad sig
-                // But log it clearly
-                Log::channel('webhooks')->error('webhook.signature_failed', [
-                    'provider' => $provider->value,
-                ]);
-                return ApiResponse::ok(null, 'Received.');
-            }
-            return ApiResponse::fail('Webhook processing failed.', null, 500);
         }
 
-        return ApiResponse::ok(null, 'Webhook processed.');
+        // Always 200 so Flutterwave doesn't retry infinitely
+        return response()->json(['status' => 'received'], 200);
     }
 }

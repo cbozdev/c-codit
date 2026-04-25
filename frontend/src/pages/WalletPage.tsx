@@ -51,7 +51,7 @@ export default function WalletPage() {
       headers: { 'Idempotency-Key': newIdempotencyKey() },
       data: {
         amount:   parseFloat(amount),
-        currency,
+        currency: provider === 'nowpayments' ? 'USD' : currency,
         provider,
         ...(provider === 'nowpayments' ? { pay_currency: payCurrency } : {}),
       },
@@ -67,7 +67,8 @@ export default function WalletPage() {
 
   const cur         = CURRENCIES.find((c) => c.value === currency) ?? CURRENCIES[0];
   const numericAmt  = parseFloat(amount || '0');
-  const canSubmit   = !fund.isPending && numericAmt >= 1;
+  const minAmount  = provider === 'nowpayments' ? 10 : 1;
+  const canSubmit  = !fund.isPending && numericAmt >= minAmount;
 
   function handleCurrencyChange(val: string) {
     setCurrency(val);
@@ -110,7 +111,7 @@ export default function WalletPage() {
           <div>
             <label className="label">Payment method</label>
             <div className="grid sm:grid-cols-2 gap-3">
-              <button type="button" onClick={() => setProvider('flutterwave')}
+              <button type="button" onClick={() => { setProvider('flutterwave'); setAmount('1000'); }}
                 className={clsx(
                   'card-pad text-left transition border-2',
                   provider === 'flutterwave'
@@ -134,7 +135,7 @@ export default function WalletPage() {
                 </div>
               </button>
 
-              <button type="button" onClick={() => setProvider('nowpayments')}
+              <button type="button" onClick={() => { setProvider('nowpayments'); setAmount('10'); }}
                 className={clsx(
                   'card-pad text-left transition border-2',
                   provider === 'nowpayments'
@@ -196,8 +197,13 @@ export default function WalletPage() {
           {/* Amount */}
           <div>
             <label className="label">
-              Amount {provider === 'flutterwave' ? `(${currency})` : '(USD equivalent)'}
+              Amount {provider === 'flutterwave' ? `(${currency})` : '(USD)'}
             </label>
+            {provider === 'nowpayments' && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-1.5">
+                ⚠ Minimum $10 USD for crypto payments.
+              </p>
+            )}
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-500 font-medium select-none">
                 {provider === 'nowpayments' ? '$' : cur.symbol}

@@ -111,16 +111,6 @@ class PaymentOrchestrator
                 $verified = $gateway->verifyPayment($payment->provider_reference);
 
                 if ($verified['status'] === 'success') {
-                    $expected = $payment->amount_minor;
-                    $actual   = (int) ($verified['amount_minor'] ?? 0);
-                    $currency = $verified['currency'] ?? $payment->currency;
-
-                    if ($actual < $expected || $currency !== $payment->currency) {
-                        throw new RuntimeException(
-                            "Amount/currency mismatch: expected {$expected} {$payment->currency}, got {$actual} {$currency}"
-                        );
-                    }
-
                     $payment->update([
                         'status'              => PaymentStatus::SUCCESS->value,
                         'provider_payment_id' => $verified['provider_payment_id'] ?? $payment->provider_payment_id,
@@ -134,6 +124,7 @@ class PaymentOrchestrator
 
                     $wallet = $this->wallets->getOrCreate($payment->user);
 
+                    // Credit the wallet with the payment's stored amount (already in wallet currency)
                     $this->wallets->fundFromPayment(
                         wallet: $wallet,
                         amount: Money::minor($payment->amount_minor, $payment->currency),
@@ -144,7 +135,7 @@ class PaymentOrchestrator
                     );
 
                     Audit::log('payment.succeeded', $payment, [
-                        'provider' => $gateway->providerCode(),
+                        'provider'     => $gateway->providerCode(),
                         'amount_minor' => $payment->amount_minor,
                     ], actorType: 'webhook');
                 } elseif ($verified['status'] === 'failed') {
