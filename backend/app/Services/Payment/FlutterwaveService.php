@@ -29,11 +29,7 @@ class FlutterwaveService implements PaymentGateway
             'tx_ref'          => $txRef,
             'amount'          => $amount->toDecimal(),
             'currency'        => $amount->currency,
-            // For NGN: explicitly enable Nigerian payment methods
-            // For other currencies: card + available methods
-            'payment_options' => $amount->currency === 'NGN'
-                ? 'banktransfer,ussd,card,mobilemoneynigeria,credit'
-                : 'card,banktransfer,ussd,mobilemoneyghana,mobilemoneyrwanda,mobilemoneyzambia,mobilemoneyuganda,credit',
+            'payment_options' => 'card,banktransfer,ussd,mobilemoneynigeria,account,credit',
             'redirect_url'    => rtrim((string) config('app.frontend_url'), '/').'/wallet/confirm',
             'customer' => [
                 'email'       => $user->email,
