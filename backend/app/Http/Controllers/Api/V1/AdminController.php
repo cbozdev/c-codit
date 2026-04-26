@@ -405,7 +405,7 @@ class AdminController extends Controller
     public function updateSettings(Request $request)
     {
         $request->validate([
-            'logo_url'      => ['nullable', 'string', 'max:2000'],
+            'logo_url'      => ['nullable', 'string', 'max:700000'], // supports base64-encoded images up to ~500 KB
             'app_name'      => ['nullable', 'string', 'max:80'],
             'support_email' => ['nullable', 'email', 'max:255'],
         ]);
