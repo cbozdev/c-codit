@@ -99,8 +99,18 @@ class SmsActivateService implements SmsNumberProvider
         try {
             $body = $this->call(['action' => 'getPrices', 'service' => $svc]);
             $data = json_decode($body, true);
+            \Illuminate\Support\Facades\Log::info('smsactivate.getCountryPrices.raw', [
+                'svc'          => $svc,
+                'is_array'     => is_array($data),
+                'body_preview' => substr($body, 0, 200),
+                'country_cnt'  => is_array($data) ? count($data) : 0,
+            ]);
             if (! is_array($data)) return [];
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('smsactivate.getCountryPrices.exception', [
+                'svc'   => $svc,
+                'error' => $e->getMessage(),
+            ]);
             return [];
         }
 

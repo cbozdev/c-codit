@@ -115,9 +115,22 @@ class FiveSimService implements SmsNumberProvider
 
         try {
             $res = $this->client()->get('/guest/prices', ['product' => $product]);
-            if (!$res->successful()) return [];
+            if (!$res->successful()) {
+                Log::warning('5sim.getCountryPrices.http_error', [
+                    'status'  => $res->status(),
+                    'product' => $product,
+                    'body'    => substr($res->body(), 0, 300),
+                ]);
+                return [];
+            }
             $data = $res->json() ?? [];
-        } catch (\Throwable) {
+            Log::info('5sim.getCountryPrices.ok', [
+                'product'     => $product,
+                'country_cnt' => count($data),
+                'sample_keys' => array_slice(array_keys($data), 0, 3),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('5sim.getCountryPrices.exception', ['error' => $e->getMessage(), 'product' => $product]);
             return [];
         }
 
