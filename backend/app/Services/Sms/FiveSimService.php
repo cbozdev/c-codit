@@ -123,12 +123,9 @@ class FiveSimService implements SmsNumberProvider
                 ]);
                 return [];
             }
-            $data = $res->json() ?? [];
-            Log::info('5sim.getCountryPrices.ok', [
-                'product'     => $product,
-                'country_cnt' => count($data),
-                'sample_keys' => array_slice(array_keys($data), 0, 3),
-            ]);
+            $raw = $res->json() ?? [];
+            // 5sim wraps the response under the product name when filtering by product
+            $data = is_array($raw[$product] ?? null) ? $raw[$product] : $raw;
         } catch (\Throwable $e) {
             Log::warning('5sim.getCountryPrices.exception', ['error' => $e->getMessage(), 'product' => $product]);
             return [];
@@ -137,8 +134,8 @@ class FiveSimService implements SmsNumberProvider
         $rubRate = (float) config('services.platform.rub_usd_rate', 0.011);
         $results = [];
 
-        foreach ($data as $country => $products) {
-            $operators = $products[$product] ?? [];
+        foreach ($data as $country => $operators) {
+            // $operators = {"any": {"cost": x, "count": y}, "virtual1": {...}}
             $bestCost  = null;
             $totalCount = 0;
 

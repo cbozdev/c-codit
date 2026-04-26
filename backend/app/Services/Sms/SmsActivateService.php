@@ -49,23 +49,36 @@ class SmsActivateService implements SmsNumberProvider
         return self::SERVICE_MAP[$s] ?? $s;
     }
 
+    // Fallback URLs tried in order when the primary base_url has DNS issues
+    private const FALLBACK_URLS = [
+        'https://sms-activate.io/stubs/handler_api.php',
+        'https://sms-activate.org/stubs/handler_api.php',
+    ];
+
     private function call(array $params): string
     {
         $params = array_merge([
             'api_key' => (string) config('services.smsactivate.api_key'),
         ], $params);
 
-        try {
-            $res = ExternalHttp::for('smsactivate', config('services.smsactivate.base_url'))
-                ->asForm()->get('', $params);
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            throw new ServiceUnavailableException('SMS provider is temporarily unreachable. Please try again in a moment.');
+        $urls = array_unique(array_filter(array_merge(
+            [config('services.smsactivate.base_url')],
+            self::FALLBACK_URLS,
+        )));
+
+        foreach ($urls as $url) {
+            try {
+                $res = ExternalHttp::for('smsactivate', $url)->asForm()->get('', $params);
+                if (! $res->successful()) {
+                    throw new RuntimeException('sms-activate: HTTP '.$res->status());
+                }
+                return trim((string) $res->body());
+            } catch (\Illuminate\Http\Client\ConnectionException) {
+                continue;
+            }
         }
 
-        if (! $res->successful()) {
-            throw new RuntimeException('sms-activate: HTTP '.$res->status());
-        }
-        return trim((string) $res->body());
+        throw new ServiceUnavailableException('SMS provider is temporarily unreachable. Please try again in a moment.');
     }
 
     public function getPrice(string $service, string $country): ?Money
@@ -99,18 +112,8 @@ class SmsActivateService implements SmsNumberProvider
         try {
             $body = $this->call(['action' => 'getPrices', 'service' => $svc]);
             $data = json_decode($body, true);
-            \Illuminate\Support\Facades\Log::info('smsactivate.getCountryPrices.raw', [
-                'svc'          => $svc,
-                'is_array'     => is_array($data),
-                'body_preview' => substr($body, 0, 200),
-                'country_cnt'  => is_array($data) ? count($data) : 0,
-            ]);
             if (! is_array($data)) return [];
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('smsactivate.getCountryPrices.exception', [
-                'svc'   => $svc,
-                'error' => $e->getMessage(),
-            ]);
+        } catch (\Throwable) {
             return [];
         }
 
