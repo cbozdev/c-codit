@@ -30,10 +30,18 @@ class NowPaymentsService implements PaymentGateway
     {
         $payCurrency = $options['pay_currency'] ?? 'usdttrc20';
 
-        // $5 minimum for all crypto
-        $minorMin = 500; // $5.00
-        if ($amount->amountMinor < $minorMin) {
-            $amount = Money::minor($minorMin, 'USD');
+        // Enforce $10 platform minimum for all crypto
+        if ($amount->amountMinor < 1000) {
+            throw new RuntimeException('Minimum deposit amount is $10.00 USD for cryptocurrency payments.');
+        }
+
+        // Also enforce NowPayments' own per-crypto minimum
+        $npMinUsd = $this->getMinimumUsd($payCurrency);
+        if ($npMinUsd > 0 && ($amount->amountMinor / 100) < $npMinUsd) {
+            throw new RuntimeException(
+                sprintf('Minimum deposit for %s is $%.2f USD. Please enter a higher amount.',
+                    strtoupper($payCurrency), $npMinUsd)
+            );
         }
 
         $txRef = 'np-' . (string) Str::ulid();
@@ -162,6 +170,20 @@ class NowPaymentsService implements PaymentGateway
                 : 0,
             'currency'            => strtoupper($payload['price_currency'] ?? 'USD'),
         ];
+    }
+
+    private function getMinimumUsd(string $payCurrency): float
+    {
+        try {
+            $res = $this->client()->get($this->baseUrl . '/min-amount', [
+                'currency_from' => 'usd',
+                'currency_to'   => $payCurrency,
+            ]);
+            if ($res->successful()) {
+                return (float) ($res->json('min_amount') ?? 0);
+            }
+        } catch (\Throwable) {}
+        return 0.0;
     }
 
     private function mapStatus(string $s): string

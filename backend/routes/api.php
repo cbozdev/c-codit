@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\WebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', HealthController::class);
+Route::get('/v1/settings', [AdminController::class, 'getSettings']); // public app settings
 
 Route::prefix('v1')->group(function () {
 
@@ -94,6 +95,10 @@ Route::prefix('v1')->group(function () {
             Route::get('/services',                             [AdminController::class, 'services']);
             Route::post('/services/{code}/toggle',              [AdminController::class, 'toggleService']);
             Route::post('/services/{code}/markup',              [AdminController::class, 'updateServiceMarkup']);
+
+            // App settings
+            Route::get('/settings',                             [AdminController::class, 'getSettings']);
+            Route::post('/settings',                            [AdminController::class, 'updateSettings']);
         });
     });
 });

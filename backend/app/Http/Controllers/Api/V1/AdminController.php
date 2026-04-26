@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ServiceResource;
 use App\Http\Resources\TransactionResource;
 use App\Http\Resources\UserResource;
+use App\Models\AppSetting;
 use App\Models\Payment;
 use App\Models\Service;
 use App\Models\Transaction;
@@ -299,22 +300,26 @@ class AdminController extends Controller
 
         // Send email via Laravel Mail
         if (in_array($channel, ['email', 'both'])) {
-            \Illuminate\Support\Facades\Mail::send(
-                [],
-                [],
-                function ($mail) use ($user, $request) {
-                    $mail->to($user->email, $user->name)
-                        ->subject('[C-codit] ' . $request->input('subject'))
-                        ->html(
-                            '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px">' .
-                            '<h2 style="color:#0a2416">C-codit</h2>' .
-                            '<p>' . nl2br(htmlspecialchars($request->input('body'))) . '</p>' .
-                            '<hr style="border:1px solid #e5e7eb;margin:24px 0">' .
-                            '<p style="color:#6b7280;font-size:12px">This message was sent by the C-codit support team. Reply to support@c-codit.com if you have questions.</p>' .
-                            '</div>'
-                        );
-                }
-            );
+            try {
+                \Illuminate\Support\Facades\Mail::send(
+                    [],
+                    [],
+                    function ($mail) use ($user, $request) {
+                        $mail->to($user->email, $user->name)
+                            ->subject('[C-codit] ' . $request->input('subject'))
+                            ->html(
+                                '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px">' .
+                                '<h2 style="color:#0a2416">C-codit</h2>' .
+                                '<p>' . nl2br(htmlspecialchars($request->input('body'))) . '</p>' .
+                                '<hr style="border:1px solid #e5e7eb;margin:24px 0">' .
+                                '<p style="color:#6b7280;font-size:12px">This message was sent by the C-codit support team. Reply to support@c-codit.com if you have questions.</p>' .
+                                '</div>'
+                            );
+                    }
+                );
+            } catch (\Throwable $e) {
+                return ApiResponse::fail('Email delivery failed: ' . $e->getMessage(), null, 422);
+            }
         }
 
         Audit::log('admin.user_messaged', $user, [
@@ -345,23 +350,35 @@ class AdminController extends Controller
 
         $count = $query->count();
 
-        // Queue emails (in production this would be a queued job)
-        $query->chunk(100, function ($users) use ($request) {
+        $failed = 0;
+        $lastError = null;
+
+        $query->chunk(100, function ($users) use ($request, &$failed, &$lastError) {
             foreach ($users as $user) {
-                \Illuminate\Support\Facades\Mail::send([], [], function ($mail) use ($user, $request) {
-                    $mail->to($user->email, $user->name)
-                        ->subject('[C-codit] ' . $request->input('subject'))
-                        ->html(
-                            '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px">' .
-                            '<h2 style="color:#0a2416">C-codit</h2>' .
-                            '<p>' . nl2br(htmlspecialchars($request->input('body'))) . '</p>' .
-                            '<hr style="border:1px solid #e5e7eb;margin:24px 0">' .
-                            '<p style="color:#6b7280;font-size:12px">You received this because you have a C-codit account. <a href="mailto:support@c-codit.com">Unsubscribe</a></p>' .
-                            '</div>'
-                        );
-                });
+                try {
+                    \Illuminate\Support\Facades\Mail::send([], [], function ($mail) use ($user, $request) {
+                        $mail->to($user->email, $user->name)
+                            ->subject('[C-codit] ' . $request->input('subject'))
+                            ->html(
+                                '<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px">' .
+                                '<h2 style="color:#0a2416">C-codit</h2>' .
+                                '<p>' . nl2br(htmlspecialchars($request->input('body'))) . '</p>' .
+                                '<hr style="border:1px solid #e5e7eb;margin:24px 0">' .
+                                '<p style="color:#6b7280;font-size:12px">You received this because you have a C-codit account. <a href="mailto:support@c-codit.com">Unsubscribe</a></p>' .
+                                '</div>'
+                            );
+                    });
+                } catch (\Throwable $e) {
+                    $failed++;
+                    $lastError = $e->getMessage();
+                    \Log::warning('admin.broadcast.mail_failed', ['email' => $user->email, 'error' => $e->getMessage()]);
+                }
             }
         });
+
+        if ($failed === $count && $count > 0) {
+            return ApiResponse::fail('Email delivery failed: ' . $lastError, null, 422);
+        }
 
         Audit::log('admin.broadcast_sent', $request->user(), [
             'subject'  => $request->input('subject'),
@@ -369,6 +386,38 @@ class AdminController extends Controller
             'count'    => $count,
         ], actorType: 'admin');
 
-        return ApiResponse::ok(['sent_to' => $count], "Message queued for {$count} users.");
+        $sent = $count - $failed;
+        return ApiResponse::ok(
+            ['sent_to' => $sent, 'failed' => $failed],
+            $failed > 0
+                ? "Message sent to {$sent} users. {$failed} failed."
+                : "Message queued for {$sent} users."
+        );
+    }
+
+    // ─── App Settings ─────────────────────────────────────────────────────────
+
+    public function getSettings()
+    {
+        return ApiResponse::ok(AppSetting::publicSettings());
+    }
+
+    public function updateSettings(Request $request)
+    {
+        $request->validate([
+            'logo_url'      => ['nullable', 'string', 'max:2000'],
+            'app_name'      => ['nullable', 'string', 'max:80'],
+            'support_email' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        foreach (['logo_url', 'app_name', 'support_email'] as $key) {
+            if ($request->has($key)) {
+                AppSetting::setValue($key, $request->input($key));
+            }
+        }
+
+        Audit::log('admin.settings_updated', $request->user(), $request->only(['logo_url', 'app_name', 'support_email']), actorType: 'admin');
+
+        return ApiResponse::ok(AppSetting::publicSettings(), 'Settings saved.');
     }
 }

@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { apiCall } from '@/lib/api';
+import { useAppSettings } from '@/components/Logo';
 import { formatMoney, formatDate } from '@/lib/format';
 import type { Paginated, Transaction } from '@/types/api';
 import {
   Activity, Users, AlertTriangle, TrendingUp, Search,
   Ban, UserCheck, Shield, ShieldOff, Wallet,
   ChevronLeft, ChevronRight, ToggleLeft, ToggleRight,
-  Plus, Minus, RefreshCw, Eye,
+  Plus, Minus, RefreshCw, Eye, ImagePlus, Settings2,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -37,7 +38,7 @@ type AdminService = {
   markup_percent: number;
 };
 
-type Tab = 'metrics' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat';
+type Tab = 'metrics' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ink-200 overflow-x-auto">
-        {(['metrics', 'users', 'transactions', 'services', 'messages', 'livechat'] as Tab[]).map((t) => (
+        {(['metrics', 'users', 'transactions', 'services', 'messages', 'livechat', 'settings'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2.5 text-sm font-medium capitalize whitespace-nowrap border-b-2 transition -mb-px ${
               tab === t
@@ -71,6 +72,7 @@ export default function AdminPage() {
       {tab === 'services'     && <ServicesTab />}
       {tab === 'messages'     && <MessagesTab />}
       {tab === 'livechat'     && <LiveChatTab />}
+      {tab === 'settings'    && <AppSettingsTab />}
     </div>
   );
 }
@@ -892,6 +894,123 @@ function LiveChatTab() {
             {(window as any).Tawk_API ? 'Tawk.to widget is active' : 'Tawk.to not configured yet'}
           </span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── App Settings Tab ─────────────────────────────────────────────────────────
+
+function AppSettingsTab() {
+  const qc = useQueryClient();
+  const { data: current } = useAppSettings();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [logoUrl, setLogoUrl]     = useState('');
+  const [appName, setAppName]     = useState('');
+  const [support, setSupport]     = useState('');
+  const [preview, setPreview]     = useState<string | null>(null);
+
+  // Seed fields from current settings once loaded
+  useState(() => {
+    if (current) {
+      setLogoUrl(current.logo_url ?? '');
+      setAppName((current as any).app_name ?? '');
+      setSupport((current as any).support_email ?? '');
+    }
+  });
+
+  const save = useMutation({
+    mutationFn: () => apiCall<null>({
+      method: 'POST',
+      url: '/admin/settings',
+      data: {
+        logo_url:      preview ?? logoUrl || null,
+        app_name:      appName || null,
+        support_email: support || null,
+      },
+    }),
+    onSuccess: () => {
+      toast.success('Settings saved.');
+      setPreview(null);
+      qc.invalidateQueries({ queryKey: ['app-settings'] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 500 * 1024) { toast.error('Image must be under 500 KB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  const displayLogo = preview ?? logoUrl ?? current?.logo_url;
+
+  return (
+    <div className="space-y-6 max-w-xl">
+      <div className="card-pad space-y-5">
+        <div className="flex items-center gap-2">
+          <Settings2 className="h-5 w-5 text-ink-500" />
+          <h3 className="font-semibold dark:text-white">App settings</h3>
+        </div>
+
+        {/* Logo */}
+        <div className="space-y-3">
+          <label className="label">App logo</label>
+
+          {displayLogo && (
+            <div className="flex items-center gap-3 p-3 rounded-xl border border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800">
+              <img src={displayLogo} alt="Logo preview" className="h-12 w-12 rounded-lg object-contain bg-white border border-ink-200" />
+              <div className="text-xs text-ink-500 dark:text-ink-400">
+                {preview ? 'File ready to save' : 'Current logo'}
+              </div>
+              <button onClick={() => { setPreview(null); setLogoUrl(''); }}
+                className="ml-auto text-xs text-rose-600 hover:underline">Remove</button>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                className="input flex-1"
+                placeholder="https://example.com/logo.png"
+                value={preview ? '(file selected)' : logoUrl}
+                onChange={(e) => { setLogoUrl(e.target.value); setPreview(null); }}
+                disabled={!!preview}
+              />
+              <button onClick={() => fileRef.current?.click()}
+                className="btn-outline flex items-center gap-1.5 whitespace-nowrap">
+                <ImagePlus className="h-4 w-4" /> Upload
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFileChange} />
+            </div>
+            <p className="text-xs text-ink-500 dark:text-ink-400">
+              Paste a URL or upload an image (PNG/SVG, max 500 KB). Displayed in the sidebar and header.
+            </p>
+          </div>
+        </div>
+
+        {/* App name */}
+        <div>
+          <label className="label">App name</label>
+          <input className="input" placeholder="C-codit" value={appName}
+            onChange={(e) => setAppName(e.target.value)} />
+          <p className="text-xs text-ink-500 dark:text-ink-400 mt-1">Shown next to the logo.</p>
+        </div>
+
+        {/* Support email */}
+        <div>
+          <label className="label">Support email</label>
+          <input className="input" type="email" placeholder="support@c-codit.com"
+            value={support} onChange={(e) => setSupport(e.target.value)} />
+        </div>
+
+        <button onClick={() => save.mutate()} disabled={save.isPending} className="btn-primary">
+          {save.isPending ? 'Saving…' : 'Save settings'}
+        </button>
       </div>
     </div>
   );
