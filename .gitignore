@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# VS Code — allow extensions recommendations
+.vscode/*
+!.vscode/extensions.json
