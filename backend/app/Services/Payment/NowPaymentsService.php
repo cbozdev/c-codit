@@ -17,6 +17,9 @@ class NowPaymentsService implements PaymentGateway
 {
     private string $baseUrl = 'https://api.nowpayments.io/v1';
 
+    // Cached from parseWebhook so verifyPayment can use it within the same request.
+    private ?string $lastWebhookPaymentId = null;
+
     private function client()
     {
         return Http::withHeaders([
@@ -28,67 +31,70 @@ class NowPaymentsService implements PaymentGateway
 
     public function initiate(User $user, Money $amount, string $idempotencyKey, array $options = []): Payment
     {
-        $payCurrency = $options['pay_currency'] ?? 'usdttrc20';
+        $payCurrency = $options['pay_currency'] ?? null; // optional pre-selection hint
 
         // Enforce $10 platform minimum for all crypto
         if ($amount->amountMinor < 1000) {
             throw new RuntimeException('Minimum deposit amount is $10.00 USD for cryptocurrency payments.');
         }
 
-        // Also enforce NowPayments' own per-crypto minimum
-        $npMinUsd = $this->getMinimumUsd($payCurrency);
-        if ($npMinUsd > 0 && ($amount->amountMinor / 100) < $npMinUsd) {
-            throw new RuntimeException(
-                sprintf('Minimum deposit for %s is $%.2f USD. Please enter a higher amount.',
-                    strtoupper($payCurrency), $npMinUsd)
-            );
+        // Enforce NowPayments' own per-crypto minimum when a currency is pre-selected
+        if ($payCurrency) {
+            $npMinUsd = $this->getMinimumUsd($payCurrency);
+            if ($npMinUsd > 0 && ($amount->amountMinor / 100) < $npMinUsd) {
+                throw new RuntimeException(
+                    sprintf('Minimum deposit for %s is $%.2f USD. Please enter a higher amount.',
+                        strtoupper($payCurrency), $npMinUsd)
+                );
+            }
         }
 
         $txRef = 'np-' . (string) Str::ulid();
 
         $payload = [
-            'price_amount'     => (float) $amount->toDecimal(),
-            'price_currency'   => 'usd',
-            'pay_currency'     => $payCurrency,
-            'order_id'         => $txRef,
-            'order_description'=> 'C-codit wallet funding',
-            'ipn_callback_url' => config('app.url') . '/api/v1/webhooks/nowpayments',
-            'success_url'      => config('services.nowpayments.success_url', config('app.url') . '/wallet/confirm'),
-            'cancel_url'       => config('services.nowpayments.cancel_url',  config('app.url') . '/wallet'),
-            'is_fixed_rate'    => false,
-            'is_fee_paid_by_user' => false,
+            'price_amount'      => (float) $amount->toDecimal(),
+            'price_currency'    => 'usd',
+            'order_id'          => $txRef,
+            'order_description' => 'C-codit wallet funding - user:' . ($user->public_id ?? $user->id),
+            'ipn_callback_url'  => config('app.url') . '/api/v1/webhooks/nowpayments',
+            'success_url'       => config('services.nowpayments.success_url', config('app.url') . '/wallet/confirm'),
+            'cancel_url'        => config('services.nowpayments.cancel_url',  config('app.url') . '/wallet'),
         ];
 
-        // Store user reference in metadata only - customer_id not supported by NowPayments API
-        $payload['order_description'] = 'C-codit wallet funding - user:' . ($user->public_id ?? $user->id);
+        // Pass preferred currency as pre-selection hint — user can still change it on the invoice page
+        if ($payCurrency) {
+            $payload['pay_currency'] = $payCurrency;
+        }
 
-        $res  = $this->client()->post($this->baseUrl . '/payment', $payload);
+        $res  = $this->client()->post($this->baseUrl . '/invoice', $payload);
         $body = $res->json();
 
         Log::channel('payments')->info('nowpayments.initiate', [
-            'status'   => $res->status(),
-            'order_id' => $txRef,
-            'body'     => $body,
+            'status'      => $res->status(),
+            'order_id'    => $txRef,
+            'invoice_id'  => $body['id'] ?? null,
+            'invoice_url' => $body['invoice_url'] ?? null,
         ]);
 
-        if ($res->failed() || empty($body['payment_id'])) {
-            throw new RuntimeException('NowPayments: ' . ($body['message'] ?? 'Could not create payment.'));
+        if ($res->failed() || empty($body['id'])) {
+            throw new RuntimeException('NowPayments: ' . ($body['message'] ?? 'Could not create invoice.'));
         }
 
         return Payment::create([
             'user_id'                => $user->id,
             'provider'               => PaymentProvider::NOWPAYMENTS,
             'provider_reference'     => $txRef,
-            'provider_payment_id'    => (string) $body['payment_id'],
+            'provider_payment_id'    => null, // Assigned by NowPayments once user pays (via IPN)
             'amount_minor'           => $amount->amountMinor,
             'currency'               => 'USD',
             'status'                 => 'initiated',
-            'checkout_url'           => $body['invoice_url'] ?? 'https://nowpayments.io/payment/?iid=' . $body['payment_id'],
+            'checkout_url'           => $body['invoice_url'],
             'idempotency_key'        => $idempotencyKey,
             'requested_amount_minor' => $amount->amountMinor,
             'requested_currency'     => 'USD',
             'metadata'               => [
                 'user_public_id' => $user->public_id ?? $user->id,
+                'invoice_id'     => (string) $body['id'],
                 'pay_currency'   => $payCurrency,
                 'purpose'        => 'wallet_fund',
             ],
@@ -97,16 +103,23 @@ class NowPaymentsService implements PaymentGateway
 
     public function verifyPayment(string $providerReference): array
     {
-        // Find payment by order_id
         $payment = Payment::where('provider_reference', $providerReference)
             ->where('provider', PaymentProvider::NOWPAYMENTS)
             ->first();
 
-        if (!$payment || !$payment->provider_payment_id) {
+        if (!$payment) {
             return ['status' => 'pending'];
         }
 
-        $res  = $this->client()->get($this->baseUrl . '/payment/' . $payment->provider_payment_id);
+        // Invoice-based flow: provider_payment_id is null until the user pays.
+        // parseWebhook caches the IPN's payment_id on this instance so we can use it here.
+        $paymentId = $payment->provider_payment_id ?: $this->lastWebhookPaymentId;
+
+        if (!$paymentId) {
+            return ['status' => 'pending'];
+        }
+
+        $res  = $this->client()->get($this->baseUrl . '/payment/' . $paymentId);
         $body = $res->json();
 
         if ($res->failed()) {
@@ -117,7 +130,7 @@ class NowPaymentsService implements PaymentGateway
 
         return [
             'status'              => $this->mapStatus($paymentStatus),
-            'provider_payment_id' => (string) ($body['payment_id'] ?? $payment->provider_payment_id),
+            'provider_payment_id' => (string) ($body['payment_id'] ?? $paymentId),
             'amount_minor'        => isset($body['price_amount'])
                 ? (int) round(((float) $body['price_amount']) * 100)
                 : $payment->amount_minor,
@@ -161,10 +174,15 @@ class NowPaymentsService implements PaymentGateway
         $orderId = $payload['order_id'] ?? null;
         if (!$orderId) return null;
 
+        // Cache so verifyPayment can use it within the same request (invoice-based flow).
+        $this->lastWebhookPaymentId = !empty($payload['payment_id'])
+            ? (string) $payload['payment_id']
+            : null;
+
         return [
             'status'              => $this->mapStatus($payload['payment_status'] ?? 'waiting'),
             'provider_reference'  => $orderId,
-            'provider_payment_id' => (string) ($payload['payment_id'] ?? ''),
+            'provider_payment_id' => $this->lastWebhookPaymentId ?? '',
             'amount_minor'        => isset($payload['price_amount'])
                 ? (int) round(((float) $payload['price_amount']) * 100)
                 : 0,

@@ -240,7 +240,7 @@ export default function WalletPage() {
           {/* Crypto selector — NowPayments only */}
           {provider === 'nowpayments' && (
             <div>
-              <label className="label">Pay with</label>
+              <label className="label">Preferred cryptocurrency</label>
               <div className="relative">
                 <select value={payCurrency} onChange={(e) => { setPayCurrency(e.target.value); if (parseFloat(amount) < 5) setAmount('10'); }} className="input appearance-none pr-8">
                   {CRYPTO_OPTIONS.map((o) => (
@@ -248,6 +248,9 @@ export default function WalletPage() {
                   ))}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
+              </div>
+              <div className="mt-2 text-xs text-ink-500 dark:text-ink-400 bg-ink-50 dark:bg-ink-800/50 border border-ink-200 dark:border-ink-700 rounded-lg px-3 py-2">
+                You can change your cryptocurrency on NowPayments' secure checkout page.
               </div>
               <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2">
                 ⚠ Minimum: <strong>$10 USD</strong> for all cryptocurrencies.
