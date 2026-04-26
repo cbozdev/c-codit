@@ -55,8 +55,9 @@ Route::prefix('v1')->group(function () {
         // Services
         Route::middleware('throttle:api')->group(function () {
             Route::get('/services',               [ServiceController::class, 'index']);
-            Route::get('/services/esim-packages', [ServiceController::class, 'esimPackages']);
-            Route::get('/services/{code}',        [ServiceController::class, 'show']);
+            Route::get('/services/esim-packages',          [ServiceController::class, 'esimPackages']);
+            Route::get('/services/virtual-number-prices', [ServiceController::class, 'virtualNumberPrices']);
+            Route::get('/services/{code}',                [ServiceController::class, 'show']);
             Route::get('/orders',                 [ServiceController::class, 'orders']);
             Route::get('/orders/{id}',            [ServiceController::class, 'order']);
         });

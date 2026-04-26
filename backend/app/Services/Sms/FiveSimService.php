@@ -104,6 +104,53 @@ class FiveSimService implements SmsNumberProvider
         }
     }
 
+    /**
+     * Returns prices for all available countries for a given service, sorted cheapest first.
+     * Uses 5sim's bulk endpoint GET /guest/prices?product={x}
+     */
+    public function getCountryPrices(string $service): array
+    {
+        $product = $this->normalizeProduct($service);
+        if (!$product) return [];
+
+        try {
+            $res = $this->client()->get('/guest/prices', ['product' => $product]);
+            if (!$res->successful()) return [];
+            $data = $res->json() ?? [];
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $rubRate = (float) config('services.platform.rub_usd_rate', 0.011);
+        $results = [];
+
+        foreach ($data as $country => $products) {
+            $operators = $products[$product] ?? [];
+            $bestCost  = null;
+            $totalCount = 0;
+
+            foreach ($operators as $opInfo) {
+                $cnt = (int) ($opInfo['count'] ?? 0);
+                $cost = (float) ($opInfo['cost'] ?? 0);
+                if ($cnt > 0 && $cost > 0) {
+                    $totalCount += $cnt;
+                    if ($bestCost === null || $cost < $bestCost) $bestCost = $cost;
+                }
+            }
+
+            if (!$bestCost || $totalCount <= 0) continue;
+
+            $results[] = [
+                'country_code' => $country,
+                'count'        => $totalCount,
+                'price_usd'    => $bestCost * $rubRate,
+            ];
+        }
+
+        usort($results, fn($a, $b) => $a['price_usd'] <=> $b['price_usd']);
+        return $results;
+    }
+
     public function isAvailable(string $service, string $country): bool
     {
         return $this->getPrice($service, $country) !== null;

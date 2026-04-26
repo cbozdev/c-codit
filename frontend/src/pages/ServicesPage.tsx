@@ -84,46 +84,16 @@ const PROVIDER_SERVICES = [
 
 const ALL_PROVIDER_SERVICES = PROVIDER_SERVICES.flatMap((g) => g.items);
 
-const COUNTRIES = [
-  { group: 'Africa', items: [
-    { value: 'nigeria',      label: '🇳🇬 Nigeria' },
-    { value: 'ghana',        label: '🇬🇭 Ghana' },
-    { value: 'kenya',        label: '🇰🇪 Kenya' },
-    { value: 'southafrica',  label: '🇿🇦 South Africa' },
-    { value: 'ethiopia',     label: '🇪🇹 Ethiopia' },
-    { value: 'tanzania',     label: '🇹🇿 Tanzania' },
-    { value: 'uganda',       label: '🇺🇬 Uganda' },
-    { value: 'cameroon',     label: '🇨🇲 Cameroon' },
-    { value: 'senegal',      label: '🇸🇳 Senegal' },
-    { value: 'egypt',        label: '🇪🇬 Egypt' },
-  ]},
-  { group: 'Americas', items: [
-    { value: 'usa',          label: '🇺🇸 United States' },
-    { value: 'canada',       label: '🇨🇦 Canada' },
-    { value: 'brazil',       label: '🇧🇷 Brazil' },
-    { value: 'mexico',       label: '🇲🇽 Mexico' },
-    { value: 'colombia',     label: '🇨🇴 Colombia' },
-  ]},
-  { group: 'Europe', items: [
-    { value: 'uk',           label: '🇬🇧 United Kingdom' },
-    { value: 'germany',      label: '🇩🇪 Germany' },
-    { value: 'france',       label: '🇫🇷 France' },
-    { value: 'ukraine',      label: '🇺🇦 Ukraine' },
-    { value: 'netherlands',  label: '🇳🇱 Netherlands' },
-    { value: 'sweden',       label: '🇸🇪 Sweden' },
-    { value: 'poland',       label: '🇵🇱 Poland' },
-  ]},
-  { group: 'Asia', items: [
-    { value: 'india',        label: '🇮🇳 India' },
-    { value: 'indonesia',    label: '🇮🇩 Indonesia' },
-    { value: 'russia',       label: '🇷🇺 Russia' },
-    { value: 'philippines',  label: '🇵🇭 Philippines' },
-    { value: 'vietnam',      label: '🇻🇳 Vietnam' },
-    { value: 'kazakhstan',   label: '🇰🇿 Kazakhstan' },
-    { value: 'china',        label: '🇨🇳 China' },
-    { value: 'thailand',     label: '🇹🇭 Thailand' },
-  ]},
-];
+
+// ─── Virtual number price row ─────────────────────────────────────────────────
+
+type VNumberPriceRow = {
+  country_code:  string;
+  country_label: string;
+  flag:          string;
+  count:         number;
+  price_usd:     number;
+};
 
 // ─── eSIM ─────────────────────────────────────────────────────────────────────
 
@@ -500,62 +470,143 @@ function VirtualNumberForm({
   onPurchase: () => void;
   isPending: boolean;
 }) {
+  const priceQuery = useQuery({
+    queryKey: ['virtual-number-prices', service.provider, providerSvc],
+    queryFn: () => apiCall<{ items: VNumberPriceRow[] }>({
+      url: '/services/virtual-number-prices',
+      params: { provider: service.provider, service: providerSvc },
+    }),
+    staleTime: 5 * 60 * 1000,
+    enabled: providerSvc !== 'any',
+  });
+
+  const rows = priceQuery.data?.items ?? [];
+  const selectedRow = rows.find((r) => r.country_code === country);
+
+  function handleAppChange(value: string) {
+    setProviderSvc(value);
+    setCountry('');
+  }
+
   return (
     <>
       <h3 className="font-semibold flex items-center gap-2 mb-5 dark:text-white">
         <Phone className="h-4 w-4 text-brand-600" /> {service.name}
       </h3>
-      <div className="grid sm:grid-cols-2 gap-4">
-        {/* Service search */}
-        <div>
-          <label className="label">Service / App</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-            <input
-              className="input pl-9 mb-1"
-              placeholder="Search (e.g. Telegram)…"
-              value={serviceSearch}
-              onChange={(e) => setServiceSearch(e.target.value)}
-            />
-          </div>
-          <select className="input" value={providerSvc} onChange={(e) => setProviderSvc(e.target.value)} size={1}>
-            {filteredServices ? (
-              filteredServices.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)
-            ) : (
-              PROVIDER_SERVICES.map((g) => (
-                <optgroup key={g.group} label={g.group}>
-                  {g.items.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </optgroup>
-              ))
-            )}
-          </select>
-        </div>
 
-        {/* Country */}
-        <div>
-          <label className="label">Country</label>
-          <select className="input" value={country} onChange={(e) => setCountry(e.target.value)}>
-            {COUNTRIES.map((g) => (
+      {/* App selector */}
+      <div>
+        <label className="label">Service / App</label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
+          <input
+            className="input pl-9 mb-1"
+            placeholder="Search (e.g. Telegram)…"
+            value={serviceSearch}
+            onChange={(e) => { setServiceSearch(e.target.value); setCountry(''); }}
+          />
+        </div>
+        <select className="input" value={providerSvc} onChange={(e) => handleAppChange(e.target.value)} size={1}>
+          {filteredServices ? (
+            filteredServices.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)
+          ) : (
+            PROVIDER_SERVICES.map((g) => (
               <optgroup key={g.group} label={g.group}>
-                {g.items.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                {g.items.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </optgroup>
-            ))}
-          </select>
+            ))
+          )}
+        </select>
+      </div>
+
+      {/* Country price chart */}
+      <div className="mt-4">
+        <label className="label">Select country</label>
+        {providerSvc === 'any' ? (
+          <p className="text-sm text-amber-600 dark:text-amber-400 mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900">
+            "Any / Other" is not supported. Please select a specific app above.
+          </p>
+        ) : priceQuery.isLoading ? (
+          <div className="mt-2 flex items-center justify-center py-8 text-sm text-ink-500">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-300 border-t-brand-500 mr-2" />
+            Loading available countries…
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="mt-2 text-sm text-amber-600 dark:text-amber-400 py-4 text-center">
+            No numbers available for this service right now. Try another app.
+          </div>
+        ) : (
+          <div className="mt-2 rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden">
+            <div className="max-h-72 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-ink-50 dark:bg-ink-800 border-b border-ink-200 dark:border-ink-700">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-ink-500 dark:text-ink-400">Country</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-ink-500 dark:text-ink-400">Available</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-ink-500 dark:text-ink-400">Price (USD)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
+                  {rows.map((row) => (
+                    <tr
+                      key={row.country_code}
+                      onClick={() => setCountry(row.country_code)}
+                      className={clsx(
+                        'cursor-pointer transition',
+                        country === row.country_code
+                          ? 'bg-brand-50 dark:bg-brand-950/40'
+                          : 'hover:bg-ink-50 dark:hover:bg-ink-800/60',
+                      )}
+                    >
+                      <td className="px-3 py-2 dark:text-ink-200">
+                        <span className="mr-2 text-base">{row.flag}</span>
+                        <span className={country === row.country_code ? 'font-medium text-brand-700 dark:text-brand-300' : ''}>
+                          {row.country_label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right text-ink-500 dark:text-ink-400">{row.count.toLocaleString()}</td>
+                      <td className={clsx(
+                        'px-3 py-2 text-right font-medium',
+                        country === row.country_code ? 'text-brand-600 dark:text-brand-400' : 'dark:text-ink-200',
+                      )}>
+                        ${row.price_usd.toFixed(4)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Selection summary */}
+      {selectedRow ? (
+        <div className="mt-3 flex items-center gap-2 text-sm p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>
+            Selected: <strong>{selectedRow.flag} {selectedRow.country_label}</strong> — ${selectedRow.price_usd.toFixed(4)} per number
+          </span>
         </div>
-      </div>
+      ) : rows.length > 0 ? (
+        <div className="mt-3 text-sm text-ink-500 dark:text-ink-400 p-3 rounded-lg bg-ink-50 dark:bg-ink-800">
+          Click a row above to select your country.
+        </div>
+      ) : null}
 
-      <div className="mt-4 flex items-start gap-3 p-3 rounded-lg bg-ink-50 dark:bg-ink-800 text-sm text-ink-600 dark:text-ink-400">
-        <CheckCircle2 className="h-4 w-4 text-brand-500 mt-0.5 shrink-0" />
-        <span>Price is checked at the time of purchase. If the number can't be delivered, your wallet is automatically refunded.</span>
-      </div>
-
-      <button onClick={onPurchase} disabled={isPending} className="btn-brand mt-5">
+      <button
+        onClick={onPurchase}
+        disabled={isPending || !country}
+        className="btn-brand mt-5"
+      >
         {isPending ? (
           <span className="flex items-center gap-2">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-950/30 border-t-ink-950" />
             Getting your number…
           </span>
-        ) : 'Buy number'}
+        ) : country && selectedRow
+          ? `Buy number in ${selectedRow.country_label}`
+          : 'Select a country above'}
       </button>
     </>
   );

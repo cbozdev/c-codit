@@ -13,7 +13,7 @@ class ServicesSeeder extends Seeder
             // ── Virtual Numbers ──────────────────────────────────────────
             [
                 'code'     => 'vnum_5sim',
-                'name'     => '5sim Virtual Numbers',
+                'name'     => 'Virtual Numbers — Server 1',
                 'provider' => '5sim',
                 'category' => 'virtual_number',
                 'description' => 'Disposable phone numbers for SMS verification via 5sim. 200+ countries.',
@@ -21,7 +21,7 @@ class ServicesSeeder extends Seeder
             ],
             [
                 'code'     => 'vnum_smsactivate',
-                'name'     => 'SMS-Activate Virtual Numbers',
+                'name'     => 'Virtual Numbers — Server 2',
                 'provider' => 'smsactivate',
                 'category' => 'virtual_number',
                 'description' => 'Disposable phone numbers via sms-activate.org. 190+ countries.',

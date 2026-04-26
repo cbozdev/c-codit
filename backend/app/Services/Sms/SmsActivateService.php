@@ -15,6 +15,40 @@ class SmsActivateService implements SmsNumberProvider
 {
     public function code(): string { return 'smsactivate'; }
 
+    // Maps frontend service slugs → sms-activate internal codes
+    private const SERVICE_MAP = [
+        'telegram'   => 'tg',
+        'whatsapp'   => 'wa',
+        'facebook'   => 'fb',
+        'instagram'  => 'ig',
+        'twitter'    => 'tw',
+        'tiktok'     => 'tk',
+        'snapchat'   => 'sc',
+        'discord'    => 'ds',
+        'viber'      => 'vi',
+        'wechat'     => 'mb',
+        'google'     => 'go',
+        'apple'      => 'ap',
+        'microsoft'  => 'ms',
+        'amazon'     => 'am',
+        'netflix'    => 'nf',
+        'spotify'    => 'sp',
+        'uber'       => 'ub',
+        'paypal'     => 'pp',
+        'tinder'     => 'ti',
+        'bumble'     => 'bm',
+        'badoo'      => 'bd',
+        'hinge'      => 'hi',
+        'binance'    => 'bn',
+        'coinbase'   => 'cb',
+    ];
+
+    private function normalizeService(string $service): string
+    {
+        $s = strtolower(trim($service));
+        return self::SERVICE_MAP[$s] ?? $s;
+    }
+
     private function call(array $params): string
     {
         $params = array_merge([
@@ -36,12 +70,13 @@ class SmsActivateService implements SmsNumberProvider
 
     public function getPrice(string $service, string $country): ?Money
     {
-        $body = $this->call(['action' => 'getPrices', 'service' => $service, 'country' => $country]);
+        $svc  = $this->normalizeService($service);
+        $body = $this->call(['action' => 'getPrices', 'service' => $svc, 'country' => $country]);
         $data = json_decode($body, true);
         if (! is_array($data)) return null;
 
         $min = null;
-        foreach (($data[$country][$service] ?? []) as $price => $count) {
+        foreach (($data[$country][$svc] ?? []) as $price => $count) {
             if ((int) $count > 0 && ($min === null || (float) $price < $min)) {
                 $min = (float) $price;
             }
@@ -57,9 +92,52 @@ class SmsActivateService implements SmsNumberProvider
         return $this->getPrice($service, $country) !== null;
     }
 
+    public function getCountryPrices(string $service): array
+    {
+        $svc = $this->normalizeService($service);
+
+        try {
+            $body = $this->call(['action' => 'getPrices', 'service' => $svc]);
+            $data = json_decode($body, true);
+            if (! is_array($data)) return [];
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $rate    = (float) config('services.platform.rub_usd_rate', 0.011);
+        $results = [];
+
+        foreach ($data as $countryId => $services) {
+            $prices     = $services[$svc] ?? [];
+            $bestPrice  = null;
+            $totalCount = 0;
+
+            foreach ($prices as $price => $count) {
+                $cnt  = (int) $count;
+                $cost = (float) $price;
+                if ($cnt > 0 && $cost > 0) {
+                    $totalCount += $cnt;
+                    if ($bestPrice === null || $cost < $bestPrice) $bestPrice = $cost;
+                }
+            }
+
+            if ($bestPrice === null || $totalCount <= 0) continue;
+
+            $results[] = [
+                'country_code' => (string) $countryId,
+                'count'        => $totalCount,
+                'price_usd'    => $bestPrice * $rate,
+            ];
+        }
+
+        usort($results, fn($a, $b) => $a['price_usd'] <=> $b['price_usd']);
+        return $results;
+    }
+
     public function purchase(string $service, string $country): array
     {
-        $body = $this->call(['action' => 'getNumber', 'service' => $service, 'country' => $country]);
+        $svc  = $this->normalizeService($service);
+        $body = $this->call(['action' => 'getNumber', 'service' => $svc, 'country' => $country]);
 
         if ($body === 'NO_NUMBERS') {
             throw new ServiceUnavailableException('No numbers available.');
