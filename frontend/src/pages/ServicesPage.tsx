@@ -7,7 +7,7 @@ import type { Paginated, Service, ServiceOrder } from '@/types/api';
 import {
   Smartphone, Globe, CreditCard, Receipt, Phone,
   RefreshCw, Copy, Search, ChevronDown, ChevronUp,
-  CheckCircle2, Clock, XCircle, Gift,
+  CheckCircle2, Clock, XCircle, Gift, Wifi, QrCode, ExternalLink,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -125,6 +125,43 @@ const COUNTRIES = [
   ]},
 ];
 
+// ─── eSIM ─────────────────────────────────────────────────────────────────────
+
+type EsimPackage = {
+  package_id: string;
+  title: string;
+  data: string | null;
+  days: number;
+  price: number;
+  operator: string | null;
+  countries: string[];
+};
+
+const ESIM_COUNTRY_OPTIONS = [
+  { code: 'US', label: '🇺🇸 United States' },
+  { code: 'GB', label: '🇬🇧 United Kingdom' },
+  { code: 'NG', label: '🇳🇬 Nigeria' },
+  { code: 'GH', label: '🇬🇭 Ghana' },
+  { code: 'KE', label: '🇰🇪 Kenya' },
+  { code: 'ZA', label: '🇿🇦 South Africa' },
+  { code: 'DE', label: '🇩🇪 Germany' },
+  { code: 'FR', label: '🇫🇷 France' },
+  { code: 'CA', label: '🇨🇦 Canada' },
+  { code: 'AU', label: '🇦🇺 Australia' },
+  { code: 'JP', label: '🇯🇵 Japan' },
+  { code: 'IN', label: '🇮🇳 India' },
+  { code: 'AE', label: '🇦🇪 UAE' },
+  { code: 'SG', label: '🇸🇬 Singapore' },
+  { code: 'TH', label: '🇹🇭 Thailand' },
+  { code: 'BR', label: '🇧🇷 Brazil' },
+  { code: 'MX', label: '🇲🇽 Mexico' },
+  { code: 'TR', label: '🇹🇷 Turkey' },
+  { code: 'EG', label: '🇪🇬 Egypt' },
+  { code: 'PH', label: '🇵🇭 Philippines' },
+];
+
+// ─── Gift card denominations ──────────────────────────────────────────────────
+
 // Gift card denominations
 const GIFT_DENOMINATIONS = [5, 10, 15, 25, 50, 100, 200];
 
@@ -202,6 +239,7 @@ export default function ServicesPage() {
   const [billAmount, setBillAmount]       = useState('500');
   const [dataPlan, setDataPlan]           = useState('');
   const [meterType, setMeterType]         = useState<'prepaid'|'postpaid'>('prepaid');
+  const [esimPackageId, setEsimPackageId]   = useState('');
   const [ordersExpanded, setOrdersExpanded] = useState(true);
 
   const services = useQuery({
@@ -241,6 +279,8 @@ export default function ServicesPage() {
         if (selected.code === 'utility_electricity') baseData.meter_type = meterType;
       } else if (selected.category === 'giftcard') {
         baseData.denomination = denomination;
+      } else if (selected.category === 'esim') {
+        baseData.package_id = esimPackageId;
       }
 
       return apiCall<ServiceOrder>({
@@ -395,19 +435,13 @@ export default function ServicesPage() {
 
           {/* eSIM */}
           {selected.category === 'esim' && (
-            <div className="text-center py-8">
-              <Globe className="h-14 w-14 text-brand-400 mx-auto mb-4" />
-              <p className="font-semibold text-lg dark:text-white">eSIM — Coming Soon</p>
-              <p className="text-sm text-ink-500 dark:text-ink-400 mt-2 max-w-sm mx-auto">
-                Global data eSIMs for 190+ countries are coming. Instant digital delivery, no physical SIM needed.
-              </p>
-              <div className="mt-6 p-4 rounded-xl bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 max-w-sm mx-auto">
-                <p className="text-sm font-medium text-brand-800 dark:text-brand-300 mb-1">Get notified when it launches</p>
-                <p className="text-xs text-brand-700 dark:text-brand-400">
-                  Email <a href="mailto:support@c-codit.com" className="underline font-medium">support@c-codit.com</a> to join the waitlist.
-                </p>
-              </div>
-            </div>
+            <EsimForm
+              service={selected}
+              packageId={esimPackageId}
+              setPackageId={setEsimPackageId}
+              onPurchase={() => purchase.mutate()}
+              isPending={purchase.isPending}
+            />
           )}
         </div>
       )}
@@ -781,14 +815,170 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
     </>
   );
 }
+// ─── eSIM Form ────────────────────────────────────────────────────────────────
+
+function EsimForm({ service, packageId, setPackageId, onPurchase, isPending }: {
+  service: Service;
+  packageId: string;
+  setPackageId: (v: string) => void;
+  onPurchase: () => void;
+  isPending: boolean;
+}) {
+  const [tab, setTab]         = useState<'global' | 'local'>('global');
+  const [country, setCountry] = useState('US');
+
+  const queryKey = tab === 'global'
+    ? ['esim-packages', 'global']
+    : ['esim-packages', 'local', country];
+
+  const packages = useQuery<EsimPackage[]>({
+    queryKey,
+    queryFn: () => apiCall<EsimPackage[]>({
+      url: '/services/esim-packages',
+      params: tab === 'global' ? { type: 'global' } : { type: 'local', country },
+    }),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const selected = packages.data?.find((p) => p.package_id === packageId) ?? null;
+
+  return (
+    <>
+      <h3 className="font-semibold flex items-center gap-2 mb-5 dark:text-white">
+        <Wifi className="h-4 w-4 text-brand-600" /> {service.name}
+      </h3>
+
+      {/* Tab toggle */}
+      <div className="flex gap-1 p-1 bg-ink-100 dark:bg-ink-800 rounded-xl mb-5 w-fit">
+        {(['global', 'local'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => { setTab(t); setPackageId(''); }}
+            className={clsx(
+              'px-4 py-1.5 rounded-lg text-sm font-medium transition capitalize',
+              tab === t
+                ? 'bg-white dark:bg-ink-700 text-ink-900 dark:text-white shadow-sm'
+                : 'text-ink-500 dark:text-ink-400 hover:text-ink-700 dark:hover:text-ink-300',
+            )}>
+            {t === 'global' ? '🌍 Global' : '📍 By Country'}
+          </button>
+        ))}
+      </div>
+
+      {/* Country selector for local */}
+      {tab === 'local' && (
+        <div className="mb-4">
+          <label className="label">Select destination country</label>
+          <select
+            className="input"
+            value={country}
+            onChange={(e) => { setCountry(e.target.value); setPackageId(''); }}>
+            {ESIM_COUNTRY_OPTIONS.map((c) => (
+              <option key={c.code} value={c.code}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Plan list */}
+      {packages.isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-16 rounded-xl bg-ink-100 dark:bg-ink-800 animate-pulse" />
+          ))}
+        </div>
+      ) : packages.isError ? (
+        <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-sm text-rose-700 dark:text-rose-400">
+          Could not load plans. Make sure Airalo credentials are configured, or try again.
+        </div>
+      ) : !packages.data?.length ? (
+        <div className="text-sm text-ink-500 dark:text-ink-400 py-4 text-center">
+          No plans available for this selection.
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+          {packages.data.map((pkg) => (
+            <button
+              key={pkg.package_id}
+              type="button"
+              onClick={() => setPackageId(pkg.package_id)}
+              className={clsx(
+                'w-full flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition',
+                packageId === pkg.package_id
+                  ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30 shadow-glow'
+                  : 'border-ink-100 hover:border-ink-300 dark:border-ink-700 dark:hover:border-ink-500',
+              )}>
+              <div>
+                <div className={clsx(
+                  'font-semibold text-sm',
+                  packageId === pkg.package_id ? 'text-brand-700 dark:text-brand-300' : 'dark:text-white',
+                )}>
+                  {pkg.data ?? pkg.title}
+                  {pkg.days > 0 && (
+                    <span className="ml-2 text-xs font-normal text-ink-500 dark:text-ink-400">
+                      · {pkg.days} day{pkg.days !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+                {pkg.operator && (
+                  <div className="text-xs text-ink-500 dark:text-ink-400 mt-0.5">{pkg.operator}</div>
+                )}
+              </div>
+              <div className={clsx(
+                'text-base font-bold tabular-nums',
+                packageId === pkg.package_id ? 'text-brand-600 dark:text-brand-400' : 'text-ink-900 dark:text-white',
+              )}>
+                ${pkg.price.toFixed(2)}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected && (
+        <div className="mt-3 flex items-center gap-2 p-3 rounded-lg bg-ink-50 dark:bg-ink-800 text-sm text-ink-600 dark:text-ink-400">
+          <CheckCircle2 className="h-4 w-4 text-brand-500 shrink-0" />
+          <span>
+            <strong className="dark:text-white">{selected.data ?? selected.title}</strong>
+            {' '}for {selected.days} days · <strong className="dark:text-white">${selected.price.toFixed(2)}</strong> from your wallet
+          </span>
+        </div>
+      )}
+
+      <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 text-xs text-blue-700 dark:text-blue-400">
+        📲 After purchase you'll receive a QR code to scan in Settings → Cellular → Add eSIM. Compatible with iPhone XS+ and most Android phones.
+      </div>
+
+      <button
+        onClick={onPurchase}
+        disabled={isPending || !packageId}
+        className="btn-brand mt-5">
+        {isPending ? (
+          <span className="flex items-center gap-2">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-950/30 border-t-ink-950" />
+            Activating eSIM…
+          </span>
+        ) : selected
+          ? `Buy ${selected.data ?? selected.title} — $${selected.price.toFixed(2)}`
+          : 'Select a plan to continue'}
+      </button>
+    </>
+  );
+}
+
 // ─── Order Row ────────────────────────────────────────────────────────────────
 
 function OrderRow({ order }: { order: ServiceOrder }) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
-  const delivery = order.delivery as Record<string, unknown> | null;
-  const phoneNumber = delivery?.phone_number as string | null;
-  const smsCode = delivery?.sms_code as string | null;
+  const delivery        = order.delivery as Record<string, unknown> | null;
+  const phoneNumber     = delivery?.phone_number as string | null;
+  const smsCode         = delivery?.sms_code as string | null;
+  const isEsim          = delivery?.type === 'esim';
+  const esimCode        = delivery?.activation_code as string | null;
+  const esimQrUrl       = delivery?.qrcode_url as string | null;
+  const esimInstUrl     = delivery?.instructions_url as string | null;
 
   return (
     <li className="py-3.5 flex items-start justify-between gap-4">
@@ -829,6 +1019,33 @@ function OrderRow({ order }: { order: ServiceOrder }) {
             className="mt-2 text-xs text-ink-500 dark:text-ink-400 hover:text-brand-600 flex items-center gap-1">
             <Clock className="h-3 w-3" /> Tap to check for SMS code →
           </button>
+        )}
+
+        {/* eSIM delivery */}
+        {isEsim && order.status === 'completed' && (
+          <div className="mt-2 space-y-1.5">
+            {esimQrUrl && (
+              <a href={esimQrUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-brand-600 dark:text-brand-400 hover:underline">
+                <QrCode className="h-3.5 w-3.5" /> View QR Code
+              </a>
+            )}
+            {esimCode && (
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-ink-600 dark:text-ink-300 truncate max-w-[200px]">{esimCode}</span>
+                <button onClick={() => { navigator.clipboard.writeText(esimCode); setCopied(true); toast.success('Copied!'); setTimeout(() => setCopied(false), 2000); }}
+                  className={clsx('p-1 rounded transition shrink-0', copied ? 'text-brand-600' : 'text-ink-400 hover:text-ink-700')}>
+                  {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            )}
+            {esimInstUrl && (
+              <a href={esimInstUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-ink-500 dark:text-ink-400 hover:text-brand-600 hover:underline">
+                <ExternalLink className="h-3 w-3" /> Installation guide
+              </a>
+            )}
+          </div>
         )}
 
         {order.failure_reason && (

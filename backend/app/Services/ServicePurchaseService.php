@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Service;
 use App\Models\ServiceOrder;
 use App\Models\User;
+use App\Services\Esim\AiraloService;
 use App\Services\Sms\FiveSimService;
 use App\Services\Sms\ServiceUnavailableException;
 use App\Services\Sms\SmsActivateService;
@@ -36,6 +37,7 @@ class ServicePurchaseService
         private readonly SmsActivateService $smsActivate,
         private readonly FlutterwaveBillsService $flutterwaveBills,
         private readonly GiftCardService $giftCards,
+        private readonly AiraloService $airalo,
     ) {}
 
     public function purchase(
@@ -57,6 +59,7 @@ class ServicePurchaseService
             'smsactivate' => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsActivate),
             'flutterwave' => $this->purchaseUtilityBill($user, $service, $request, $idempotencyKey),
             'internal'    => $this->purchaseGiftCard($user, $service, $request, $idempotencyKey),
+            'airalo'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey),
             default       => throw new RuntimeException("Unsupported service provider: {$service->provider}"),
         };
     }
@@ -274,6 +277,79 @@ class ServicePurchaseService
         });
 
         Audit::log('service.gift_card_purchased', $order);
+        return $order->fresh();
+    }
+
+    // ─── Travel eSIM (Airalo) ─────────────────────────────────────────────────
+
+    private function purchaseEsim(
+        User $user,
+        Service $service,
+        array $request,
+        string $idempotencyKey,
+    ): ServiceOrder {
+        $packageId = trim((string) ($request['package_id'] ?? ''));
+        if (! $packageId) {
+            throw new RuntimeException('Please select an eSIM plan before purchasing.');
+        }
+
+        // Fetch authoritative price from Airalo and apply markup
+        $basePrice   = $this->airalo->getPackagePrice($packageId);
+        $price       = \App\Support\Money::fromDecimal(number_format($basePrice, 2, '.', ''), 'USD');
+        $finalAmount = $this->applyMarkup($price, $service);
+
+        $wallet = $this->wallets->getOrCreate($user, 'USD');
+
+        $order = ServiceOrder::create([
+            'user_id'         => $user->id,
+            'service_id'      => $service->id,
+            'status'          => 'pending',
+            'amount_minor'    => $finalAmount->amountMinor,
+            'currency'        => 'USD',
+            'request'         => $request,
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        $holdTx = $this->wallets->holdForPurchase(
+            wallet: $wallet,
+            amount: $finalAmount,
+            idempotencyKey: 'svcorder:'.$order->public_id,
+            reference: $order,
+            description: "eSIM: {$service->name}",
+        );
+
+        $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
+
+        try {
+            $result = $this->airalo->purchase(
+                packageId: $packageId,
+                description: 'C-codit eSIM – user:'.$user->public_id,
+            );
+        } catch (\Throwable $e) {
+            $this->refundOrder($order, $holdTx, $e->getMessage());
+            throw $e;
+        }
+
+        DB::transaction(function () use ($order, $holdTx, $result, $request) {
+            $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
+            $order->update([
+                'status'            => 'completed',
+                'provider_order_id' => $result['provider_order_id'] ?? null,
+                'provider_response' => $result,
+                'delivery'          => [
+                    'type'              => 'esim',
+                    'package_id'        => $request['package_id'] ?? null,
+                    'iccid'             => $result['iccid'] ?? null,
+                    'activation_code'   => $result['activation_code'] ?? null,
+                    'qrcode_url'        => $result['qrcode_url'] ?? null,
+                    'direct_apple_url'  => $result['direct_apple_url'] ?? null,
+                    'instructions_url'  => $result['instructions_url'] ?? null,
+                ],
+                'provisioned_at' => now(),
+            ]);
+        });
+
+        Audit::log('service.esim_purchased', $order, ['amount_minor' => $finalAmount->amountMinor]);
         return $order->fresh();
     }
 

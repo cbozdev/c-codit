@@ -51,6 +51,8 @@ class ServiceController extends Controller
             'plan_code'       => ['nullable', 'string', 'max:20'],
             // Gift card fields
             'denomination'    => ['nullable', 'numeric', 'min:1', 'max:500'],
+            // eSIM fields
+            'package_id'      => ['nullable', 'string', 'max:120'],
         ]);
 
         $service = Service::where('code', $request->input('service_code'))
@@ -70,6 +72,8 @@ class ServiceController extends Controller
             return ApiResponse::fail($e->getMessage(), null, 409);
         } catch (\App\Services\Ledger\InsufficientFundsException $e) {
             return ApiResponse::fail('Insufficient wallet balance. Please top up first.', null, 402);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            return ApiResponse::fail('Provider is temporarily unreachable. Please try again in a moment.', null, 503);
         } catch (\RuntimeException $e) {
             return ApiResponse::fail($e->getMessage(), null, 422);
         }
@@ -82,6 +86,50 @@ class ServiceController extends Controller
     public function purchaseVirtualNumber(Request $request)
     {
         return $this->purchase($request);
+    }
+
+    /**
+     * List available Airalo eSIM packages for the plan selector.
+     * GET /services/esim-packages?type=global|local|regional&country=US
+     */
+    public function esimPackages(Request $request)
+    {
+        $request->validate([
+            'type'    => ['nullable', 'in:local,global,regional'],
+            'country' => ['nullable', 'string', 'size:2'],
+        ]);
+
+        try {
+            $airalo   = app(\App\Services\Esim\AiraloService::class);
+            $type     = $request->input('type', 'global');
+            $country  = $request->input('country');
+            $packages = $airalo->getPackages($type, $country ? strtoupper($country) : null);
+
+            // Get service markup so frontend can show the real price
+            $service = \App\Models\Service::where('code', 'esim_travel')->first();
+            $markup  = $service ? ((float) $service->markup_percent ?? 15) : 15;
+
+            $formatted = array_map(function (array $pkg) use ($markup) {
+                $base      = (float) ($pkg['price'] ?? $pkg['net_price'] ?? 0);
+                $finalUsd  = round($base * (1 + $markup / 100), 2);
+
+                return [
+                    'package_id'   => $pkg['id'] ?? $pkg['package_id'] ?? $pkg['slug'],
+                    'title'        => $pkg['title'] ?? ($pkg['data'] . ' – ' . $pkg['day'] . ' day' . ($pkg['day'] > 1 ? 's' : '')),
+                    'data'         => $pkg['data'] ?? null,
+                    'days'         => (int) ($pkg['day'] ?? $pkg['validity'] ?? 0),
+                    'base_price'   => $base,
+                    'price'        => $finalUsd,
+                    'countries'    => collect($pkg['operators'] ?? [])->pluck('countries')->flatten(1)
+                                          ->pluck('title')->unique()->values()->all(),
+                    'operator'     => $pkg['operators'][0]['title'] ?? null,
+                ];
+            }, $packages);
+
+            return ApiResponse::ok($formatted);
+        } catch (\Throwable $e) {
+            return ApiResponse::fail('Could not load eSIM plans: ' . $e->getMessage(), null, 503);
+        }
     }
 
     public function orders(Request $request)

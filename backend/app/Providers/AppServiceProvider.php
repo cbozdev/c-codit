@@ -29,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
             FiveSimService::class, SmsActivateService::class,
             \App\Services\FlutterwaveBillsService::class,
             \App\Services\GiftCardService::class,
+            \App\Services\Esim\AiraloService::class,
             ServicePurchaseService::class,
         ] as $class) {
             $this->app->singleton($class);

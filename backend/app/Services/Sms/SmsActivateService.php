@@ -21,8 +21,12 @@ class SmsActivateService implements SmsNumberProvider
             'api_key' => (string) config('services.smsactivate.api_key'),
         ], $params);
 
-        $res = ExternalHttp::for('smsactivate', config('services.smsactivate.base_url'))
-            ->asForm()->get('', $params);
+        try {
+            $res = ExternalHttp::for('smsactivate', config('services.smsactivate.base_url'))
+                ->asForm()->get('', $params);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            throw new ServiceUnavailableException('SMS provider is temporarily unreachable. Please try again in a moment.');
+        }
 
         if (! $res->successful()) {
             throw new RuntimeException('sms-activate: HTTP '.$res->status());

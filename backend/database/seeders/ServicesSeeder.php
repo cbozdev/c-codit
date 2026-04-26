@@ -32,10 +32,10 @@ class ServicesSeeder extends Seeder
             [
                 'code'     => 'esim_travel',
                 'name'     => 'Travel eSIM',
-                'provider' => 'internal',
+                'provider' => 'airalo',
                 'category' => 'esim',
-                'description' => 'Data-only eSIMs for 190+ countries. Install instantly.',
-                'is_active' => false,
+                'description' => 'Global data eSIMs for 190+ countries. Instant QR code delivery — no physical SIM needed.',
+                'is_active' => true,
             ],
 
             // ── Gift Cards ────────────────────────────────────────────────

@@ -40,6 +40,12 @@ return [
         'base_url' => env('SMSACTIVATE_BASE_URL', 'https://api.sms-activate.org/stubs/handler_api.php'),
     ],
 
+    'airalo' => [
+        'client_id'     => env('AIRALO_CLIENT_ID'),
+        'client_secret' => env('AIRALO_CLIENT_SECRET'),
+        'base_url'      => env('AIRALO_BASE_URL', 'https://www.airalo.com/api/v2'),
+    ],
+
     'platform' => [
         'base_currency'      => env('PLATFORM_BASE_CURRENCY', 'USD'),
         'markup_percent'     => (float) env('PLATFORM_MARKUP_PERCENT', 15),
