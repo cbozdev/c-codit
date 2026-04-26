@@ -29,7 +29,7 @@ class FlutterwaveService implements PaymentGateway
             'tx_ref'          => $txRef,
             'amount'          => $amount->toDecimal(),
             'currency'        => $amount->currency,
-            'payment_options' => 'card,banktransfer,ussd,mobilemoneynigeria,account,credit',
+            'payment_options' => 'card,banktransfer,ussd,credit',
             'redirect_url'    => rtrim((string) config('app.frontend_url'), '/').'/wallet/confirm',
             'customer' => [
                 'email'       => $user->email,

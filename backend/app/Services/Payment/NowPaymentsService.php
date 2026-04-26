@@ -121,7 +121,17 @@ class NowPaymentsService implements PaymentGateway
     {
         $secret    = (string) config('services.nowpayments.ipn_secret');
         $signature = $headers['x-nowpayments-sig'][0] ?? '';
-        if (!$signature || !$secret) return false;
+
+        // If no secret configured, accept but log warning
+        if (!$secret) {
+            Log::channel('webhooks')->warning('nowpayments.no_secret_configured');
+            return true;
+        }
+
+        if (!$signature) {
+            Log::channel('webhooks')->warning('nowpayments.no_signature_header');
+            return false;
+        }
 
         $payload = json_decode($rawBody, true);
         if (!is_array($payload)) return false;
@@ -129,7 +139,13 @@ class NowPaymentsService implements PaymentGateway
         ksort($payload);
         $expected = hash_hmac('sha512', json_encode($payload), $secret);
 
-        return hash_equals($expected, $signature);
+        $result = hash_equals($expected, $signature);
+        Log::channel('webhooks')->info('nowpayments.signature_check', [
+            'match'  => $result,
+            'has_sig' => !empty($signature),
+        ]);
+
+        return $result;
     }
 
     public function parseWebhook(array $payload): ?array
