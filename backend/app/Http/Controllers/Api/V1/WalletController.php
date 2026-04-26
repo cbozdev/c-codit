@@ -45,19 +45,23 @@ class WalletController extends Controller
 
         $gateway = $this->payments->for(PaymentProvider::from((string) $request->input('provider')));
 
-        $payment = $gateway->initiate(
-            user: $user,
-            amount: $walletAmount,
-            idempotencyKey: $providerKey,
-            options: [
-                'pay_currency'      => $request->input('pay_currency'),
-                'original_amount'   => $inputAmount,
-                'original_currency' => $currency,
-                'deposit_method'    => $request->input('deposit_method'),
-                'description'       => 'Wallet funding',
-                'purpose'           => 'wallet_fund',
-            ],
-        );
+        try {
+            $payment = $gateway->initiate(
+                user: $user,
+                amount: $walletAmount,
+                idempotencyKey: $providerKey,
+                options: [
+                    'pay_currency'      => $request->input('pay_currency'),
+                    'original_amount'   => $inputAmount,
+                    'original_currency' => $currency,
+                    'deposit_method'    => $request->input('deposit_method'),
+                    'description'       => 'Wallet funding',
+                    'purpose'           => 'wallet_fund',
+                ],
+            );
+        } catch (\RuntimeException $e) {
+            return ApiResponse::fail($e->getMessage(), null, 422);
+        }
 
         return ApiResponse::ok([
             'payment_id'   => $payment->public_id,

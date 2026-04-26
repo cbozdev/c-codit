@@ -14,6 +14,32 @@ class FiveSimService implements SmsNumberProvider
 
     private string $baseUrl = 'https://5sim.net/v1';
 
+    // 5sim uses its own country slug conventions — map our frontend values to theirs
+    private const COUNTRY_MAP = [
+        'uk'           => 'england',
+        'southafrica'  => 'southafrica',
+        'usa'          => 'usa',
+        'uae'          => 'uae',
+    ];
+
+    // Product aliases — 5sim slugs sometimes differ from common names
+    private const PRODUCT_MAP = [
+        'any' => null, // 5sim has no "any" product; caught below with a clear error
+    ];
+
+    private function normalizeCountry(string $country): string
+    {
+        $c = strtolower(trim($country));
+        return self::COUNTRY_MAP[$c] ?? $c;
+    }
+
+    private function normalizeProduct(string $service): string|null
+    {
+        $s = strtolower(trim($service));
+        // Returns null if product has no 5sim equivalent
+        return array_key_exists($s, self::PRODUCT_MAP) ? self::PRODUCT_MAP[$s] : $s;
+    }
+
     private function client()
     {
         return Http::baseUrl($this->baseUrl)
@@ -26,24 +52,36 @@ class FiveSimService implements SmsNumberProvider
 
     public function getPrice(string $service, string $country): ?Money
     {
+        $product    = $this->normalizeProduct($service);
+        $countryKey = $this->normalizeCountry($country);
+
+        if ($product === null) {
+            Log::warning('5sim.getPrice.unsupported_product', ['service' => $service]);
+            return null;
+        }
+
         try {
-            $res  = $this->client()->get('/guest/prices', [
-                'country' => strtolower($country),
-                'product' => strtolower($service),
+            $res = $this->client()->get('/guest/prices', [
+                'country' => $countryKey,
+                'product' => $product,
             ]);
 
             if (! $res->successful()) {
-                Log::warning('5sim.getPrice.failed', ['status' => $res->status(), 'body' => $res->body()]);
+                Log::warning('5sim.getPrice.failed', [
+                    'status'  => $res->status(),
+                    'body'    => $res->body(),
+                    'product' => $product,
+                    'country' => $countryKey,
+                    'raw_service' => $service,
+                    'raw_country' => $country,
+                ]);
                 return null;
             }
 
             $body = $res->json();
 
             $priceRub = null;
-            $countryKey = strtolower($country);
-            $serviceKey = strtolower($service);
-
-            foreach (($body[$countryKey][$serviceKey] ?? []) as $operator => $info) {
+            foreach (($body[$countryKey][$product] ?? []) as $operator => $info) {
                 if (($info['count'] ?? 0) > 0) {
                     $priceRub = (float) ($info['cost'] ?? 0);
                     break;
@@ -57,7 +95,11 @@ class FiveSimService implements SmsNumberProvider
 
             return Money::fromDecimal(sprintf('%.4f', max($usd, 0.01)), 'USD');
         } catch (\Throwable $e) {
-            Log::warning('5sim.getPrice.exception', ['error' => $e->getMessage()]);
+            Log::warning('5sim.getPrice.exception', [
+                'error'   => $e->getMessage(),
+                'product' => $product,
+                'country' => $countryKey,
+            ]);
             return null;
         }
     }
@@ -69,16 +111,22 @@ class FiveSimService implements SmsNumberProvider
 
     public function purchase(string $service, string $country): array
     {
-        $countryLower = strtolower($country);
-        $serviceLower = strtolower($service);
+        $product    = $this->normalizeProduct($service);
+        $countryKey = $this->normalizeCountry($country);
 
-        Log::info('5sim.purchase.attempt', ['service' => $serviceLower, 'country' => $countryLower]);
+        if ($product === null) {
+            throw new ServiceUnavailableException('Please select a specific service — "Any" is not supported.');
+        }
 
-        $res = $this->client()->get("/user/buy/activation/{$countryLower}/any/{$serviceLower}");
+        Log::info('5sim.purchase.attempt', ['product' => $product, 'country' => $countryKey]);
+
+        $res = $this->client()->get("/user/buy/activation/{$countryKey}/any/{$product}");
 
         Log::info('5sim.purchase.response', [
-            'status' => $res->status(),
-            'body'   => substr($res->body(), 0, 500),
+            'status'  => $res->status(),
+            'body'    => substr($res->body(), 0, 500),
+            'product' => $product,
+            'country' => $countryKey,
         ]);
 
         if ($res->status() === 400) {
@@ -130,12 +178,9 @@ class FiveSimService implements SmsNumberProvider
 
             $body = (array) $res->json();
 
-            // Check sms array
             foreach (($body['sms'] ?? []) as $sms) {
                 if (! empty($sms['code'])) return (string) $sms['code'];
-                // Some services put the code in 'text' field
                 if (! empty($sms['text'])) {
-                    // Try to extract numeric code from text
                     preg_match('/\b(\d{4,8})\b/', (string) $sms['text'], $m);
                     if (! empty($m[1])) return $m[1];
                 }
