@@ -925,7 +925,7 @@ function AppSettingsTab() {
       method: 'POST',
       url: '/admin/settings',
       data: {
-        logo_url:      preview ?? logoUrl || null,
+        logo_url:      (preview ?? logoUrl) || null,
         app_name:      appName || null,
         support_email: support || null,
       },
