@@ -1,13 +1,20 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { apiCall, newIdempotencyKey } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 import type { FundingResponse, Wallet } from '@/types/api';
-import { CreditCard, Bitcoin, ArrowDownToLine, ExternalLink, ChevronDown } from 'lucide-react';
+import { CreditCard, Bitcoin, ArrowDownToLine, ExternalLink, ChevronDown, Landmark, Smartphone } from 'lucide-react';
 import { clsx } from 'clsx';
 
 type Provider = 'flutterwave' | 'nowpayments';
+type DepositMethod = 'banktransfer' | 'ussd' | 'card';
+
+const NGN_DEPOSIT_METHODS: { value: DepositMethod; label: string; sub: string; Icon: React.ElementType }[] = [
+  { value: 'banktransfer', label: 'Bank Transfer', sub: 'Pay via internet banking',  Icon: Landmark    },
+  { value: 'ussd',         label: 'USSD',          sub: 'Dial code — works offline', Icon: Smartphone  },
+  { value: 'card',         label: 'Card',           sub: 'Debit or credit card',      Icon: CreditCard  },
+];
 
 const CURRENCIES = [
   { value: 'NGN', label: '🇳🇬 Nigerian Naira (NGN)', symbol: '₦', quick: [500, 1000, 2000, 5000, 10000, 20000], min: 100 },
@@ -36,7 +43,8 @@ export default function WalletPage() {
   const [currency, setCurrency]       = useState('NGN');
   const [amount, setAmount]           = useState('1000');
   const [provider, setProvider]       = useState<Provider>('flutterwave');
-  const [payCurrency, setPayCurrency] = useState('usdttrc20');
+  const [payCurrency, setPayCurrency]       = useState('usdttrc20');
+  const [depositMethod, setDepositMethod]   = useState<DepositMethod>('banktransfer');
 
   const wallet = useQuery({
     queryKey: ['wallet'],
@@ -52,7 +60,10 @@ export default function WalletPage() {
         amount:   parseFloat(amount),
         currency: provider === 'nowpayments' ? 'USD' : currency,
         provider,
-        ...(provider === 'nowpayments' ? { pay_currency: payCurrency } : {}),
+        ...(provider === 'nowpayments'
+          ? { pay_currency: payCurrency }
+          : currency === 'NGN' ? { deposit_method: depositMethod } : {}
+        ),
       },
     }),
     onSuccess(data) {
@@ -184,8 +195,43 @@ export default function WalletPage() {
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
               </div>
               {currency === 'NGN' && (
-                <div className="mt-2 flex items-center gap-2 text-xs text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-900 rounded-lg px-3 py-2">
-                  🇳🇬 Nigerian bank transfer, USSD and mobile money will be available at checkout.
+                <div className="mt-3 space-y-2">
+                  <label className="label">Deposit method</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {NGN_DEPOSIT_METHODS.map(({ value, label, sub, Icon }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setDepositMethod(value)}
+                        className={clsx(
+                          'flex flex-col items-center gap-1.5 rounded-xl border-2 px-2 py-3 text-center transition',
+                          depositMethod === value
+                            ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30 shadow-glow'
+                            : 'border-ink-100 hover:border-ink-300 dark:border-ink-700 dark:hover:border-ink-500',
+                        )}
+                      >
+                        <Icon className={clsx(
+                          'h-5 w-5',
+                          depositMethod === value ? 'text-brand-600 dark:text-brand-400' : 'text-ink-500 dark:text-ink-400',
+                        )} />
+                        <span className={clsx(
+                          'text-xs font-semibold',
+                          depositMethod === value ? 'text-brand-700 dark:text-brand-300' : 'text-ink-700 dark:text-ink-300',
+                        )}>{label}</span>
+                        <span className="text-[10px] text-ink-500 dark:text-ink-400 leading-tight">{sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {depositMethod === 'banktransfer' && (
+                    <div className="flex items-start gap-2 text-xs text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-900 rounded-lg px-3 py-2">
+                      🏦 A virtual account number will be generated for your transfer at checkout.
+                    </div>
+                  )}
+                  {depositMethod === 'ussd' && (
+                    <div className="flex items-start gap-2 text-xs text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-900 rounded-lg px-3 py-2">
+                      📲 You'll get a USSD code to dial on your phone — no internet required.
+                    </div>
+                  )}
                 </div>
               )}
             </div>

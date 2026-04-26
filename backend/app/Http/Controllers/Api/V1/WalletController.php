@@ -53,6 +53,7 @@ class WalletController extends Controller
                 'pay_currency'      => $request->input('pay_currency'),
                 'original_amount'   => $inputAmount,
                 'original_currency' => $currency,
+                'deposit_method'    => $request->input('deposit_method'),
                 'description'       => 'Wallet funding',
                 'purpose'           => 'wallet_fund',
             ],

@@ -25,11 +25,22 @@ class FlutterwaveService implements PaymentGateway
 
         $txRef = 'ccd-'.strtolower((string) Str::ulid());
 
+        // Charge the user in their original currency (e.g. NGN), not the USD wallet amount
+        $chargeAmount   = $options['original_amount']   ?? $amount->toDecimal();
+        $chargeCurrency = strtoupper((string) ($options['original_currency'] ?? $amount->currency));
+
+        $paymentOptions = match ($options['deposit_method'] ?? null) {
+            'banktransfer' => 'banktransfer',
+            'ussd'         => 'ussd',
+            'card'         => 'card,credit',
+            default        => 'card,banktransfer,ussd,credit',
+        };
+
         $payload = [
             'tx_ref'          => $txRef,
-            'amount'          => $amount->toDecimal(),
-            'currency'        => $amount->currency,
-            'payment_options' => 'card,banktransfer,ussd,credit',
+            'amount'          => $chargeAmount,
+            'currency'        => $chargeCurrency,
+            'payment_options' => $paymentOptions,
             'redirect_url'    => rtrim((string) config('app.frontend_url'), '/').'/wallet/confirm',
             'customer' => [
                 'email'       => $user->email,
