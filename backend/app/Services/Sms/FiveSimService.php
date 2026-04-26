@@ -115,19 +115,11 @@ class FiveSimService implements SmsNumberProvider
 
         try {
             $res = $this->client()->get('/guest/prices', ['product' => $product]);
-            if (!$res->successful()) {
-                Log::warning('5sim.getCountryPrices.http_error', [
-                    'status'  => $res->status(),
-                    'product' => $product,
-                    'body'    => substr($res->body(), 0, 300),
-                ]);
-                return [];
-            }
+            if (!$res->successful()) return [];
             $raw = $res->json() ?? [];
-            // 5sim wraps the response under the product name when filtering by product
+            // 5sim wraps the bulk response under the product key: {product: {country: {operator: {cost,count}}}}
             $data = is_array($raw[$product] ?? null) ? $raw[$product] : $raw;
-        } catch (\Throwable $e) {
-            Log::warning('5sim.getCountryPrices.exception', ['error' => $e->getMessage(), 'product' => $product]);
+        } catch (\Throwable) {
             return [];
         }
 
@@ -135,7 +127,6 @@ class FiveSimService implements SmsNumberProvider
         $results = [];
 
         foreach ($data as $country => $operators) {
-            // $operators = {"any": {"cost": x, "count": y}, "virtual1": {...}}
             $bestCost  = null;
             $totalCount = 0;
 
