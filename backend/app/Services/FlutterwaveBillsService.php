@@ -41,11 +41,23 @@ class FlutterwaveBillsService
 
         if ($res->failed()) {
             $msg = $res->json('message') ?? $res->json('error') ?? 'HTTP ' . $res->status();
+            Log::error('flutterwave_bills.http_error', [
+                'path'   => $path,
+                'status' => $res->status(),
+                'body'   => $res->json(),
+                'sent'   => $data,
+            ]);
             throw new RuntimeException('Flutterwave Bills API error: ' . $msg);
         }
 
         $body = $res->json();
         if (($body['status'] ?? '') !== 'success') {
+            Log::error('flutterwave_bills.api_failure', [
+                'path'   => $path,
+                'status' => $res->status(),
+                'body'   => $body,
+                'sent'   => $data,
+            ]);
             throw new RuntimeException('Flutterwave Bills failed: ' . ($body['message'] ?? 'Unknown error'));
         }
 
