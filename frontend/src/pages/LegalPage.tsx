@@ -22,7 +22,7 @@ You are responsible for maintaining the confidentiality of your account credenti
 - Refunds are issued to your C-codit wallet, not to original payment methods, except where required by law.
 
 ## 5. Services
-- **Virtual Numbers**: Numbers are disposable and provided by third-party SMS providers (5sim, SMS-Activate). We do not guarantee delivery of SMS codes.
+- **Virtual Numbers**: Numbers are disposable and provided by third-party SMS providers (5sim, SMS-Man). We do not guarantee delivery of SMS codes.
 - **Utility Bills**: Bill payments are processed via Flutterwave's Bills API. Processing times depend on the biller.
 - **Gift Cards**: Gift cards are delivered digitally. All sales are final once the code is delivered.
 - **eSIM**: Coming soon. Terms will be updated when available.
@@ -61,7 +61,7 @@ For questions about these Terms, email **legal@c-codit.com**.
 ## 3. Data Sharing
 We do not sell your personal data. We share limited data with:
 - **Payment processors** (Flutterwave, NowPayments): For payment processing.
-- **SMS providers** (5sim, SMS-Activate): Phone number lookup only.
+- **SMS providers** (5sim, SMS-Man): Phone number lookup only.
 - **Infrastructure providers** (Render, AWS): Hosting and storage.
 - **Law enforcement**: When required by valid legal process.
 

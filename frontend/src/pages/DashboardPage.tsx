@@ -58,7 +58,7 @@ export default function DashboardPage() {
       {/* Quick actions */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { to: '/services', icon: Smartphone, title: 'Virtual Numbers',  desc: 'Disposable numbers via 5sim & SMS-Activate.' },
+          { to: '/services', icon: Smartphone, title: 'Virtual Numbers',  desc: 'Disposable numbers via 5sim & SMS-Man.' },
           { to: '/wallet',   icon: ArrowDownToLine, title: 'Top up wallet', desc: 'Card via Flutterwave or crypto.' },
           { to: '/services', icon: Gift,        title: 'Gift Cards',      desc: 'Amazon, Google Play, Netflix and more.' },
           { to: '/services', icon: Phone,        title: 'Utility Bills',  desc: 'Airtime, data, electricity, TV.' },

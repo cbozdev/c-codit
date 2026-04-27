@@ -3,7 +3,7 @@ import { Logo } from '@/components/Logo';
 import { ArrowRight, Shield, Smartphone, CreditCard, Globe, Bitcoin, Receipt, Zap } from 'lucide-react';
 
 const FEATURES = [
-  { icon: Smartphone, title: 'Virtual Numbers',     desc: 'Disposable numbers from 5sim & sms-activate, billed to one wallet.' },
+  { icon: Smartphone, title: 'Virtual Numbers',     desc: 'Disposable numbers from 5sim & SMS-Man, billed to one wallet.' },
   { icon: Globe,      title: 'eSIM',                desc: 'Travel-ready data plans for 200+ countries.' },
   { icon: Receipt,    title: 'Utility Bills',       desc: 'Airtime, data, and bills via Flutterwave — paid in seconds.' },
   { icon: CreditCard, title: 'Gift Cards',          desc: 'Top-up codes for the platforms you actually use.' },
