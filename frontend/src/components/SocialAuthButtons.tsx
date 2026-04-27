@@ -88,7 +88,10 @@ export function SocialAuthButtons({ redirectTo = '/dashboard' }: Props) {
     }
   }
 
-  const appleEnabled = !!import.meta.env.VITE_APPLE_CLIENT_ID;
+  const googleEnabled = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const appleEnabled  = !!import.meta.env.VITE_APPLE_CLIENT_ID;
+
+  if (!googleEnabled && !appleEnabled) return null;
 
   return (
     <div className="space-y-3">
@@ -98,7 +101,7 @@ export function SocialAuthButtons({ redirectTo = '/dashboard' }: Props) {
         <div className="flex-1 border-t border-ink-200" />
       </div>
 
-      <button
+      {googleEnabled && <button
         type="button"
         disabled={loading}
         onClick={() => loginWithGoogle()}
@@ -111,7 +114,7 @@ export function SocialAuthButtons({ redirectTo = '/dashboard' }: Props) {
           <path d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" fill="#1976D2"/>
         </svg>
         Continue with Google
-      </button>
+      </button>}
 
       {appleEnabled && (
         <button

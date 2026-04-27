@@ -17,28 +17,34 @@ const queryClient = new QueryClient({
   },
 });
 
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+const inner = (
+  <QueryClientProvider client={queryClient}>
+    <BrowserRouter>
+      <App />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: '#1f2330',
+            color: '#fff',
+            fontSize: '14px',
+            borderRadius: '12px',
+            padding: '12px 16px',
+          },
+          success: { iconTheme: { primary: '#3ad591', secondary: '#0c4e35' } },
+          error:   { iconTheme: { primary: '#fb7185', secondary: '#4c0519' } },
+        }}
+      />
+    </BrowserRouter>
+  </QueryClientProvider>
+);
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''}>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            style: {
-              background: '#1f2330',
-              color: '#fff',
-              fontSize: '14px',
-              borderRadius: '12px',
-              padding: '12px 16px',
-            },
-            success: { iconTheme: { primary: '#3ad591', secondary: '#0c4e35' } },
-            error:   { iconTheme: { primary: '#fb7185', secondary: '#4c0519' } },
-          }}
-        />
-      </BrowserRouter>
-    </QueryClientProvider>
-    </GoogleOAuthProvider>
+    {googleClientId
+      ? <GoogleOAuthProvider clientId={googleClientId}>{inner}</GoogleOAuthProvider>
+      : inner}
   </React.StrictMode>
 );
