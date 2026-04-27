@@ -5,8 +5,6 @@ namespace App\Notifications;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\URL;
 
 class VerifyEmailNotification extends VerifyEmail
 {
@@ -17,14 +15,10 @@ class VerifyEmailNotification extends VerifyEmail
 
     protected function verificationUrl($notifiable): string
     {
-        $temporarySignedUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            Carbon::now()->addMinutes(60),
-            ['id' => $notifiable->getKey(), 'hash' => sha1($notifiable->getEmailForVerification())]
-        );
-        // Point the URL at the frontend verification page, passing the API url as a query param.
         $frontend = rtrim((string) config('app.frontend_url'), '/');
-        return $frontend.'/verify-email?link='.urlencode($temporarySignedUrl);
+        $id   = $notifiable->getKey();
+        $hash = sha1($notifiable->getEmailForVerification());
+        return $frontend."/verify-email?id={$id}&hash={$hash}";
     }
 
     public function toMail($notifiable): MailMessage

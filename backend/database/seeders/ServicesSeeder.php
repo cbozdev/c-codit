@@ -27,6 +27,14 @@ class ServicesSeeder extends Seeder
                 'description' => 'Disposable phone numbers via SMS-Man. 150+ countries.',
                 'is_active' => true,
             ],
+            [
+                'code'     => 'vnum_smsactivate3',
+                'name'     => 'Virtual Numbers — Server 3',
+                'provider' => 'smsactivate',
+                'category' => 'virtual_number',
+                'description' => 'Disposable phone numbers via SMS-Activate. 190+ countries.',
+                'is_active' => false,
+            ],
 
             // ── eSIM ─────────────────────────────────────────────────────
             [

@@ -2,30 +2,38 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
+import { api } from '@/lib/api';
 import axios from 'axios';
 
 export default function VerifyEmailPage() {
   const [params] = useSearchParams();
-  const link = params.get('link');
+  const id   = params.get('id');
+  const hash = params.get('hash');
+  const link = params.get('link'); // legacy: old emails embed the full API URL
   const [state, setState] = useState<'pending' | 'success' | 'failed'>('pending');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    if (!link) {
+    if (!id && !link) {
       setState('failed');
       setMessage('Missing verification link.');
       return;
     }
-    axios.get(link)
+
+    const request = (id && hash)
+      ? api.get(`auth/verify-email/${id}/${hash}`)
+      : axios.get(link!);
+
+    request
       .then((res) => {
         setState('success');
         setMessage(res.data?.message ?? 'Email verified.');
       })
       .catch((err) => {
         setState('failed');
-        setMessage(err.response?.data?.message ?? 'Verification failed.');
+        setMessage(err.response?.data?.message ?? 'Verification failed. The link may have expired.');
       });
-  }, [link]);
+  }, []);
 
   return (
     <div className="min-h-screen grid place-items-center bg-aurora p-6">
