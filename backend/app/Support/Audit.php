@@ -25,7 +25,7 @@ class Audit
             'subject_type' => $subject?->getMorphClass(),
             'subject_id'   => $subject?->getKey(),
             'ip_address'   => $req?->ip(),
-            'user_agent'   => $req ? substr((string) $req->userAgent(), 0, 255) : null,
+            'user_agent'   => $req ? (string) $req->userAgent() : null,
             'context'      => $context,
         ]);
     }
