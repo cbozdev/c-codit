@@ -23,18 +23,57 @@ declare global {
   }
 }
 
-type Props = {
-  redirectTo?: string;
-};
+// Isolated component so useGoogleLogin hook only runs inside GoogleOAuthProvider
+function GoogleButton({ loading, redirectTo }: { loading: boolean; redirectTo: string }) {
+  const { socialLogin } = useAuth();
+  const navigate = useNavigate();
+
+  const login = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      try {
+        await socialLogin('google', { access_token: tokenResponse.access_token });
+        toast.success('Signed in with Google!');
+        navigate(redirectTo, { replace: true });
+      } catch (err) {
+        toast.error((err as Error).message || 'Google sign-in failed. Please try again.');
+      }
+    },
+    onError: () => toast.error('Google sign-in was cancelled or failed.'),
+  });
+
+  return (
+    <button
+      type="button"
+      disabled={loading}
+      onClick={() => login()}
+      className="flex w-full items-center justify-center gap-3 rounded-xl border border-ink-200 bg-white px-4 py-2.5 text-sm font-medium text-ink-800 shadow-sm transition hover:bg-ink-50 disabled:opacity-50"
+    >
+      <svg width="18" height="18" viewBox="0 0 48 48" fill="none">
+        <path d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" fill="#FFC107"/>
+        <path d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" fill="#FF3D00"/>
+        <path d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0124 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" fill="#4CAF50"/>
+        <path d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" fill="#1976D2"/>
+      </svg>
+      Continue with Google
+    </button>
+  );
+}
+
+type Props = { redirectTo?: string };
 
 export function SocialAuthButtons({ redirectTo = '/dashboard' }: Props) {
-  const { socialLogin, loading } = useAuth();
+  const { loading } = useAuth();
   const navigate = useNavigate();
   const appleScriptLoaded = useRef(false);
 
+  const googleEnabled = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const appleEnabled  = !!import.meta.env.VITE_APPLE_CLIENT_ID;
+
+  if (!googleEnabled && !appleEnabled) return null;
+
   // Load Apple Sign In JS SDK once
   useEffect(() => {
-    if (appleScriptLoaded.current || !import.meta.env.VITE_APPLE_CLIENT_ID) return;
+    if (!appleEnabled || appleScriptLoaded.current) return;
     appleScriptLoaded.current = true;
     const script = document.createElement('script');
     script.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
@@ -48,22 +87,7 @@ export function SocialAuthButtons({ redirectTo = '/dashboard' }: Props) {
       });
     };
     document.head.appendChild(script);
-  }, []);
-
-  const loginWithGoogle = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      try {
-        await socialLogin('google', { access_token: tokenResponse.access_token });
-        toast.success('Signed in with Google!');
-        navigate(redirectTo, { replace: true });
-      } catch (err) {
-        toast.error((err as Error).message || 'Google sign-in failed. Please try again.');
-      }
-    },
-    onError: () => {
-      toast.error('Google sign-in was cancelled or failed.');
-    },
-  });
+  }, [appleEnabled]);
 
   async function loginWithApple() {
     if (!window.AppleID) {
@@ -73,25 +97,21 @@ export function SocialAuthButtons({ redirectTo = '/dashboard' }: Props) {
     try {
       const response = await window.AppleID.auth.signIn();
       const idToken  = response.authorization.id_token;
-      const appleUser = response.user;
-      const firstName = appleUser?.name?.firstName ?? '';
-      const lastName  = appleUser?.name?.lastName  ?? '';
+      const firstName = response.user?.name?.firstName ?? '';
+      const lastName  = response.user?.name?.lastName  ?? '';
       const name      = [firstName, lastName].filter(Boolean).join(' ');
 
-      await socialLogin('apple', { identity_token: idToken, ...(name ? { name } : {}) });
+      await useAuth.getState().socialLogin('apple', {
+        identity_token: idToken,
+        ...(name ? { name } : {}),
+      });
       toast.success('Signed in with Apple!');
       navigate(redirectTo, { replace: true });
     } catch (err: unknown) {
-      // Apple throws when user cancels — don't show an error in that case
       if (err && typeof err === 'object' && 'error' in err && (err as { error: string }).error === 'popup_closed_by_user') return;
       toast.error((err as Error).message || 'Apple sign-in failed. Please try again.');
     }
   }
-
-  const googleEnabled = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  const appleEnabled  = !!import.meta.env.VITE_APPLE_CLIENT_ID;
-
-  if (!googleEnabled && !appleEnabled) return null;
 
   return (
     <div className="space-y-3">
@@ -101,20 +121,7 @@ export function SocialAuthButtons({ redirectTo = '/dashboard' }: Props) {
         <div className="flex-1 border-t border-ink-200" />
       </div>
 
-      {googleEnabled && <button
-        type="button"
-        disabled={loading}
-        onClick={() => loginWithGoogle()}
-        className="flex w-full items-center justify-center gap-3 rounded-xl border border-ink-200 bg-white px-4 py-2.5 text-sm font-medium text-ink-800 shadow-sm transition hover:bg-ink-50 disabled:opacity-50"
-      >
-        <svg width="18" height="18" viewBox="0 0 48 48" fill="none">
-          <path d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" fill="#FFC107"/>
-          <path d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" fill="#FF3D00"/>
-          <path d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0124 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" fill="#4CAF50"/>
-          <path d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" fill="#1976D2"/>
-        </svg>
-        Continue with Google
-      </button>}
+      {googleEnabled && <GoogleButton loading={loading} redirectTo={redirectTo} />}
 
       {appleEnabled && (
         <button
