@@ -40,6 +40,23 @@ return [
         'base_url' => env('SMSACTIVATE_BASE_URL', 'https://api.sms-activate.org/stubs/handler_api.php'),
     ],
 
+    'smsman' => [
+        'api_key' => env('SMSMAN_API_KEY'),
+    ],
+
+    'google' => [
+        'client_id'     => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+    ],
+
+    'apple' => [
+        'client_id' => env('APPLE_CLIENT_ID'), // Apple Service ID e.g. com.yourcompany.app
+    ],
+
+    'resend' => [
+        'api_key' => env('RESEND_API_KEY', env('MAIL_PASSWORD')),
+    ],
+
     'airalo' => [
         'client_id'     => env('AIRALO_CLIENT_ID'),
         'client_secret' => env('AIRALO_CLIENT_SECRET'),

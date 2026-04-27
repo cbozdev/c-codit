@@ -10,6 +10,7 @@ use App\Services\Payment\PaymentOrchestrator;
 use App\Services\ServicePurchaseService;
 use App\Services\Sms\FiveSimService;
 use App\Services\Sms\SmsActivateService;
+use App\Services\Sms\SmsManService;
 use App\Services\Wallet\WalletService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -26,7 +27,7 @@ class AppServiceProvider extends ServiceProvider
         foreach ([
             LedgerService::class, ChartOfAccounts::class, WalletService::class,
             FlutterwaveService::class, NowPaymentsService::class, PaymentOrchestrator::class,
-            FiveSimService::class, SmsActivateService::class,
+            FiveSimService::class, SmsActivateService::class, SmsManService::class,
             \App\Services\FlutterwaveBillsService::class,
             \App\Services\GiftCardService::class,
             \App\Services\Esim\AiraloService::class,

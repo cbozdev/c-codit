@@ -75,7 +75,13 @@ class ServiceController extends Controller
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
             return ApiResponse::fail('Provider is temporarily unreachable. Please try again in a moment.', null, 503);
         } catch (\RuntimeException $e) {
-            return ApiResponse::fail($e->getMessage(), null, 422);
+            // Log the real provider error; show a generic message to users
+            \Log::error('service.purchase.runtime_error', [
+                'service'   => $request->input('service_code'),
+                'error'     => $e->getMessage(),
+                'user'      => $request->user()->id,
+            ]);
+            return ApiResponse::fail('Service is temporarily unavailable. Your wallet has been refunded. Please try again later.', null, 503);
         }
 
         $order->loadMissing('service');
@@ -139,7 +145,7 @@ class ServiceController extends Controller
     public function virtualNumberPrices(Request $request)
     {
         $request->validate([
-            'provider' => ['required', 'in:5sim,smsactivate'],
+            'provider' => ['required', 'in:5sim,smsactivate,smsman'],
             'service'  => ['required', 'string', 'max:40'],
         ]);
 
@@ -150,6 +156,9 @@ class ServiceController extends Controller
             if ($provider === '5sim') {
                 $raw     = app(\App\Services\Sms\FiveSimService::class)->getCountryPrices($service);
                 $display = self::fiveSimDisplayMap();
+            } elseif ($provider === 'smsman') {
+                $raw     = app(\App\Services\Sms\SmsManService::class)->getCountryPrices($service);
+                $display = self::smsManDisplayMap();
             } else {
                 $raw     = app(\App\Services\Sms\SmsActivateService::class)->getCountryPrices($service);
                 $display = self::smsActivateDisplayMap();
@@ -418,6 +427,73 @@ class ServiceController extends Controller
         ];
     }
 
+    // SMS-Man country IDs — verify against your SMS-Man dashboard if counts differ
+    private static function smsManDisplayMap(): array
+    {
+        return [
+            '1'  => ['label' => 'Russia',             'flag' => '🇷🇺'],
+            '2'  => ['label' => 'Ukraine',            'flag' => '🇺🇦'],
+            '3'  => ['label' => 'Kazakhstan',         'flag' => '🇰🇿'],
+            '4'  => ['label' => 'China',              'flag' => '🇨🇳'],
+            '5'  => ['label' => 'Philippines',        'flag' => '🇵🇭'],
+            '6'  => ['label' => 'Myanmar',            'flag' => '🇲🇲'],
+            '7'  => ['label' => 'Indonesia',          'flag' => '🇮🇩'],
+            '8'  => ['label' => 'Malaysia',           'flag' => '🇲🇾'],
+            '9'  => ['label' => 'Kenya',              'flag' => '🇰🇪'],
+            '10' => ['label' => 'Tanzania',           'flag' => '🇹🇿'],
+            '11' => ['label' => 'Vietnam',            'flag' => '🇻🇳'],
+            '12' => ['label' => 'Kyrgyzstan',         'flag' => '🇰🇬'],
+            '13' => ['label' => 'United States',      'flag' => '🇺🇸'],
+            '14' => ['label' => 'United Kingdom',     'flag' => '🇬🇧'],
+            '15' => ['label' => 'Thailand',           'flag' => '🇹🇭'],
+            '16' => ['label' => 'Saudi Arabia',       'flag' => '🇸🇦'],
+            '17' => ['label' => 'Mexico',             'flag' => '🇲🇽'],
+            '18' => ['label' => 'Nigeria',            'flag' => '🇳🇬'],
+            '19' => ['label' => 'Egypt',              'flag' => '🇪🇬'],
+            '20' => ['label' => 'Bangladesh',         'flag' => '🇧🇩'],
+            '21' => ['label' => 'Ghana',              'flag' => '🇬🇭'],
+            '22' => ['label' => 'Colombia',           'flag' => '🇨🇴'],
+            '23' => ['label' => 'Brazil',             'flag' => '🇧🇷'],
+            '24' => ['label' => 'Argentina',          'flag' => '🇦🇷'],
+            '25' => ['label' => 'India',              'flag' => '🇮🇳'],
+            '26' => ['label' => 'Pakistan',           'flag' => '🇵🇰'],
+            '27' => ['label' => 'Cambodia',           'flag' => '🇰🇭'],
+            '28' => ['label' => 'Ethiopia',           'flag' => '🇪🇹'],
+            '29' => ['label' => 'Israel',             'flag' => '🇮🇱'],
+            '30' => ['label' => 'Iran',               'flag' => '🇮🇷'],
+            '31' => ['label' => 'UAE',                'flag' => '🇦🇪'],
+            '32' => ['label' => 'Turkey',             'flag' => '🇹🇷'],
+            '33' => ['label' => 'Germany',            'flag' => '🇩🇪'],
+            '34' => ['label' => 'France',             'flag' => '🇫🇷'],
+            '35' => ['label' => 'Sweden',             'flag' => '🇸🇪'],
+            '36' => ['label' => 'Netherlands',        'flag' => '🇳🇱'],
+            '37' => ['label' => 'Poland',             'flag' => '🇵🇱'],
+            '38' => ['label' => 'Romania',            'flag' => '🇷🇴'],
+            '39' => ['label' => 'Belarus',            'flag' => '🇧🇾'],
+            '40' => ['label' => 'Moldova',            'flag' => '🇲🇩'],
+            '41' => ['label' => 'Azerbaijan',         'flag' => '🇦🇿'],
+            '42' => ['label' => 'Uzbekistan',         'flag' => '🇺🇿'],
+            '43' => ['label' => 'Tajikistan',         'flag' => '🇹🇯'],
+            '44' => ['label' => 'Canada',             'flag' => '🇨🇦'],
+            '45' => ['label' => 'South Africa',       'flag' => '🇿🇦'],
+            '46' => ['label' => 'Iraq',               'flag' => '🇮🇶'],
+            '47' => ['label' => 'Spain',              'flag' => '🇪🇸'],
+            '48' => ['label' => 'Italy',              'flag' => '🇮🇹'],
+            '49' => ['label' => 'Portugal',           'flag' => '🇵🇹'],
+            '50' => ['label' => 'Morocco',            'flag' => '🇲🇦'],
+            '51' => ['label' => 'Hong Kong',          'flag' => '🇭🇰'],
+            '52' => ['label' => 'Sri Lanka',          'flag' => '🇱🇰'],
+            '53' => ['label' => 'Georgia',            'flag' => '🇬🇪'],
+            '54' => ['label' => 'Armenia',            'flag' => '🇦🇲'],
+            '55' => ['label' => 'Mongolia',           'flag' => '🇲🇳'],
+            '56' => ['label' => 'Nepal',              'flag' => '🇳🇵'],
+            '57' => ['label' => 'Venezuela',          'flag' => '🇻🇪'],
+            '58' => ['label' => 'Peru',               'flag' => '🇵🇪'],
+            '59' => ['label' => 'Chile',              'flag' => '🇨🇱'],
+            '60' => ['label' => 'Ecuador',            'flag' => '🇪🇨'],
+        ];
+    }
+
     public function orders(Request $request)
     {
         $request->validate(['per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
@@ -497,6 +573,8 @@ class ServiceController extends Controller
                     app(\App\Services\Sms\FiveSimService::class)->cancel($order->provider_order_id);
                 } elseif ($provider === 'smsactivate') {
                     app(\App\Services\Sms\SmsActivateService::class)->cancel($order->provider_order_id);
+                } elseif ($provider === 'smsman') {
+                    app(\App\Services\Sms\SmsManService::class)->cancel($order->provider_order_id);
                 }
             }
         } catch (\Throwable $e) {
@@ -565,6 +643,8 @@ class ServiceController extends Controller
             $provider = $order->service->provider;
             if ($provider === '5sim') {
                 $code = app(\App\Services\Sms\FiveSimService::class)->fetchCode($order->provider_order_id);
+            } elseif ($provider === 'smsman') {
+                $code = app(\App\Services\Sms\SmsManService::class)->fetchCode($order->provider_order_id);
             } elseif ($provider === 'smsactivate') {
                 $code = app(\App\Services\Sms\SmsActivateService::class)->fetchCode($order->provider_order_id);
             }

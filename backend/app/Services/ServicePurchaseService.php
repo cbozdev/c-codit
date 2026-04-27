@@ -9,6 +9,7 @@ use App\Services\Esim\AiraloService;
 use App\Services\Sms\FiveSimService;
 use App\Services\Sms\ServiceUnavailableException;
 use App\Services\Sms\SmsActivateService;
+use App\Services\Sms\SmsManService;
 use App\Services\Wallet\WalletService;
 use App\Support\Audit;
 use App\Support\Money;
@@ -35,6 +36,7 @@ class ServicePurchaseService
         private readonly WalletService $wallets,
         private readonly FiveSimService $fiveSim,
         private readonly SmsActivateService $smsActivate,
+        private readonly SmsManService $smsMan,
         private readonly FlutterwaveBillsService $flutterwaveBills,
         private readonly GiftCardService $giftCards,
         private readonly AiraloService $airalo,
@@ -57,6 +59,7 @@ class ServicePurchaseService
         return match ($service->provider) {
             '5sim'        => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->fiveSim),
             'smsactivate' => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsActivate),
+            'smsman'      => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsMan),
             'flutterwave' => $this->purchaseUtilityBill($user, $service, $request, $idempotencyKey),
             'internal'    => $this->purchaseGiftCard($user, $service, $request, $idempotencyKey),
             'airalo'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey),

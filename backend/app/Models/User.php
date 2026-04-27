@@ -22,6 +22,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'is_active', 'is_suspended', 'suspension_reason',
         'last_login_at', 'last_login_ip',
         'terms_accepted_at', 'terms_version',
+        'google_id', 'apple_id',
     ];
 
     protected $hidden = ['password', 'remember_token'];

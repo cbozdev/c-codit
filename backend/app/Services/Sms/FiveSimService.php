@@ -187,16 +187,19 @@ class FiveSimService implements SmsNumberProvider
         }
 
         if ($res->status() === 401) {
-            throw new RuntimeException('5sim authentication failed. Please check your API key in Render environment variables.');
+            Log::error('5sim.purchase.auth_failed', ['product' => $product, 'country' => $countryKey]);
+            throw new RuntimeException('5sim authentication failed — check FIVESIM_API_KEY in environment variables.');
         }
 
         if (! $res->successful()) {
+            Log::error('5sim.purchase.http_error', ['status' => $res->status(), 'body' => substr($res->body(), 0, 300)]);
             throw new RuntimeException('5sim API error: HTTP ' . $res->status() . ' — ' . substr($res->body(), 0, 200));
         }
 
         $body = $res->json();
 
         if (empty($body['id']) || empty($body['phone'])) {
+            Log::error('5sim.purchase.bad_response', ['body' => $body]);
             throw new RuntimeException('5sim returned unexpected response: ' . json_encode($body));
         }
 

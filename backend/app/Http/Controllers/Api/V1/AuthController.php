@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
+use App\Mail\WelcomeMail;
 use App\Models\User;
 use App\Services\Wallet\WalletService;
 use App\Support\ApiResponse;
@@ -15,6 +16,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
@@ -42,6 +45,13 @@ class AuthController extends Controller
 
         event(new Registered($user));
         Audit::log('user.registered', $user, ['email' => $user->email], userId: $user->id);
+
+        // Welcome email — fire and forget; verification email is sent separately by Registered event
+        try {
+            Mail::to($user)->send(new WelcomeMail($user));
+        } catch (\Throwable $e) {
+            Log::warning('register.welcome_email_failed', ['error' => $e->getMessage(), 'user' => $user->id]);
+        }
 
         $token = $user->createToken(
             'web-'.($request->userAgent() ?? 'client'),

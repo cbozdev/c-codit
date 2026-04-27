@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AdminController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ServiceController;
+use App\Http\Controllers\Api\V1\SocialAuthController;
 use App\Http\Controllers\Api\V1\WalletController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +22,10 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/reset-password',   [AuthController::class, 'resetPassword']);
         Route::get('/auth/verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])
             ->name('verification.verify');
+
+        // Social auth
+        Route::post('/auth/google', [SocialAuthController::class, 'google']);
+        Route::post('/auth/apple',  [SocialAuthController::class, 'apple']);
     });
 
     // Webhooks

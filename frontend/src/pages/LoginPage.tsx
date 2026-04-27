@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/auth';
 import { Logo } from '@/components/Logo';
+import { SocialAuthButtons } from '@/components/SocialAuthButtons';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, XCircle } from 'lucide-react';
 
@@ -155,6 +156,10 @@ export default function LoginPage() {
               ) : 'Sign in'}
             </button>
           </form>
+
+          <div className="mt-6">
+            <SocialAuthButtons redirectTo={next} />
+          </div>
 
           <p className="mt-6 text-sm text-ink-600 text-center">
             Don't have an account?{' '}

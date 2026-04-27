@@ -18,6 +18,7 @@ type AuthState = {
     country?: string;
     accept_terms: boolean;
   }) => Promise<void>;
+  socialLogin: (provider: 'google' | 'apple', payload: Record<string, string>) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -66,6 +67,21 @@ export const useAuth = create<AuthState>((set, get) => ({
         method: 'POST',
         url: '/auth/register',
         data: input,
+      });
+      setToken(data.token);
+      set({ user: data.user, token: data.token });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  async socialLogin(provider, payload) {
+    set({ loading: true });
+    try {
+      const data = await apiCall<{ user: User; token: string }>({
+        method: 'POST',
+        url: `/auth/${provider}`,
+        data: payload,
       });
       setToken(data.token);
       set({ user: data.user, token: data.token });

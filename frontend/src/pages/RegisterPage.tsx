@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/auth';
 import { Logo } from '@/components/Logo';
+import { SocialAuthButtons } from '@/components/SocialAuthButtons';
 import toast from 'react-hot-toast';
 import { extractFieldErrors } from '@/lib/api';
 import { Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react';
@@ -249,6 +250,10 @@ export default function RegisterPage() {
               ) : 'Create account'}
             </button>
           </form>
+
+          <div className="mt-6">
+            <SocialAuthButtons />
+          </div>
 
           <p className="mt-6 text-sm text-ink-600 text-center">
             Already have an account?{' '}
