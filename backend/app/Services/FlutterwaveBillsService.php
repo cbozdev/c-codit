@@ -114,30 +114,28 @@ class FlutterwaveBillsService
      */
     public function getDataPlans(string $network): array
     {
-        $billerCodes = [
-            'MTN'     => 'BIL108',
-            'Airtel'  => 'BIL110',
-            'Glo'     => 'BIL111',
-            '9mobile' => 'BIL112',
+        // Search keyword per network — matched against item name/biller_name from catalog
+        $keywords = [
+            'MTN'     => 'mtn',
+            'Airtel'  => 'airtel',
+            'Glo'     => 'glo',
+            '9mobile' => '9mobile',
         ];
-
-        $billerCode = $billerCodes[$network] ?? null;
-        if (! $billerCode) return [];
+        $keyword = $keywords[$network] ?? strtolower($network);
 
         try {
             $res = Http::withToken($this->secretKey)
                 ->acceptJson()
                 ->get($this->baseUrl . '/bill-categories', [
-                    'country'     => 'NG',
-                    'type'        => 'data_bundle',
-                    'biller_code' => $billerCode,
+                    'country' => 'NG',
+                    'type'    => 'data_bundle',
                 ]);
 
             Log::channel('payments')->info('flutterwave_bills.data_plans_raw', [
                 'network'      => $network,
-                'biller_code'  => $billerCode,
+                'keyword'      => $keyword,
                 'status'       => $res->status(),
-                'first_item'   => ($res->json('data') ?? [])[0] ?? null,
+                'sample_items' => array_slice($res->json('data') ?? [], 0, 5),
                 'total_items'  => count($res->json('data') ?? []),
             ]);
 
@@ -147,9 +145,14 @@ class FlutterwaveBillsService
             $plans = [];
             foreach ($items as $item) {
                 if (empty($item['item_code'])) continue;
+                $name       = strtolower($item['short_name'] ?? $item['name'] ?? '');
+                $billerName = strtolower($item['biller_name'] ?? '');
+                if (! (str_contains($name, $keyword) || str_contains($billerName, $keyword))) {
+                    continue;
+                }
                 $plans[] = [
                     'item_code'   => $item['item_code'],
-                    'biller_code' => $item['biller_code'] ?? $billerCode,
+                    'biller_code' => $item['biller_code'] ?? '',
                     'name'        => $item['short_name'] ?? $item['name'] ?? $item['item_code'],
                     'amount'      => (int) ($item['amount'] ?? 0),
                 ];
