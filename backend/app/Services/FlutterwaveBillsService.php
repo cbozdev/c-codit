@@ -145,9 +145,8 @@ class FlutterwaveBillsService
             $plans = [];
             foreach ($items as $item) {
                 if (empty($item['item_code'])) continue;
-                $name       = strtolower($item['short_name'] ?? $item['name'] ?? '');
-                $billerName = strtolower($item['biller_name'] ?? '');
-                if (! (str_contains($name, $keyword) || str_contains($billerName, $keyword))) {
+                $name = strtolower($item['short_name'] ?? $item['name'] ?? '');
+                if (! str_contains($name, $keyword)) {
                     continue;
                 }
                 $plans[] = [
