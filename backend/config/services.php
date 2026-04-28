@@ -63,6 +63,16 @@ return [
         'base_url'      => env('AIRALO_BASE_URL', 'https://www.airalo.com/api/v2'),
     ],
 
+    'celitech' => [
+        'client_id'     => env('CELITECH_CLIENT_ID'),
+        'client_secret' => env('CELITECH_CLIENT_SECRET'),
+    ],
+
+    'bnesim' => [
+        'api_key'  => env('BNESIM_API_KEY'),
+        'base_url' => env('BNESIM_BASE_URL', 'https://api.bnesim.com/v1'),
+    ],
+
     'platform' => [
         'base_currency'      => env('PLATFORM_BASE_CURRENCY', 'USD'),
         'markup_percent'     => (float) env('PLATFORM_MARKUP_PERCENT', 15),

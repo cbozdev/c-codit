@@ -860,15 +860,19 @@ function EsimForm({ service, packageId, setPackageId, onPurchase, isPending }: {
   const [tab, setTab]         = useState<'global' | 'local'>('global');
   const [country, setCountry] = useState('US');
 
+  const provider = service.provider ?? 'airalo';
+
   const queryKey = tab === 'global'
-    ? ['esim-packages', 'global']
-    : ['esim-packages', 'local', country];
+    ? ['esim-packages', 'global', provider]
+    : ['esim-packages', 'local', country, provider];
 
   const packages = useQuery<EsimPackage[]>({
     queryKey,
     queryFn: () => apiCall<EsimPackage[]>({
       url: '/services/esim-packages',
-      params: tab === 'global' ? { type: 'global' } : { type: 'local', country },
+      params: tab === 'global'
+        ? { type: 'global', provider }
+        : { type: 'local', country, provider },
     }),
     staleTime: 5 * 60 * 1000,
     retry: 1,

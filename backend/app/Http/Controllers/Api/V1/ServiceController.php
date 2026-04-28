@@ -95,47 +95,104 @@ class ServiceController extends Controller
     }
 
     /**
-     * List available Airalo eSIM packages for the plan selector.
-     * GET /services/esim-packages?type=global|local|regional&country=US
+     * List available eSIM packages for the plan selector.
+     * GET /services/esim-packages?type=global|local&country=US&provider=airalo|celitech|bnesim
      */
     public function esimPackages(Request $request)
     {
         $request->validate([
-            'type'    => ['nullable', 'in:local,global,regional'],
-            'country' => ['nullable', 'string', 'size:2'],
+            'type'     => ['nullable', 'in:local,global,regional'],
+            'country'  => ['nullable', 'string', 'size:2'],
+            'provider' => ['nullable', 'in:airalo,celitech,bnesim'],
         ]);
 
+        $provider = $request->input('provider', 'airalo');
+        $type     = $request->input('type', 'global');
+        $country  = $request->input('country') ? strtoupper($request->input('country')) : null;
+
+        // Map provider → service code for markup lookup
+        $serviceCodeMap = [
+            'airalo'   => 'esim_travel',
+            'celitech' => 'esim_celitech',
+            'bnesim'   => 'esim_bnesim',
+        ];
+        $serviceCode = $serviceCodeMap[$provider] ?? 'esim_travel';
+        $svc    = \App\Models\Service::where('code', $serviceCode)->first();
+        $markup = $svc ? ((float) ($svc->markup_percent ?? 15)) : 15;
+
         try {
-            $airalo   = app(\App\Services\Esim\AiraloService::class);
-            $type     = $request->input('type', 'global');
-            $country  = $request->input('country');
-            $packages = $airalo->getPackages($type, $country ? strtoupper($country) : null);
+            $packages = match ($provider) {
+                'celitech' => $this->getCelitechPackages($type, $country, $markup),
+                'bnesim'   => $this->getBnesimPackages($type, $country, $markup),
+                default    => $this->getAiraloPackages($type, $country, $markup),
+            };
 
-            // Get service markup so frontend can show the real price
-            $service = \App\Models\Service::where('code', 'esim_travel')->first();
-            $markup  = $service ? ((float) $service->markup_percent ?? 15) : 15;
-
-            $formatted = array_map(function (array $pkg) use ($markup) {
-                $base      = (float) ($pkg['price'] ?? $pkg['net_price'] ?? 0);
-                $finalUsd  = round($base * (1 + $markup / 100), 2);
-
-                return [
-                    'package_id'   => $pkg['id'] ?? $pkg['package_id'] ?? $pkg['slug'],
-                    'title'        => $pkg['title'] ?? ($pkg['data'] . ' – ' . $pkg['day'] . ' day' . ($pkg['day'] > 1 ? 's' : '')),
-                    'data'         => $pkg['data'] ?? null,
-                    'days'         => (int) ($pkg['day'] ?? $pkg['validity'] ?? 0),
-                    'base_price'   => $base,
-                    'price'        => $finalUsd,
-                    'countries'    => collect($pkg['operators'] ?? [])->pluck('countries')->flatten(1)
-                                          ->pluck('title')->unique()->values()->all(),
-                    'operator'     => $pkg['operators'][0]['title'] ?? null,
-                ];
-            }, $packages);
-
-            return ApiResponse::ok($formatted);
+            return ApiResponse::ok($packages);
         } catch (\Throwable $e) {
             return ApiResponse::fail('Could not load eSIM plans: ' . $e->getMessage(), null, 503);
         }
+    }
+
+    private function getAiraloPackages(string $type, ?string $country, float $markup): array
+    {
+        $airalo   = app(\App\Services\Esim\AiraloService::class);
+        $packages = $airalo->getPackages($type, $country);
+        return array_map(function (array $pkg) use ($markup) {
+            $base = (float) ($pkg['price'] ?? $pkg['net_price'] ?? 0);
+            return [
+                'package_id' => $pkg['id'] ?? $pkg['package_id'] ?? $pkg['slug'],
+                'title'      => $pkg['title'] ?? ($pkg['data'] . ' – ' . $pkg['day'] . ' day' . ($pkg['day'] > 1 ? 's' : '')),
+                'data'       => $pkg['data'] ?? null,
+                'days'       => (int) ($pkg['day'] ?? $pkg['validity'] ?? 0),
+                'base_price' => $base,
+                'price'      => round($base * (1 + $markup / 100), 2),
+                'countries'  => collect($pkg['operators'] ?? [])->pluck('countries')->flatten(1)->pluck('title')->unique()->values()->all(),
+                'operator'   => $pkg['operators'][0]['title'] ?? null,
+                'provider'   => 'airalo',
+            ];
+        }, $packages);
+    }
+
+    private function getCelitechPackages(string $type, ?string $country, float $markup): array
+    {
+        $celitech = app(\App\Services\Esim\CelitechService::class);
+        $packages = $celitech->getPackages($type === 'local' ? $country : null);
+        return array_map(function (array $pkg) use ($markup) {
+            $base = (float) ($pkg['price'] ?? $pkg['retailPrice'] ?? 0);
+            $gb   = $pkg['dataLimitInBytes'] ?? 0;
+            $gb   = $gb > 0 ? round($gb / 1073741824, 1) . ' GB' : ($pkg['data'] ?? 'Unknown');
+            return [
+                'package_id' => $pkg['id'],
+                'title'      => ($pkg['destination'] ?? 'Global') . ' – ' . $gb . ' / ' . ($pkg['duration'] ?? $pkg['validity'] ?? 0) . ' days',
+                'data'       => $gb,
+                'days'       => (int) ($pkg['duration'] ?? $pkg['validity'] ?? 0),
+                'base_price' => $base,
+                'price'      => round($base * (1 + $markup / 100), 2),
+                'countries'  => isset($pkg['destination']) ? [$pkg['destination']] : [],
+                'operator'   => $pkg['destination'] ?? 'Global',
+                'provider'   => 'celitech',
+            ];
+        }, $packages);
+    }
+
+    private function getBnesimPackages(string $type, ?string $country, float $markup): array
+    {
+        $bnesim   = app(\App\Services\Esim\BnesimService::class);
+        $packages = $bnesim->getPackages($type === 'local' ? $country : null);
+        return array_map(function (array $pkg) use ($markup) {
+            $base = (float) ($pkg['price'] ?? 0);
+            return [
+                'package_id' => (string) ($pkg['id'] ?? $pkg['product_id']),
+                'title'      => $pkg['name'] ?? $pkg['title'] ?? 'eSIM Plan',
+                'data'       => $pkg['data'] ?? $pkg['data_amount'] ?? null,
+                'days'       => (int) ($pkg['duration'] ?? $pkg['validity'] ?? $pkg['days'] ?? 0),
+                'base_price' => $base,
+                'price'      => round($base * (1 + $markup / 100), 2),
+                'countries'  => $pkg['countries'] ?? [],
+                'operator'   => $pkg['operator'] ?? $pkg['network'] ?? null,
+                'provider'   => 'bnesim',
+            ];
+        }, $packages);
     }
 
     /**

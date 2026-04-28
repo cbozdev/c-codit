@@ -6,6 +6,8 @@ use App\Models\Service;
 use App\Models\ServiceOrder;
 use App\Models\User;
 use App\Services\Esim\AiraloService;
+use App\Services\Esim\BnesimService;
+use App\Services\Esim\CelitechService;
 use App\Services\Sms\FiveSimService;
 use App\Services\Sms\ServiceUnavailableException;
 use App\Services\Sms\SmsActivateService;
@@ -40,6 +42,8 @@ class ServicePurchaseService
         private readonly FlutterwaveBillsService $flutterwaveBills,
         private readonly GiftCardService $giftCards,
         private readonly AiraloService $airalo,
+        private readonly CelitechService $celitech,
+        private readonly BnesimService $bnesim,
     ) {}
 
     public function purchase(
@@ -62,7 +66,9 @@ class ServicePurchaseService
             'smsman'      => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsMan),
             'flutterwave' => $this->purchaseUtilityBill($user, $service, $request, $idempotencyKey),
             'internal'    => $this->purchaseGiftCard($user, $service, $request, $idempotencyKey),
-            'airalo'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey),
+            'airalo'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->airalo),
+            'celitech'    => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->celitech),
+            'bnesim'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->bnesim),
             default       => throw new RuntimeException("Unsupported service provider: {$service->provider}"),
         };
     }
@@ -285,21 +291,21 @@ class ServicePurchaseService
         return $order->fresh();
     }
 
-    // ─── Travel eSIM (Airalo) ─────────────────────────────────────────────────
+    // ─── Travel eSIM ─────────────────────────────────────────────────────────
 
     private function purchaseEsim(
         User $user,
         Service $service,
         array $request,
         string $idempotencyKey,
+        $esimProvider,
     ): ServiceOrder {
         $packageId = trim((string) ($request['package_id'] ?? ''));
         if (! $packageId) {
             throw new RuntimeException('Please select an eSIM plan before purchasing.');
         }
 
-        // Fetch authoritative price from Airalo and apply markup
-        $basePrice   = $this->airalo->getPackagePrice($packageId);
+        $basePrice   = $esimProvider->getPackagePrice($packageId);
         $price       = \App\Support\Money::fromDecimal(number_format($basePrice, 2, '.', ''), 'USD');
         $finalAmount = $this->applyMarkup($price, $service);
 
@@ -327,7 +333,7 @@ class ServicePurchaseService
         $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
 
         try {
-            $result = $this->airalo->purchase(
+            $result = $esimProvider->purchase(
                 packageId: $packageId,
                 description: 'C-codit eSIM – user:'.$user->public_id,
             );
