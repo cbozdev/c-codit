@@ -133,6 +133,14 @@ class FlutterwaveBillsService
                     'biller_code' => $billerCode,
                 ]);
 
+            Log::channel('payments')->info('flutterwave_bills.data_plans_raw', [
+                'network'      => $network,
+                'biller_code'  => $billerCode,
+                'status'       => $res->status(),
+                'first_item'   => ($res->json('data') ?? [])[0] ?? null,
+                'total_items'  => count($res->json('data') ?? []),
+            ]);
+
             if ($res->failed()) return [];
 
             $items = $res->json('data') ?? [];
@@ -148,7 +156,8 @@ class FlutterwaveBillsService
             }
             usort($plans, fn ($a, $b) => $a['amount'] <=> $b['amount']);
             return $plans;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::channel('payments')->error('flutterwave_bills.data_plans_exception', ['error' => $e->getMessage()]);
             return [];
         }
     }
@@ -165,7 +174,7 @@ class FlutterwaveBillsService
             'type'        => 'DATA_BUNDLE',
             'reference'   => $txRef,
             'biller_code' => $billerCode,
-            'plan_code'   => $itemCode,
+            'item_code'   => $itemCode,
         ]);
     }
 
