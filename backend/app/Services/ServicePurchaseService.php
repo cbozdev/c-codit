@@ -186,7 +186,7 @@ class ServicePurchaseService
                 'utility_data_ng' => $this->flutterwaveBills->buyData(
                     phone: (string) $request['phone_number'],
                     network: (string) $request['network'],
-                    planCode: (string) ($request['plan_code'] ?? 'BIL108'),
+                    itemCode: (string) ($request['plan_code'] ?? ''),
                     amount: $amountNgn,
                     txRef: $txRef,
                 ),
