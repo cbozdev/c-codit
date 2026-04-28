@@ -144,7 +144,7 @@ const UTILITY_NETWORKS: Record<string, string[]> = {
   utility_startimes:     ['StarTimes'],
 };
 
-type DataPlan = { item_code: string; name: string; amount: number };
+type DataPlan = { item_code: string; biller_code: string; name: string; amount: number };
 
 // Icons per category
 const CAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -176,6 +176,7 @@ export default function ServicesPage() {
   const [smartcardNumber, setSmartcardNumber] = useState('');
   const [billAmount, setBillAmount]       = useState('500');
   const [dataPlan, setDataPlan]           = useState('');
+  const [dataBillerCode, setDataBillerCode] = useState('');
   const [meterType, setMeterType]         = useState<'prepaid'|'postpaid'>('prepaid');
   const [esimPackageId, setEsimPackageId]   = useState('');
   const [ordersExpanded, setOrdersExpanded] = useState(true);
@@ -214,6 +215,7 @@ export default function ServicesPage() {
         if (meterNumber) baseData.meter_number = meterNumber;
         if (smartcardNumber) baseData.smartcard_number = smartcardNumber;
         if (dataPlan) baseData.plan_code = dataPlan;
+        if (dataBillerCode) baseData.biller_code = dataBillerCode;
         if (selected.code === 'utility_electricity') baseData.meter_type = meterType;
       } else if (selected.category === 'giftcard') {
         baseData.denomination = denomination;
@@ -355,7 +357,7 @@ export default function ServicesPage() {
               billAmount={billAmount}
               setBillAmount={setBillAmount}
               network={network}
-              setNetwork={(n) => { setNetwork(n); setDataPlan(''); }}
+              setNetwork={(n) => { setNetwork(n); setDataPlan(''); setDataBillerCode(''); }}
               phoneNumber={phoneNumber}
               setPhoneNumber={setPhoneNumber}
               meterNumber={meterNumber}
@@ -364,6 +366,7 @@ export default function ServicesPage() {
               setSmartcardNumber={setSmartcardNumber}
               dataPlan={dataPlan}
               setDataPlan={setDataPlan}
+              setDataBillerCode={setDataBillerCode}
               meterType={meterType}
               setMeterType={setMeterType}
               onPurchase={() => purchase.mutate()}
@@ -619,7 +622,7 @@ function GiftCardForm({ service, denomination, setDenomination, onPurchase, isPe
 
 // ─── Utility Bill Form ────────────────────────────────────────────────────────
 
-function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, phoneNumber, setPhoneNumber, meterNumber, setMeterNumber, smartcardNumber, setSmartcardNumber, dataPlan, setDataPlan, meterType, setMeterType, onPurchase, isPending }: {
+function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, phoneNumber, setPhoneNumber, meterNumber, setMeterNumber, smartcardNumber, setSmartcardNumber, dataPlan, setDataPlan, setDataBillerCode, meterType, setMeterType, onPurchase, isPending }: {
   service: Service;
   billAmount: string; setBillAmount: (v: string) => void;
   network: string; setNetwork: (v: string) => void;
@@ -627,6 +630,7 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
   meterNumber: string; setMeterNumber: (v: string) => void;
   smartcardNumber: string; setSmartcardNumber: (v: string) => void;
   dataPlan: string; setDataPlan: (v: string) => void;
+  setDataBillerCode: (v: string) => void;
   meterType: 'prepaid'|'postpaid'; setMeterType: (v: 'prepaid'|'postpaid') => void;
   onPurchase: () => void; isPending: boolean;
 }) {
@@ -673,6 +677,7 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
 
   function selectPlan(plan: DataPlan) {
     setDataPlan(plan.item_code);
+    setDataBillerCode(plan.biller_code);
     setBillAmount(String(plan.amount));
   }
 

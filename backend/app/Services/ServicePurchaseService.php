@@ -187,6 +187,7 @@ class ServicePurchaseService
                     phone: (string) $request['phone_number'],
                     network: (string) $request['network'],
                     itemCode: (string) ($request['plan_code'] ?? ''),
+                    billerCode: (string) ($request['biller_code'] ?? ''),
                     amount: $amountNgn,
                     txRef: $txRef,
                 ),

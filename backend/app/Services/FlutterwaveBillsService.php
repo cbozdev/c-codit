@@ -140,9 +140,10 @@ class FlutterwaveBillsService
             foreach ($items as $item) {
                 if (empty($item['item_code'])) continue;
                 $plans[] = [
-                    'item_code' => $item['item_code'],
-                    'name'      => $item['short_name'] ?? $item['name'] ?? $item['item_code'],
-                    'amount'    => (int) ($item['amount'] ?? 0),
+                    'item_code'   => $item['item_code'],
+                    'biller_code' => $item['biller_code'] ?? $billerCode,
+                    'name'        => $item['short_name'] ?? $item['name'] ?? $item['item_code'],
+                    'amount'      => (int) ($item['amount'] ?? 0),
                 ];
             }
             usort($plans, fn ($a, $b) => $a['amount'] <=> $b['amount']);
@@ -153,24 +154,17 @@ class FlutterwaveBillsService
     }
 
     /**
-     * Buy data bundle using a Flutterwave item_code from getDataPlans().
+     * Buy data bundle using item_code + biller_code from getDataPlans().
      */
-    public function buyData(string $phone, string $network, string $itemCode, float $amount, string $txRef): array
+    public function buyData(string $phone, string $network, string $itemCode, string $billerCode, float $amount, string $txRef): array
     {
-        $billerCodes = [
-            'MTN'     => 'BIL108',
-            'Airtel'  => 'BIL110',
-            'Glo'     => 'BIL111',
-            '9mobile' => 'BIL112',
-        ];
-
         return $this->post('/bills', [
             'country'     => 'NG',
             'customer'    => $phone,
             'amount'      => (int) $amount,
             'type'        => 'DATA_BUNDLE',
             'reference'   => $txRef,
-            'biller_code' => $billerCodes[$network] ?? 'BIL108',
+            'biller_code' => $billerCode,
             'plan_code'   => $itemCode,
         ]);
     }
