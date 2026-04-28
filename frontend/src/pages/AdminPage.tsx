@@ -10,6 +10,7 @@ import {
   Ban, UserCheck, Shield, ShieldOff, Wallet,
   ChevronLeft, ChevronRight, ToggleLeft, ToggleRight,
   Plus, Minus, RefreshCw, Eye, ImagePlus, Settings2,
+  DollarSign, TrendingDown, BarChart3,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -38,7 +39,18 @@ type AdminService = {
   markup_percent: number;
 };
 
-type Tab = 'metrics' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings';
+type Tab = 'metrics' | 'profit' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings';
+
+type ProfitSummary = {
+  orders: number; revenue_minor: number; cost_minor: number;
+  profit_minor: number; margin_percent: number;
+};
+type ProfitByService = ProfitSummary & { name: string; category: string; markup_percent: number };
+type ProfitByDay     = { date: string; orders: number; revenue_minor: number; profit_minor: number };
+type ProfitData = {
+  period: string; summary: ProfitSummary;
+  by_service: ProfitByService[]; by_day: ProfitByDay[];
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -54,7 +66,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ink-200 overflow-x-auto">
-        {(['metrics', 'users', 'transactions', 'services', 'messages', 'livechat', 'settings'] as Tab[]).map((t) => (
+        {(['metrics', 'profit', 'users', 'transactions', 'services', 'messages', 'livechat', 'settings'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2.5 text-sm font-medium capitalize whitespace-nowrap border-b-2 transition -mb-px ${
               tab === t
@@ -67,6 +79,7 @@ export default function AdminPage() {
       </div>
 
       {tab === 'metrics'      && <MetricsTab />}
+      {tab === 'profit'       && <ProfitTab />}
       {tab === 'users'        && <UsersTab />}
       {tab === 'transactions' && <TransactionsTab />}
       {tab === 'services'     && <ServicesTab />}
@@ -1012,6 +1025,144 @@ function AppSettingsTab() {
           {save.isPending ? 'Saving…' : 'Save settings'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Profit Tab ───────────────────────────────────────────────────────────────
+
+function ProfitTab() {
+  const [period, setPeriod] = useState<'today' | '7d' | '30d' | 'all'>('30d');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin', 'profit', period],
+    queryFn:  () => apiCall<ProfitData>({ url: '/admin/profit', params: { period } }),
+  });
+
+  const s = data?.summary;
+
+  function money(minor: number) { return formatMoney(minor); }
+  function pct(n: number) { return n.toFixed(1) + '%'; }
+
+  const categoryLabel: Record<string, string> = {
+    virtual_number: 'Virtual Numbers',
+    esim:           'eSIM',
+    giftcard:       'Gift Cards',
+    utility:        'Utility Bills',
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Period selector */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-ink-500 mr-1">Period:</span>
+        {(['today', '7d', '30d', 'all'] as const).map((p) => (
+          <button key={p} onClick={() => setPeriod(p)}
+            className={`px-3 py-1 text-sm rounded-lg border transition ${
+              period === p
+                ? 'bg-ink-900 text-white border-ink-900'
+                : 'border-ink-200 text-ink-600 hover:border-ink-400'
+            }`}>
+            {p === 'today' ? 'Today' : p === 'all' ? 'All time' : p}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <p className="text-sm text-ink-500">Loading…</p>
+      ) : (
+        <>
+          {/* Summary cards */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard icon={TrendingUp}   label="Revenue"     value={s ? money(s.revenue_minor) : '…'} />
+            <MetricCard icon={TrendingDown} label="Cost"        value={s ? money(s.cost_minor)    : '…'} />
+            <MetricCard icon={DollarSign}   label="Profit"      value={s ? money(s.profit_minor)  : '…'} color="green" />
+            <MetricCard icon={BarChart3}    label="Margin"      value={s ? pct(s.margin_percent)  : '…'} color={s && s.margin_percent >= 10 ? 'green' : 'amber'} />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <MetricCard label="Completed orders" value={s?.orders ?? '…'} />
+            <MetricCard label="Avg profit / order" value={s && s.orders > 0 ? money(Math.round(s.profit_minor / s.orders)) : '—'} />
+          </div>
+
+          {/* By service */}
+          <div>
+            <h2 className="text-sm font-semibold text-ink-700 mb-3">Breakdown by service</h2>
+            <div className="overflow-x-auto rounded-xl border border-ink-200">
+              <table className="w-full text-sm">
+                <thead className="bg-ink-50 text-ink-500 text-xs uppercase tracking-wide">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Service</th>
+                    <th className="px-4 py-3 text-left">Category</th>
+                    <th className="px-4 py-3 text-right">Orders</th>
+                    <th className="px-4 py-3 text-right">Revenue</th>
+                    <th className="px-4 py-3 text-right">Cost</th>
+                    <th className="px-4 py-3 text-right">Profit</th>
+                    <th className="px-4 py-3 text-right">Margin</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink-100">
+                  {data?.by_service.length === 0 && (
+                    <tr><td colSpan={7} className="px-4 py-6 text-center text-ink-400">No completed orders in this period.</td></tr>
+                  )}
+                  {data?.by_service.map((row) => (
+                    <tr key={row.name} className="hover:bg-ink-50 transition">
+                      <td className="px-4 py-3 font-medium text-ink-800">{row.name}</td>
+                      <td className="px-4 py-3 text-ink-500">{categoryLabel[row.category] ?? row.category}</td>
+                      <td className="px-4 py-3 text-right">{row.orders}</td>
+                      <td className="px-4 py-3 text-right">{money(row.revenue_minor)}</td>
+                      <td className="px-4 py-3 text-right text-ink-500">
+                        {row.cost_minor > 0 ? money(row.cost_minor) : <span className="text-ink-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium text-brand-700">{money(row.profit_minor)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          row.margin_percent >= 10 ? 'bg-brand-50 text-brand-700' : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          {pct(row.margin_percent)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {data?.by_service.some((r) => r.cost_minor === 0) && (
+              <p className="text-xs text-ink-400 mt-2">
+                — Cost shown as — for utility bills (Flutterwave charges NGN directly; FX spread is the margin).
+              </p>
+            )}
+          </div>
+
+          {/* Daily breakdown */}
+          {data && data.by_day.length > 0 && (
+            <div>
+              <h2 className="text-sm font-semibold text-ink-700 mb-3">Daily summary</h2>
+              <div className="overflow-x-auto rounded-xl border border-ink-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-ink-50 text-ink-500 text-xs uppercase tracking-wide">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-right">Orders</th>
+                      <th className="px-4 py-3 text-right">Revenue</th>
+                      <th className="px-4 py-3 text-right">Profit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ink-100">
+                    {[...data.by_day].reverse().map((row) => (
+                      <tr key={row.date} className="hover:bg-ink-50 transition">
+                        <td className="px-4 py-3 text-ink-700">{row.date}</td>
+                        <td className="px-4 py-3 text-right">{row.orders}</td>
+                        <td className="px-4 py-3 text-right">{money(row.revenue_minor)}</td>
+                        <td className="px-4 py-3 text-right font-medium text-brand-700">{money(row.profit_minor)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

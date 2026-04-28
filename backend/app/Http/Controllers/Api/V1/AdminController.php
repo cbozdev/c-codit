@@ -281,6 +281,92 @@ class AdminController extends Controller
         ]);
     }
 
+    // ─── Profit ───────────────────────────────────────────────────────────────
+
+    public function profit(Request $request)
+    {
+        $period = $request->input('period', '30d');
+        $from   = match ($period) {
+            'today' => now()->startOfDay(),
+            '7d'    => now()->subDays(7)->startOfDay(),
+            'all'   => null,
+            default => now()->subDays(30)->startOfDay(),
+        };
+
+        $base = DB::table('service_orders')->where('status', 'completed');
+        if ($from) $base->where('created_at', '>=', $from);
+
+        $summary = (clone $base)->selectRaw('
+            COUNT(*) as orders,
+            COALESCE(SUM(amount_minor), 0) as revenue_minor,
+            COALESCE(SUM(cost_minor), 0) as cost_minor,
+            COALESCE(SUM(CASE WHEN cost_minor IS NOT NULL THEN amount_minor - cost_minor ELSE 0 END), 0) as profit_minor
+        ')->first();
+
+        $byService = DB::table('service_orders')
+            ->join('services', 'service_orders.service_id', '=', 'services.id')
+            ->where('service_orders.status', 'completed')
+            ->when($from, fn ($q) => $q->where('service_orders.created_at', '>=', $from))
+            ->selectRaw('
+                services.name,
+                services.category,
+                services.markup_percent,
+                COUNT(*) as orders,
+                COALESCE(SUM(service_orders.amount_minor), 0) as revenue_minor,
+                COALESCE(SUM(service_orders.cost_minor), 0) as cost_minor,
+                COALESCE(SUM(CASE WHEN service_orders.cost_minor IS NOT NULL THEN service_orders.amount_minor - service_orders.cost_minor ELSE 0 END), 0) as profit_minor
+            ')
+            ->groupBy('services.id', 'services.name', 'services.category', 'services.markup_percent')
+            ->orderByDesc('revenue_minor')
+            ->get()
+            ->map(fn ($row) => [
+                'name'           => $row->name,
+                'category'       => $row->category,
+                'markup_percent' => $row->markup_percent,
+                'orders'         => (int) $row->orders,
+                'revenue_minor'  => (int) $row->revenue_minor,
+                'cost_minor'     => (int) $row->cost_minor,
+                'profit_minor'   => (int) $row->profit_minor,
+                'margin_percent' => $row->revenue_minor > 0
+                    ? round(($row->profit_minor / $row->revenue_minor) * 100, 1)
+                    : 0,
+            ]);
+
+        $byDay = DB::table('service_orders')
+            ->where('status', 'completed')
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->selectRaw('
+                DATE(created_at) as date,
+                COUNT(*) as orders,
+                COALESCE(SUM(amount_minor), 0) as revenue_minor,
+                COALESCE(SUM(CASE WHEN cost_minor IS NOT NULL THEN amount_minor - cost_minor ELSE 0 END), 0) as profit_minor
+            ')
+            ->groupByRaw('DATE(created_at)')
+            ->orderBy('date')
+            ->get()
+            ->map(fn ($row) => [
+                'date'          => $row->date,
+                'orders'        => (int) $row->orders,
+                'revenue_minor' => (int) $row->revenue_minor,
+                'profit_minor'  => (int) $row->profit_minor,
+            ]);
+
+        return ApiResponse::ok([
+            'period'     => $period,
+            'summary'    => [
+                'orders'         => (int) $summary->orders,
+                'revenue_minor'  => (int) $summary->revenue_minor,
+                'cost_minor'     => (int) $summary->cost_minor,
+                'profit_minor'   => (int) $summary->profit_minor,
+                'margin_percent' => $summary->revenue_minor > 0
+                    ? round(($summary->profit_minor / $summary->revenue_minor) * 100, 1)
+                    : 0,
+            ],
+            'by_service' => $byService,
+            'by_day'     => $byDay,
+        ]);
+    }
+
     // ─── Messaging ────────────────────────────────────────────────────────────
 
     /**

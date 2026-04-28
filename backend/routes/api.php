@@ -80,8 +80,9 @@ Route::prefix('v1')->group(function () {
 
         // Admin
         Route::middleware('role:admin')->prefix('admin')->group(function () {
-            // Metrics
+            // Metrics & Profit
             Route::get('/metrics', [AdminController::class, 'metrics']);
+            Route::get('/profit',  [AdminController::class, 'profit']);
 
             // Users
             Route::get('/users',                                [AdminController::class, 'users']);
