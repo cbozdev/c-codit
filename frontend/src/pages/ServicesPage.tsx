@@ -144,39 +144,7 @@ const UTILITY_NETWORKS: Record<string, string[]> = {
   utility_startimes:     ['StarTimes'],
 };
 
-// Data bundle plans per network (in NGN)
-const DATA_PLANS: Record<string, { label: string; code: string; amount: string }[]> = {
-  MTN: [
-    { label: '100MB - ₦100',    code: 'MTN100MB',   amount: '100' },
-    { label: '200MB - ₦200',    code: 'MTN200MB',   amount: '200' },
-    { label: '500MB - ₦300',    code: 'MTN500MB',   amount: '300' },
-    { label: '1GB - ₦500',      code: 'MTN1GB',     amount: '500' },
-    { label: '2GB - ₦1,000',    code: 'MTN2GB',     amount: '1000' },
-    { label: '5GB - ₦2,000',    code: 'MTN5GB',     amount: '2000' },
-    { label: '10GB - ₦3,000',   code: 'MTN10GB',    amount: '3000' },
-  ],
-  Airtel: [
-    { label: '100MB - ₦100',    code: 'AIR100MB',   amount: '100' },
-    { label: '500MB - ₦300',    code: 'AIR500MB',   amount: '300' },
-    { label: '1GB - ₦500',      code: 'AIR1GB',     amount: '500' },
-    { label: '2GB - ₦1,000',    code: 'AIR2GB',     amount: '1000' },
-    { label: '5GB - ₦2,000',    code: 'AIR5GB',     amount: '2000' },
-    { label: '10GB - ₦3,000',   code: 'AIR10GB',    amount: '3000' },
-  ],
-  Glo: [
-    { label: '100MB - ₦50',     code: 'GLO100MB',   amount: '50' },
-    { label: '1GB - ₦500',      code: 'GLO1GB',     amount: '500' },
-    { label: '2GB - ₦1,000',    code: 'GLO2GB',     amount: '1000' },
-    { label: '5GB - ₦2,000',    code: 'GLO5GB',     amount: '2000' },
-    { label: '10GB - ₦2,500',   code: 'GLO10GB',    amount: '2500' },
-  ],
-  '9mobile': [
-    { label: '500MB - ₦200',    code: '9M500MB',    amount: '200' },
-    { label: '1.5GB - ₦1,000',  code: '9M15GB',     amount: '1000' },
-    { label: '3GB - ₦2,000',    code: '9M3GB',      amount: '2000' },
-    { label: '5GB - ₦3,000',    code: '9M5GB',      amount: '3000' },
-  ],
-};
+type DataPlan = { item_code: string; name: string; amount: number };
 
 // Icons per category
 const CAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -670,8 +638,15 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
   const isData        = service.code === 'utility_data_ng';
   const isAirtime     = service.code === 'utility_airtime_ng';
   const isTV          = service.code === 'utility_dstv' || service.code === 'utility_startimes';
-  const plans         = isData ? (DATA_PLANS[network] ?? []) : [];
   const QUICK_AMOUNTS = isAirtime ? ['100', '200', '500', '1000', '2000'] : isElectricity ? ['1000', '2000', '5000', '10000', '20000'] : [];
+
+  const plansQuery = useQuery({
+    queryKey: ['data-plans', network],
+    queryFn:  () => apiCall<DataPlan[]>({ url: '/services/data-plans', params: { network } }),
+    enabled:  isData && !!network,
+    staleTime: 10 * 60 * 1000,
+  });
+  const plans = plansQuery.data ?? [];
 
   async function validateMeter() {
     if (!meterNumber || !network) return;
@@ -696,9 +671,9 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
     }
   }
 
-  function selectPlan(plan: { code: string; amount: string }) {
-    setDataPlan(plan.code);
-    setBillAmount(plan.amount);
+  function selectPlan(plan: DataPlan) {
+    setDataPlan(plan.item_code);
+    setBillAmount(String(plan.amount));
   }
 
   const canSubmit = !isPending &&
@@ -785,20 +760,22 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
         {isData && network && (
           <div>
             <label className="label">Select data plan</label>
-            {plans.length === 0 ? (
-              <p className="text-sm text-ink-500">No plans available for this network.</p>
+            {plansQuery.isLoading ? (
+              <p className="text-sm text-ink-500">Loading plans…</p>
+            ) : plans.length === 0 ? (
+              <p className="text-sm text-ink-500">No plans available for {network} right now.</p>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 {plans.map((p) => (
-                  <button key={p.code} onClick={() => selectPlan(p)}
+                  <button key={p.item_code} onClick={() => selectPlan(p)}
                     className={clsx(
                       'p-3 rounded-lg border text-left transition',
-                      dataPlan === p.code
+                      dataPlan === p.item_code
                         ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30'
                         : 'border-ink-200 hover:border-ink-400 dark:border-ink-700',
                     )}>
-                    <div className="font-medium text-sm dark:text-white">{p.label.split(' - ')[0]}</div>
-                    <div className="text-xs text-ink-500 dark:text-ink-400">₦{Number(p.amount).toLocaleString()}</div>
+                    <div className="font-medium text-sm dark:text-white">{p.name}</div>
+                    <div className="text-xs text-ink-500 dark:text-ink-400">₦{p.amount.toLocaleString()}</div>
                   </button>
                 ))}
               </div>
@@ -859,7 +836,7 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
 
         <button onClick={onPurchase} disabled={!canSubmit} className="btn-brand">
           {isPending ? 'Processing…' : isData && dataPlan
-            ? `Buy ${plans.find(p => p.code === dataPlan)?.label ?? 'data'}`
+            ? `Buy ${plans.find(p => p.item_code === dataPlan)?.name ?? 'data'}`
             : `Pay ₦${Number(billAmount || 0).toLocaleString()}`}
         </button>
       </div>

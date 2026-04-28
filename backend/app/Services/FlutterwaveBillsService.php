@@ -109,9 +109,53 @@ class FlutterwaveBillsService
     }
 
     /**
-     * Buy data bundle.
+     * Fetch available data bundle plans for a network from Flutterwave's catalog.
+     * Returns array of {item_code, name, amount} sorted by amount.
      */
-    public function buyData(string $phone, string $network, string $planCode, float $amount, string $txRef): array
+    public function getDataPlans(string $network): array
+    {
+        $billerCodes = [
+            'MTN'     => 'BIL108',
+            'Airtel'  => 'BIL110',
+            'Glo'     => 'BIL111',
+            '9mobile' => 'BIL112',
+        ];
+
+        $billerCode = $billerCodes[$network] ?? null;
+        if (! $billerCode) return [];
+
+        try {
+            $res = Http::withToken($this->secretKey)
+                ->acceptJson()
+                ->get($this->baseUrl . '/bill-categories', [
+                    'country'     => 'NG',
+                    'type'        => 'data_bundle',
+                    'biller_code' => $billerCode,
+                ]);
+
+            if ($res->failed()) return [];
+
+            $items = $res->json('data') ?? [];
+            $plans = [];
+            foreach ($items as $item) {
+                if (empty($item['item_code'])) continue;
+                $plans[] = [
+                    'item_code' => $item['item_code'],
+                    'name'      => $item['short_name'] ?? $item['name'] ?? $item['item_code'],
+                    'amount'    => (int) ($item['amount'] ?? 0),
+                ];
+            }
+            usort($plans, fn ($a, $b) => $a['amount'] <=> $b['amount']);
+            return $plans;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Buy data bundle using a Flutterwave item_code from getDataPlans().
+     */
+    public function buyData(string $phone, string $network, string $itemCode, float $amount, string $txRef): array
     {
         $billerCodes = [
             'MTN'     => 'BIL108',
@@ -121,13 +165,13 @@ class FlutterwaveBillsService
         ];
 
         return $this->post('/bills', [
-            'country'   => 'NG',
-            'customer'  => $phone,
-            'amount'    => (int) $amount,
-            'type'      => 'DATA_BUNDLE',
-            'reference' => $txRef,
+            'country'     => 'NG',
+            'customer'    => $phone,
+            'amount'      => (int) $amount,
+            'type'        => 'DATA_BUNDLE',
+            'reference'   => $txRef,
             'biller_code' => $billerCodes[$network] ?? 'BIL108',
-            'plan_code'   => $planCode,
+            'plan_code'   => $itemCode,
         ]);
     }
 

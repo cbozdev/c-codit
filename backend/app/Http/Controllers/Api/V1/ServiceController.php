@@ -523,6 +523,14 @@ class ServiceController extends Controller
         return ApiResponse::ok(new ServiceOrderResource($order));
     }
 
+    public function dataPlans(Request $request)
+    {
+        $request->validate(['network' => ['required', 'in:MTN,Airtel,Glo,9mobile']]);
+        $plans = app(\App\Services\FlutterwaveBillsService::class)
+            ->getDataPlans($request->input('network'));
+        return ApiResponse::ok($plans);
+    }
+
     public function validateMeter(Request $request)
     {
         $request->validate([
