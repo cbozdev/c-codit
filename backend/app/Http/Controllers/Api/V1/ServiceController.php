@@ -202,7 +202,7 @@ class ServiceController extends Controller
     public function virtualNumberPrices(Request $request)
     {
         $request->validate([
-            'provider' => ['required', 'in:5sim,smsactivate,smsman'],
+            'provider' => ['required', 'in:5sim,smsactivate,smsman,smspool'],
             'service'  => ['required', 'string', 'max:40'],
         ]);
 
@@ -216,6 +216,9 @@ class ServiceController extends Controller
             } elseif ($provider === 'smsman') {
                 $raw     = app(\App\Services\Sms\SmsManService::class)->getCountryPrices($service);
                 $display = self::smsManDisplayMap();
+            } elseif ($provider === 'smspool') {
+                $raw     = app(\App\Services\Sms\SmsPoolService::class)->getCountryPrices($service);
+                $display = self::smsPoolDisplayMap();
             } else {
                 $raw     = app(\App\Services\Sms\SmsActivateService::class)->getCountryPrices($service);
                 $display = self::smsActivateDisplayMap();
@@ -551,6 +554,50 @@ class ServiceController extends Controller
         ];
     }
 
+    private static function smsPoolDisplayMap(): array
+    {
+        return [
+            'United States'   => ['label' => 'United States',   'flag' => '🇺🇸'],
+            'United Kingdom'  => ['label' => 'United Kingdom',  'flag' => '🇬🇧'],
+            'Russia'          => ['label' => 'Russia',          'flag' => '🇷🇺'],
+            'Nigeria'         => ['label' => 'Nigeria',         'flag' => '🇳🇬'],
+            'India'           => ['label' => 'India',           'flag' => '🇮🇳'],
+            'Indonesia'       => ['label' => 'Indonesia',       'flag' => '🇮🇩'],
+            'Philippines'     => ['label' => 'Philippines',     'flag' => '🇵🇭'],
+            'Brazil'          => ['label' => 'Brazil',          'flag' => '🇧🇷'],
+            'Mexico'          => ['label' => 'Mexico',          'flag' => '🇲🇽'],
+            'Ukraine'         => ['label' => 'Ukraine',         'flag' => '🇺🇦'],
+            'Pakistan'        => ['label' => 'Pakistan',        'flag' => '🇵🇰'],
+            'Vietnam'         => ['label' => 'Vietnam',         'flag' => '🇻🇳'],
+            'China'           => ['label' => 'China',           'flag' => '🇨🇳'],
+            'Kenya'           => ['label' => 'Kenya',           'flag' => '🇰🇪'],
+            'Ghana'           => ['label' => 'Ghana',           'flag' => '🇬🇭'],
+            'South Africa'    => ['label' => 'South Africa',    'flag' => '🇿🇦'],
+            'Canada'          => ['label' => 'Canada',          'flag' => '🇨🇦'],
+            'Australia'       => ['label' => 'Australia',       'flag' => '🇦🇺'],
+            'Germany'         => ['label' => 'Germany',         'flag' => '🇩🇪'],
+            'France'          => ['label' => 'France',          'flag' => '🇫🇷'],
+            'Turkey'          => ['label' => 'Turkey',          'flag' => '🇹🇷'],
+            'Thailand'        => ['label' => 'Thailand',        'flag' => '🇹🇭'],
+            'Malaysia'        => ['label' => 'Malaysia',        'flag' => '🇲🇾'],
+            'Egypt'           => ['label' => 'Egypt',           'flag' => '🇪🇬'],
+            'Poland'          => ['label' => 'Poland',          'flag' => '🇵🇱'],
+            'Netherlands'     => ['label' => 'Netherlands',     'flag' => '🇳🇱'],
+            'Sweden'          => ['label' => 'Sweden',          'flag' => '🇸🇪'],
+            'Spain'           => ['label' => 'Spain',           'flag' => '🇪🇸'],
+            'Italy'           => ['label' => 'Italy',           'flag' => '🇮🇹'],
+            'Colombia'        => ['label' => 'Colombia',        'flag' => '🇨🇴'],
+            'Israel'          => ['label' => 'Israel',          'flag' => '🇮🇱'],
+            'Cambodia'        => ['label' => 'Cambodia',        'flag' => '🇰🇭'],
+            'Saudi Arabia'    => ['label' => 'Saudi Arabia',    'flag' => '🇸🇦'],
+            'UAE'             => ['label' => 'UAE',             'flag' => '🇦🇪'],
+            'Bangladesh'      => ['label' => 'Bangladesh',      'flag' => '🇧🇩'],
+            'Kazakhstan'      => ['label' => 'Kazakhstan',      'flag' => '🇰🇿'],
+            'Myanmar'         => ['label' => 'Myanmar',         'flag' => '🇲🇲'],
+            'Hong Kong'       => ['label' => 'Hong Kong',       'flag' => '🇭🇰'],
+        ];
+    }
+
     public function orders(Request $request)
     {
         $request->validate(['per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
@@ -640,6 +687,8 @@ class ServiceController extends Controller
                     app(\App\Services\Sms\SmsActivateService::class)->cancel($order->provider_order_id);
                 } elseif ($provider === 'smsman') {
                     app(\App\Services\Sms\SmsManService::class)->cancel($order->provider_order_id);
+                } elseif ($provider === 'smspool') {
+                    app(\App\Services\Sms\SmsPoolService::class)->cancel($order->provider_order_id);
                 }
             }
         } catch (\Throwable $e) {
@@ -712,6 +761,8 @@ class ServiceController extends Controller
                 $code = app(\App\Services\Sms\SmsManService::class)->fetchCode($order->provider_order_id);
             } elseif ($provider === 'smsactivate') {
                 $code = app(\App\Services\Sms\SmsActivateService::class)->fetchCode($order->provider_order_id);
+            } elseif ($provider === 'smspool') {
+                $code = app(\App\Services\Sms\SmsPoolService::class)->fetchCode($order->provider_order_id);
             }
         } catch (\Throwable $e) {
             return ApiResponse::fail('Could not check for code: ' . $e->getMessage(), null, 500);
