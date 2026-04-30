@@ -21,7 +21,7 @@ class SmsPoolService implements SmsNumberProvider
 
     private string $baseUrl = 'https://www.smspool.net/api';
 
-    private array $serviceNameMap = [
+    private array $serviceMap = [
         'telegram'  => 'Telegram',
         'facebook'  => 'Facebook',
         'twitter'   => 'Twitter',
@@ -50,10 +50,41 @@ class SmsPoolService implements SmsNumberProvider
         'reddit'    => 'Reddit',
     ];
 
-    private array $popularIsoCodes = [
-        'US', 'GB', 'RU', 'NG', 'IN', 'ID', 'PH', 'BR', 'MX', 'UA',
-        'PK', 'VN', 'KH', 'CN', 'KE', 'GH', 'ZA', 'CA', 'AU', 'DE',
-        'FR', 'IT', 'ES', 'PL', 'NL', 'SE', 'TR', 'TH', 'MY', 'SG', 'EG',
+    // ISO code → SMSPool country name (accepted by the /price and /order endpoints)
+    private array $countryMap = [
+        'US' => 'United States',
+        'GB' => 'United Kingdom',
+        'UK' => 'United Kingdom',
+        'RU' => 'Russia',
+        'NG' => 'Nigeria',
+        'IN' => 'India',
+        'ID' => 'Indonesia',
+        'PH' => 'Philippines',
+        'BR' => 'Brazil',
+        'MX' => 'Mexico',
+        'UA' => 'Ukraine',
+        'PK' => 'Pakistan',
+        'KH' => 'Cambodia',
+        'VN' => 'Vietnam',
+        'CN' => 'China',
+        'KE' => 'Kenya',
+        'GH' => 'Ghana',
+        'ZA' => 'South Africa',
+        'CA' => 'Canada',
+        'AU' => 'Australia',
+        'DE' => 'Germany',
+        'FR' => 'France',
+        'IT' => 'Italy',
+        'ES' => 'Spain',
+        'PL' => 'Poland',
+        'NL' => 'Netherlands',
+        'SE' => 'Sweden',
+        'TR' => 'Turkey',
+        'TH' => 'Thailand',
+        'MY' => 'Malaysia',
+        'SG' => 'Singapore',
+        'EG' => 'Egypt',
+        'ET' => 'Ethiopia',
     ];
 
     private function key(): string
@@ -68,84 +99,32 @@ class SmsPoolService implements SmsNumberProvider
             ->timeout(15);
     }
 
-    private function getServiceList(): array
+    private function resolveService(string $service): string
     {
-        return Cache::remember('smspool.service_list', 86400, function () {
-            try {
-                $res = $this->client()->get('/service', ['key' => $this->key()]);
-                $data = $res->successful() ? $res->json() : [];
-                Log::info('smspool.service_list', ['count' => count((array) $data), 'sample' => array_slice((array) $data, 0, 3)]);
-                return is_array($data) ? $data : [];
-            } catch (\Throwable $e) {
-                Log::warning('smspool.service_list.error', ['error' => $e->getMessage()]);
-                return [];
-            }
-        });
+        $lower = strtolower(trim($service));
+        return $this->serviceMap[$lower] ?? ucfirst($lower);
     }
 
-    private function getCountryList(): array
+    private function resolveCountry(string $country): string
     {
-        return Cache::remember('smspool.country_list', 86400, function () {
-            try {
-                $res = $this->client()->get('/country', ['key' => $this->key()]);
-                $data = $res->successful() ? $res->json() : [];
-                Log::info('smspool.country_list', ['count' => count((array) $data), 'sample' => array_slice((array) $data, 0, 3)]);
-                return is_array($data) ? $data : [];
-            } catch (\Throwable $e) {
-                Log::warning('smspool.country_list.error', ['error' => $e->getMessage()]);
-                return [];
-            }
-        });
-    }
-
-    private function resolveServiceId(string $service): ?int
-    {
-        $lower  = strtolower(trim($service));
-        $target = strtolower($this->serviceNameMap[$lower] ?? ucfirst($lower));
-
-        foreach ($this->getServiceList() as $svc) {
-            $name = strtolower((string) ($svc['name'] ?? ''));
-            if ($name === $target) {
-                $id = (int) ($svc['ID'] ?? $svc['id'] ?? 0);
-                return $id ?: null;
-            }
-        }
-
-        Log::warning('smspool.resolveServiceId.miss', ['service' => $service, 'target' => $target]);
-        return null;
-    }
-
-    private function buildIsoToIdMap(): array
-    {
-        $map = [];
-        foreach ($this->getCountryList() as $cty) {
-            // SMSPool country objects vary — try common field names
-            $code = strtoupper(trim((string) ($cty['code'] ?? $cty['short'] ?? $cty['iso'] ?? '')));
-            $id   = (int) ($cty['id'] ?? $cty['ID'] ?? 0);
-            if ($code && $id) {
-                $map[$code] = $id;
-            }
-        }
-        return $map;
+        $upper = strtoupper(trim($country));
+        return $this->countryMap[$upper] ?? $country;
     }
 
     public function getPrice(string $service, string $country): ?Money
     {
-        $serviceId = $this->resolveServiceId($service);
-        if (! $serviceId) return null;
-
-        $isoMap    = $this->buildIsoToIdMap();
-        $countryId = $isoMap[strtoupper(trim($country))] ?? null;
-        if (! $countryId) {
-            Log::warning('smspool.getPrice.no_country_id', ['country' => $country]);
-            return null;
-        }
-
         try {
             $res = $this->client()->get('/price', [
                 'key'     => $this->key(),
-                'country' => $countryId,
-                'service' => $serviceId,
+                'country' => $this->resolveCountry($country),
+                'service' => $this->resolveService($service),
+            ]);
+
+            Log::info('smspool.getPrice', [
+                'service' => $service,
+                'country' => $country,
+                'status'  => $res->status(),
+                'body'    => substr($res->body(), 0, 200),
             ]);
 
             if (! $res->successful()) return null;
@@ -172,41 +151,20 @@ class SmsPoolService implements SmsNumberProvider
     public function getCountryPrices(string $service): array
     {
         return Cache::remember("smspool.country_prices.{$service}", 900, function () use ($service) {
-            $serviceId = $this->resolveServiceId($service);
-            if (! $serviceId) {
-                Log::warning('smspool.getCountryPrices.no_service_id', ['service' => $service]);
-                return [];
-            }
+            $serviceName = $this->resolveService($service);
+            $baseUrl     = $this->baseUrl;
+            $key         = $this->key();
 
-            $isoMap = $this->buildIsoToIdMap();
-
-            // Build {iso => countryId} map for popular countries only
-            $toFetch = [];
-            foreach ($this->popularIsoCodes as $iso) {
-                if (isset($isoMap[$iso])) {
-                    $toFetch[$iso] = $isoMap[$iso];
-                }
-            }
-
-            if (empty($toFetch)) {
-                Log::warning('smspool.getCountryPrices.empty_country_map', ['service' => $service]);
-                return [];
-            }
-
-            // Concurrent requests via Http::pool
-            $baseUrl   = $this->baseUrl;
-            $key       = $this->key();
-            $isoKeys   = array_keys($toFetch);
-
-            $responses = Http::pool(function ($pool) use ($toFetch, $baseUrl, $key, $serviceId) {
-                foreach ($toFetch as $iso => $countryId) {
+            // Fire one request per popular country concurrently
+            $responses = Http::pool(function ($pool) use ($serviceName, $baseUrl, $key) {
+                foreach ($this->countryMap as $iso => $countryName) {
                     $pool->as($iso)
                         ->withHeaders(['Accept' => 'application/json'])
                         ->timeout(10)
                         ->get("{$baseUrl}/price", [
                             'key'     => $key,
-                            'country' => $countryId,
-                            'service' => $serviceId,
+                            'country' => $countryName,
+                            'service' => $serviceName,
                         ]);
                 }
             });
@@ -230,7 +188,11 @@ class SmsPoolService implements SmsNumberProvider
                 ];
             }
 
-            Log::info('smspool.getCountryPrices', ['service' => $service, 'serviceId' => $serviceId, 'found' => count($results)]);
+            Log::info('smspool.getCountryPrices', [
+                'service'     => $service,
+                'serviceName' => $serviceName,
+                'found'       => count($results),
+            ]);
 
             usort($results, fn ($a, $b) => $a['price_usd'] <=> $b['price_usd']);
             return $results;
@@ -239,27 +201,15 @@ class SmsPoolService implements SmsNumberProvider
 
     public function purchase(string $service, string $country): array
     {
-        $serviceId = $this->resolveServiceId($service);
-        $isoMap    = $this->buildIsoToIdMap();
-        $countryId = $isoMap[strtoupper(trim($country))] ?? null;
+        $svc = $this->resolveService($service);
+        $cty = $this->resolveCountry($country);
 
-        if (! $serviceId || ! $countryId) {
-            throw new ServiceUnavailableException(
-                "SMSPool: cannot resolve IDs for service={$service} country={$country}."
-            );
-        }
-
-        Log::info('smspool.purchase.attempt', [
-            'service'   => $service,
-            'serviceId' => $serviceId,
-            'country'   => $country,
-            'countryId' => $countryId,
-        ]);
+        Log::info('smspool.purchase.attempt', ['service' => $svc, 'country' => $cty]);
 
         $res = $this->client()->post('/order', [
             'key'     => $this->key(),
-            'country' => $countryId,
-            'service' => $serviceId,
+            'country' => $cty,
+            'service' => $svc,
             'pool'    => 0,
         ]);
 
