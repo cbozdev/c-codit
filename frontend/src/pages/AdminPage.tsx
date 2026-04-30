@@ -914,6 +914,13 @@ function LiveChatTab() {
 
 // ─── App Settings Tab ─────────────────────────────────────────────────────────
 
+type AdminSettings = {
+  logo_url?: string | null;
+  app_name?: string | null;
+  support_email?: string | null;
+  smspool_api_key_set?: boolean;
+};
+
 function AppSettingsTab() {
   const qc = useQueryClient();
   const { data: current } = useAppSettings();
@@ -1024,6 +1031,98 @@ function AppSettingsTab() {
         <button onClick={() => save.mutate()} disabled={save.isPending} className="btn-primary">
           {save.isPending ? 'Saving…' : 'Save settings'}
         </button>
+      </div>
+
+      <SmsPoolApiKeyForm />
+    </div>
+  );
+}
+
+// ─── SMSPool API Key Form ─────────────────────────────────────────────────────
+
+function SmsPoolApiKeyForm() {
+  const qc = useQueryClient();
+  const [apiKey, setApiKey]   = useState('');
+  const [showKey, setShowKey] = useState(false);
+
+  const { data: adminSettings, isLoading } = useQuery({
+    queryKey: ['admin', 'settings'],
+    queryFn:  () => apiCall<AdminSettings>({ url: '/admin/settings' }),
+  });
+
+  const save = useMutation({
+    mutationFn: () => apiCall<null>({
+      method: 'POST',
+      url: '/admin/settings',
+      data: { smspool_api_key: apiKey },
+    }),
+    onSuccess: () => {
+      toast.success('SMSPool API key saved.');
+      setApiKey('');
+      qc.invalidateQueries({ queryKey: ['admin', 'settings'] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const keyIsSet = adminSettings?.smspool_api_key_set ?? false;
+
+  return (
+    <div className="card-pad space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="text-base">🔑</span>
+        <h3 className="font-semibold dark:text-white">SMSPool API key</h3>
+        {!isLoading && (
+          <span className={`ml-auto text-xs font-medium px-2 py-0.5 rounded-full ${
+            keyIsSet
+              ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400'
+              : 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+          }`}>
+            {keyIsSet ? '✓ Configured' : 'Not set'}
+          </span>
+        )}
+      </div>
+
+      <p className="text-sm text-ink-600 dark:text-ink-400">
+        Enter your SMSPool API key to enable virtual number purchases via SMSPool (Server 4).
+        The key is stored securely in the database and overrides the <code className="text-xs bg-ink-100 dark:bg-ink-700 px-1 py-0.5 rounded">SMSPOOL_API_KEY</code> environment variable.
+      </p>
+
+      <div>
+        <label className="label">API key</label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type={showKey ? 'text' : 'password'}
+              className="input pr-10 font-mono text-sm"
+              placeholder={keyIsSet ? '••••••••••••••••••••••• (leave blank to keep current)' : 'Paste your SMSPool API key…'}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-600 text-xs"
+              tabIndex={-1}
+            >
+              {showKey ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          <button
+            onClick={() => save.mutate()}
+            disabled={!apiKey.trim() || save.isPending}
+            className="btn-primary whitespace-nowrap"
+          >
+            {save.isPending ? 'Saving…' : 'Save key'}
+          </button>
+        </div>
+        <p className="mt-1.5 text-xs text-ink-500 dark:text-ink-400">
+          Get your API key from your{' '}
+          <a href="https://www.smspool.net/my/settings" target="_blank" rel="noreferrer"
+            className="text-brand-700 dark:text-brand-400 underline">
+            SMSPool dashboard → Settings
+          </a>.
+        </p>
       </div>
     </div>
   );

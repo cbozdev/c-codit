@@ -28,4 +28,13 @@ class AppSetting extends Model
         $rows = static::whereIn('key', $keys)->pluck('value', 'key');
         return $rows->toArray();
     }
+
+    /** Returns admin-only settings including provider API keys (masked). */
+    public static function adminSettings(): array
+    {
+        $public = static::publicSettings();
+        $smspoolKey = static::getValue('smspool_api_key');
+        $public['smspool_api_key_set'] = !empty($smspoolKey);
+        return $public;
+    }
 }

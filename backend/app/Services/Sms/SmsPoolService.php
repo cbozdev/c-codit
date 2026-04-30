@@ -2,6 +2,7 @@
 
 namespace App\Services\Sms;
 
+use App\Models\AppSetting;
 use App\Services\Sms\Contracts\SmsNumberProvider;
 use App\Support\Money;
 use Illuminate\Support\Facades\Http;
@@ -22,7 +23,8 @@ class SmsPoolService implements SmsNumberProvider
 
     private function key(): string
     {
-        return (string) config('services.smspool.api_key');
+        return AppSetting::getValue('smspool_api_key')
+            ?: (string) config('services.smspool.api_key');
     }
 
     private function client()

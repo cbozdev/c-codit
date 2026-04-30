@@ -106,7 +106,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/services/{code}/markup',              [AdminController::class, 'updateServiceMarkup']);
 
             // App settings
-            Route::get('/settings',                             [AdminController::class, 'getSettings']);
+            Route::get('/settings',                             [AdminController::class, 'getAdminSettings']);
             Route::post('/settings',                            [AdminController::class, 'updateSettings']);
         });
     });
