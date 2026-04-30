@@ -488,18 +488,12 @@ class AdminController extends Controller
         return ApiResponse::ok(AppSetting::publicSettings());
     }
 
-    public function getAdminSettings()
-    {
-        return ApiResponse::ok(AppSetting::adminSettings());
-    }
-
     public function updateSettings(Request $request)
     {
         $request->validate([
-            'logo_url'        => ['nullable', 'string', 'max:700000'], // supports base64-encoded images up to ~500 KB
-            'app_name'        => ['nullable', 'string', 'max:80'],
-            'support_email'   => ['nullable', 'email', 'max:255'],
-            'smspool_api_key' => ['nullable', 'string', 'max:255'],
+            'logo_url'      => ['nullable', 'string', 'max:700000'], // supports base64-encoded images up to ~500 KB
+            'app_name'      => ['nullable', 'string', 'max:80'],
+            'support_email' => ['nullable', 'email', 'max:255'],
         ]);
 
         foreach (['logo_url', 'app_name', 'support_email'] as $key) {
@@ -508,18 +502,8 @@ class AdminController extends Controller
             }
         }
 
-        if ($request->has('smspool_api_key') && $request->input('smspool_api_key') !== null) {
-            $val = trim($request->input('smspool_api_key'));
-            if ($val !== '') {
-                AppSetting::setValue('smspool_api_key', $val);
-            }
-        }
+        Audit::log('admin.settings_updated', $request->user(), $request->only(['logo_url', 'app_name', 'support_email']), actorType: 'admin');
 
-        Audit::log('admin.settings_updated', $request->user(), array_merge(
-            $request->only(['logo_url', 'app_name', 'support_email']),
-            ['smspool_api_key' => $request->has('smspool_api_key') ? '[updated]' : '[unchanged]']
-        ), actorType: 'admin');
-
-        return ApiResponse::ok(AppSetting::adminSettings(), 'Settings saved.');
+        return ApiResponse::ok(AppSetting::publicSettings(), 'Settings saved.');
     }
 }
