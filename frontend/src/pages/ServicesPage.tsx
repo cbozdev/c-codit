@@ -8,6 +8,7 @@ import {
   Smartphone, Globe, CreditCard, Receipt, Phone,
   RefreshCw, Copy, Search, ChevronDown, ChevronUp,
   CheckCircle2, Clock, XCircle, Gift, Wifi, QrCode, ExternalLink,
+  TrendingUp, Users,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -152,6 +153,8 @@ const CAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   esim:           Globe,
   giftcard:       Gift,
   utility:        Receipt,
+  smm:            TrendingUp,
+  smm_accounts:   Users,
 };
 
 const CAT_LABELS: Record<string, string> = {
@@ -159,7 +162,47 @@ const CAT_LABELS: Record<string, string> = {
   esim:           'eSIM',
   giftcard:       'Gift Cards',
   utility:        'Utility Bills',
+  smm:            'Social Media Boost',
+  smm_accounts:   'Social Media Accounts',
 };
+
+// SMM types
+type SmmService = {
+  service_id:   number;
+  name:         string;
+  category:     string;
+  rate_per_1k:  number;
+  price_per_1k: number;
+  min:          number;
+  max:          number;
+  type:         string;
+  refill:       boolean;
+  cancel:       boolean;
+};
+
+const SMM_PLATFORMS_BOOST = [
+  { value: 'instagram', label: '📸 Instagram' },
+  { value: 'youtube',   label: '▶️ YouTube' },
+  { value: 'tiktok',    label: '🎵 TikTok' },
+  { value: 'twitter',   label: '🐦 Twitter/X' },
+  { value: 'facebook',  label: '📘 Facebook' },
+  { value: 'telegram',  label: '✈️ Telegram' },
+  { value: 'snapchat',  label: '👻 Snapchat' },
+  { value: 'spotify',   label: '🎧 Spotify' },
+  { value: 'linkedin',  label: '💼 LinkedIn' },
+  { value: 'threads',   label: '🧵 Threads' },
+  { value: 'all',       label: '🌐 All' },
+];
+
+const SMM_PLATFORMS_ACCOUNTS = [
+  { value: 'instagram', label: '📸 Instagram' },
+  { value: 'facebook',  label: '📘 Facebook' },
+  { value: 'twitter',   label: '🐦 Twitter/X' },
+  { value: 'tiktok',    label: '🎵 TikTok' },
+  { value: 'youtube',   label: '▶️ YouTube' },
+  { value: 'telegram',  label: '✈️ Telegram' },
+  { value: 'all',       label: '🌐 All' },
+];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -179,6 +222,9 @@ export default function ServicesPage() {
   const [dataBillerCode, setDataBillerCode] = useState('');
   const [meterType, setMeterType]         = useState<'prepaid'|'postpaid'>('prepaid');
   const [esimPackageId, setEsimPackageId]   = useState('');
+  const [smmServiceId, setSmmServiceId]     = useState<number | null>(null);
+  const [smmLink, setSmmLink]               = useState('');
+  const [smmQuantity, setSmmQuantity]       = useState(100);
   const [ordersExpanded, setOrdersExpanded] = useState(true);
 
   const services = useQuery({
@@ -221,6 +267,10 @@ export default function ServicesPage() {
         baseData.denomination = denomination;
       } else if (selected.category === 'esim') {
         baseData.package_id = esimPackageId;
+      } else if (selected.category === 'smm' || selected.category === 'smm_accounts') {
+        baseData.smm_service_id = smmServiceId;
+        baseData.link           = smmLink;
+        baseData.quantity       = smmQuantity;
       }
 
       return apiCall<ServiceOrder>({
@@ -380,6 +430,34 @@ export default function ServicesPage() {
               service={selected}
               packageId={esimPackageId}
               setPackageId={setEsimPackageId}
+              onPurchase={() => purchase.mutate()}
+              isPending={purchase.isPending}
+            />
+          )}
+
+          {/* SMM Boost */}
+          {selected.category === 'smm' && (
+            <SmmBoostForm
+              service={selected}
+              smmServiceId={smmServiceId}
+              setSmmServiceId={setSmmServiceId}
+              link={smmLink}
+              setLink={setSmmLink}
+              quantity={smmQuantity}
+              setQuantity={setSmmQuantity}
+              onPurchase={() => purchase.mutate()}
+              isPending={purchase.isPending}
+            />
+          )}
+
+          {/* SMM Accounts */}
+          {selected.category === 'smm_accounts' && (
+            <SmmAccountsForm
+              service={selected}
+              smmServiceId={smmServiceId}
+              setSmmServiceId={setSmmServiceId}
+              quantity={smmQuantity}
+              setQuantity={setSmmQuantity}
               onPurchase={() => purchase.mutate()}
               isPending={purchase.isPending}
             />
@@ -1004,6 +1082,321 @@ function EsimForm({ service, packageId, setPackageId, onPurchase, isPending }: {
   );
 }
 
+// ─── SMM Boost Form ───────────────────────────────────────────────────────────
+
+function SmmBoostForm({ service, smmServiceId, setSmmServiceId, link, setLink, quantity, setQuantity, onPurchase, isPending }: {
+  service: Service;
+  smmServiceId: number | null;
+  setSmmServiceId: (v: number | null) => void;
+  link: string;
+  setLink: (v: string) => void;
+  quantity: number;
+  setQuantity: (v: number) => void;
+  onPurchase: () => void;
+  isPending: boolean;
+}) {
+  const [platform, setPlatform] = useState('instagram');
+
+  const catalog = useQuery<SmmService[]>({
+    queryKey: ['smm-catalog', 'smm_boost', platform],
+    queryFn:  () => apiCall<SmmService[]>({
+      url: '/services/smm-catalog',
+      params: { category: 'smm_boost', platform },
+    }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const selected = catalog.data?.find((s) => s.service_id === smmServiceId) ?? null;
+  const totalPrice = selected ? ((quantity / 1000) * selected.price_per_1k) : 0;
+
+  function pickService(svc: SmmService) {
+    setSmmServiceId(svc.service_id);
+    setQuantity(Math.max(svc.min, Math.min(quantity, svc.max)));
+  }
+
+  const needsLink = selected?.type !== 'Package';
+  const canBuy = !isPending && !!smmServiceId && quantity >= (selected?.min ?? 1) && (!needsLink || link.trim().length > 0);
+
+  return (
+    <>
+      <h3 className="font-semibold flex items-center gap-2 mb-5 dark:text-white">
+        <TrendingUp className="h-4 w-4 text-brand-600" /> {service.name}
+      </h3>
+
+      {/* Platform tabs */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {SMM_PLATFORMS_BOOST.map((p) => (
+          <button key={p.value}
+            onClick={() => { setPlatform(p.value); setSmmServiceId(null); }}
+            className={clsx(
+              'px-3 py-1.5 rounded-full text-xs font-medium border transition',
+              platform === p.value
+                ? 'bg-ink-900 text-white border-ink-900 dark:bg-white dark:text-ink-900'
+                : 'border-ink-200 text-ink-600 hover:border-ink-400 dark:border-ink-700 dark:text-ink-400',
+            )}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Service list */}
+      <div className="mb-4">
+        <label className="label">Select service</label>
+        {catalog.isLoading ? (
+          <div className="space-y-2 mt-2">
+            {[1,2,3].map((i) => <div key={i} className="h-14 rounded-lg bg-ink-100 dark:bg-ink-800 animate-pulse" />)}
+          </div>
+        ) : !catalog.data?.length ? (
+          <div className="mt-2 py-6 text-center text-sm text-ink-500 dark:text-ink-400">
+            No services available for this platform right now.
+          </div>
+        ) : (
+          <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-ink-200 dark:border-ink-700 divide-y divide-ink-100 dark:divide-ink-800">
+            {catalog.data.map((svc) => (
+              <button key={svc.service_id}
+                onClick={() => pickService(svc)}
+                className={clsx(
+                  'w-full flex items-center justify-between px-3 py-2.5 text-left text-sm transition',
+                  smmServiceId === svc.service_id
+                    ? 'bg-brand-50 dark:bg-brand-950/40'
+                    : 'hover:bg-ink-50 dark:hover:bg-ink-800/60',
+                )}>
+                <div className="min-w-0 flex-1 pr-3">
+                  <div className={clsx('truncate', smmServiceId === svc.service_id ? 'font-medium text-brand-700 dark:text-brand-300' : 'dark:text-ink-200')}>
+                    {svc.name}
+                  </div>
+                  <div className="text-xs text-ink-400 dark:text-ink-500 mt-0.5">
+                    Min {svc.min.toLocaleString()} · Max {svc.max.toLocaleString()}
+                    {svc.refill && ' · Refill'}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className={clsx('font-medium tabular-nums', smmServiceId === svc.service_id ? 'text-brand-600 dark:text-brand-400' : 'dark:text-ink-200')}>
+                    ${svc.price_per_1k.toFixed(3)}<span className="text-xs font-normal text-ink-400">/1K</span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selected && (
+        <>
+          {/* Link input */}
+          {needsLink && (
+            <div className="mb-4">
+              <label className="label">Profile / Post URL</label>
+              <input
+                className="input"
+                placeholder="https://instagram.com/yourprofile"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+              />
+              <p className="text-xs text-ink-400 dark:text-ink-500 mt-1">
+                Paste the full URL of the profile or post you want to boost.
+              </p>
+            </div>
+          )}
+
+          {/* Quantity */}
+          <div className="mb-4">
+            <label className="label flex items-center justify-between">
+              <span>Quantity</span>
+              <span className="text-xs text-ink-400">{selected.min.toLocaleString()} – {selected.max.toLocaleString()}</span>
+            </label>
+            <input
+              type="number"
+              className="input"
+              min={selected.min}
+              max={selected.max}
+              step={selected.min}
+              value={quantity}
+              onChange={(e) => setQuantity(Math.max(selected.min, Math.min(selected.max, parseInt(e.target.value) || selected.min)))}
+            />
+            {/* Quick picks */}
+            <div className="flex flex-wrap gap-2 mt-2">
+              {[selected.min, 500, 1000, 5000, 10000].filter((v) => v >= selected.min && v <= selected.max).map((v) => (
+                <button key={v} onClick={() => setQuantity(v)}
+                  className={clsx(
+                    'px-3 py-1 text-xs rounded-full border transition',
+                    quantity === v
+                      ? 'bg-ink-900 text-white border-ink-900'
+                      : 'border-ink-200 text-ink-600 hover:border-ink-400 dark:border-ink-700 dark:text-ink-400',
+                  )}>
+                  {v.toLocaleString()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Price summary */}
+          <div className="mb-4 p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-sm flex items-center justify-between">
+            <span className="text-brand-700 dark:text-brand-300">
+              {quantity.toLocaleString()} × {selected.name.split(' ').slice(0,3).join(' ')}
+            </span>
+            <span className="font-bold text-brand-700 dark:text-brand-300">${totalPrice.toFixed(4)}</span>
+          </div>
+        </>
+      )}
+
+      <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs text-amber-700 dark:text-amber-400">
+        ⚠ Delivery typically starts within minutes and completes in 1–72 hours depending on quantity. Results are non-refundable once delivery begins.
+      </div>
+
+      <button onClick={onPurchase} disabled={!canBuy} className="btn-brand">
+        {isPending ? (
+          <span className="flex items-center gap-2">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-950/30 border-t-ink-950" />
+            Placing order…
+          </span>
+        ) : selected && canBuy
+          ? `Buy ${quantity.toLocaleString()} — $${totalPrice.toFixed(4)}`
+          : 'Select a service above'}
+      </button>
+    </>
+  );
+}
+
+// ─── SMM Accounts Form ────────────────────────────────────────────────────────
+
+function SmmAccountsForm({ service, smmServiceId, setSmmServiceId, quantity, setQuantity, onPurchase, isPending }: {
+  service: Service;
+  smmServiceId: number | null;
+  setSmmServiceId: (v: number | null) => void;
+  quantity: number;
+  setQuantity: (v: number) => void;
+  onPurchase: () => void;
+  isPending: boolean;
+}) {
+  const [platform, setPlatform] = useState('instagram');
+
+  const catalog = useQuery<SmmService[]>({
+    queryKey: ['smm-catalog', 'smm_accounts', platform],
+    queryFn:  () => apiCall<SmmService[]>({
+      url: '/services/smm-catalog',
+      params: { category: 'smm_accounts', platform },
+    }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const selected = catalog.data?.find((s) => s.service_id === smmServiceId) ?? null;
+  const totalPrice = selected ? ((quantity / 1000) * selected.price_per_1k) : 0;
+
+  function pickService(svc: SmmService) {
+    setSmmServiceId(svc.service_id);
+    setQuantity(Math.max(svc.min, Math.min(quantity, svc.max)));
+  }
+
+  const canBuy = !isPending && !!smmServiceId && quantity >= (selected?.min ?? 1);
+
+  return (
+    <>
+      <h3 className="font-semibold flex items-center gap-2 mb-5 dark:text-white">
+        <Users className="h-4 w-4 text-brand-600" /> {service.name}
+      </h3>
+
+      {/* Platform tabs */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {SMM_PLATFORMS_ACCOUNTS.map((p) => (
+          <button key={p.value}
+            onClick={() => { setPlatform(p.value); setSmmServiceId(null); }}
+            className={clsx(
+              'px-3 py-1.5 rounded-full text-xs font-medium border transition',
+              platform === p.value
+                ? 'bg-ink-900 text-white border-ink-900 dark:bg-white dark:text-ink-900'
+                : 'border-ink-200 text-ink-600 hover:border-ink-400 dark:border-ink-700 dark:text-ink-400',
+            )}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Service list */}
+      <div className="mb-4">
+        <label className="label">Select account type</label>
+        {catalog.isLoading ? (
+          <div className="space-y-2 mt-2">
+            {[1,2,3].map((i) => <div key={i} className="h-14 rounded-lg bg-ink-100 dark:bg-ink-800 animate-pulse" />)}
+          </div>
+        ) : !catalog.data?.length ? (
+          <div className="mt-2 py-6 text-center text-sm text-ink-500 dark:text-ink-400">
+            No accounts available for this platform right now.
+          </div>
+        ) : (
+          <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-ink-200 dark:border-ink-700 divide-y divide-ink-100 dark:divide-ink-800">
+            {catalog.data.map((svc) => (
+              <button key={svc.service_id}
+                onClick={() => pickService(svc)}
+                className={clsx(
+                  'w-full flex items-center justify-between px-3 py-2.5 text-left text-sm transition',
+                  smmServiceId === svc.service_id
+                    ? 'bg-brand-50 dark:bg-brand-950/40'
+                    : 'hover:bg-ink-50 dark:hover:bg-ink-800/60',
+                )}>
+                <div className="min-w-0 flex-1 pr-3">
+                  <div className={clsx('truncate', smmServiceId === svc.service_id ? 'font-medium text-brand-700 dark:text-brand-300' : 'dark:text-ink-200')}>
+                    {svc.name}
+                  </div>
+                  <div className="text-xs text-ink-400 dark:text-ink-500 mt-0.5">
+                    Min {svc.min.toLocaleString()} · Max {svc.max.toLocaleString()}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className={clsx('font-medium tabular-nums', smmServiceId === svc.service_id ? 'text-brand-600 dark:text-brand-400' : 'dark:text-ink-200')}>
+                    ${svc.price_per_1k.toFixed(3)}<span className="text-xs font-normal text-ink-400">/1K</span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selected && (
+        <>
+          <div className="mb-4">
+            <label className="label flex items-center justify-between">
+              <span>Quantity</span>
+              <span className="text-xs text-ink-400">{selected.min.toLocaleString()} – {selected.max.toLocaleString()}</span>
+            </label>
+            <input
+              type="number"
+              className="input"
+              min={selected.min}
+              max={selected.max}
+              value={quantity}
+              onChange={(e) => setQuantity(Math.max(selected.min, Math.min(selected.max, parseInt(e.target.value) || selected.min)))}
+            />
+          </div>
+
+          <div className="mb-4 p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-sm flex items-center justify-between">
+            <span className="text-brand-700 dark:text-brand-300">
+              {quantity.toLocaleString()} × {selected.name.split(' ').slice(0,4).join(' ')}
+            </span>
+            <span className="font-bold text-brand-700 dark:text-brand-300">${totalPrice.toFixed(4)}</span>
+          </div>
+        </>
+      )}
+
+      <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs text-amber-700 dark:text-amber-400">
+        ⚠ Account credentials are delivered via your order details. All sales are final. Use responsibly and in accordance with each platform's terms of service.
+      </div>
+
+      <button onClick={onPurchase} disabled={!canBuy} className="btn-brand">
+        {isPending ? (
+          <span className="flex items-center gap-2">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-950/30 border-t-ink-950" />
+            Placing order…
+          </span>
+        ) : selected && canBuy
+          ? `Buy ${quantity.toLocaleString()} account${quantity !== 1 ? 's' : ''} — $${totalPrice.toFixed(4)}`
+          : 'Select an account type above'}
+      </button>
+    </>
+  );
+}
+
 // ─── Order Row ────────────────────────────────────────────────────────────────
 
 function OrderRow({ order }: { order: ServiceOrder }) {
@@ -1013,6 +1406,9 @@ function OrderRow({ order }: { order: ServiceOrder }) {
   const phoneNumber     = delivery?.phone_number as string | null;
   const smsCode         = delivery?.sms_code as string | null;
   const isEsim          = delivery?.type === 'esim';
+  const isSmm           = delivery?.type === 'smm';
+  const smmStatus       = delivery?.smm_status as string | null;
+  const smmPanelOrder   = delivery?.panel_order as string | number | null;
   const esimCode        = delivery?.activation_code as string | null;
   const esimQrUrl       = delivery?.qrcode_url as string | null;
   const esimInstUrl     = delivery?.instructions_url as string | null;
@@ -1081,6 +1477,23 @@ function OrderRow({ order }: { order: ServiceOrder }) {
                 className="flex items-center gap-1 text-xs text-ink-500 dark:text-ink-400 hover:text-brand-600 hover:underline">
                 <ExternalLink className="h-3 w-3" /> Installation guide
               </a>
+            )}
+          </div>
+        )}
+
+        {/* SMM order delivery */}
+        {isSmm && (
+          <div className="mt-2 space-y-0.5 text-xs text-ink-500 dark:text-ink-400">
+            {smmPanelOrder && <div>Panel order #{smmPanelOrder}</div>}
+            {smmStatus && (
+              <div className={clsx(
+                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+                smmStatus === 'Completed' ? 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300'
+                  : smmStatus === 'Partial' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                  : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400',
+              )}>
+                <Clock className="h-3 w-3" /> {smmStatus}
+              </div>
             )}
           </div>
         )}

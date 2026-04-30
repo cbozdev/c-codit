@@ -6,6 +6,7 @@ use App\Models\Service;
 use App\Models\ServiceOrder;
 use App\Models\User;
 use App\Services\Esim\AiraloService;
+use App\Services\Smm\SmmPanelService;
 use App\Services\Esim\BnesimService;
 use App\Services\Esim\CelitechService;
 use App\Services\Sms\FiveSimService;
@@ -46,6 +47,7 @@ class ServicePurchaseService
         private readonly AiraloService $airalo,
         private readonly CelitechService $celitech,
         private readonly BnesimService $bnesim,
+        private readonly SmmPanelService $smmPanel,
     ) {}
 
     public function purchase(
@@ -72,6 +74,7 @@ class ServicePurchaseService
             'airalo'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->airalo),
             'celitech'    => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->celitech),
             'bnesim'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->bnesim),
+            'smmpanel'    => $this->purchaseSmmOrder($user, $service, $request, $idempotencyKey),
             default       => throw new RuntimeException("Unsupported service provider: {$service->provider}"),
         };
     }
@@ -365,6 +368,90 @@ class ServicePurchaseService
         });
 
         Audit::log('service.esim_purchased', $order, ['amount_minor' => $finalAmount->amountMinor]);
+        return $order->fresh();
+    }
+
+    // ─── SMM Panel (boost + accounts) ────────────────────────────────────────
+
+    private function purchaseSmmOrder(
+        User $user,
+        Service $service,
+        array $request,
+        string $idempotencyKey,
+    ): ServiceOrder {
+        $smmServiceId = (int) ($request['smm_service_id'] ?? 0);
+        $link         = trim((string) ($request['link'] ?? ''));
+        $quantity     = (int) ($request['quantity'] ?? 0);
+
+        if (! $smmServiceId || $quantity < 1) {
+            throw new RuntimeException('Invalid SMM order: service_id and quantity are required.');
+        }
+
+        $panelService = $this->smmPanel->getServiceById($smmServiceId);
+        if (! $panelService) {
+            throw new \App\Services\Sms\ServiceUnavailableException('SMM service not found in panel catalog.');
+        }
+
+        $min = (int) ($panelService['min'] ?? 10);
+        $max = (int) ($panelService['max'] ?? 10_000_000);
+        if ($quantity < $min || $quantity > $max) {
+            throw new RuntimeException("Quantity must be between {$min} and {$max} for this service.");
+        }
+
+        $rateUsd     = (float) ($panelService['rate'] ?? 0);
+        $baseUsd     = ($quantity / 1000) * $rateUsd;
+        $price       = Money::fromDecimal(number_format(max($baseUsd, 0.0001), 4, '.', ''), 'USD');
+        $finalAmount = $this->applyMarkup($price, $service);
+
+        $wallet = $this->wallets->getOrCreate($user, 'USD');
+
+        $order = ServiceOrder::create([
+            'user_id'         => $user->id,
+            'service_id'      => $service->id,
+            'status'          => 'pending',
+            'amount_minor'    => $finalAmount->amountMinor,
+            'cost_minor'      => $price->amountMinor,
+            'currency'        => 'USD',
+            'request'         => $request,
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        $holdTx = $this->wallets->holdForPurchase(
+            wallet: $wallet,
+            amount: $finalAmount,
+            idempotencyKey: 'svcorder:' . $order->public_id,
+            reference: $order,
+            description: 'SMM: ' . mb_substr($panelService['name'], 0, 80),
+        );
+
+        $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
+
+        try {
+            $result = $this->smmPanel->placeOrder($smmServiceId, $link, $quantity);
+        } catch (\Throwable $e) {
+            $this->refundOrder($order, $holdTx, $e->getMessage());
+            throw $e;
+        }
+
+        DB::transaction(function () use ($order, $holdTx, $result, $panelService, $link, $quantity) {
+            $this->wallets->settleSuspense($holdTx, 'svcsettle:' . $order->public_id);
+            $order->update([
+                'status'            => 'completed',
+                'provider_order_id' => (string) ($result['order'] ?? ''),
+                'provider_response' => $result,
+                'delivery'          => [
+                    'type'         => 'smm',
+                    'panel_order'  => $result['order'] ?? null,
+                    'service_name' => $panelService['name'],
+                    'link'         => $link,
+                    'quantity'     => $quantity,
+                    'smm_status'   => 'Pending',
+                ],
+                'provisioned_at' => now(),
+            ]);
+        });
+
+        Audit::log('service.smm_ordered', $order, ['amount_minor' => $finalAmount->amountMinor]);
         return $order->fresh();
     }
 

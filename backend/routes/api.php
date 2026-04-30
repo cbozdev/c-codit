@@ -63,6 +63,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/services/esim-packages',         [ServiceController::class, 'esimPackages']);
             Route::get('/services/virtual-number-prices', [ServiceController::class, 'virtualNumberPrices']);
             Route::get('/services/data-plans',            [ServiceController::class, 'dataPlans']);
+            Route::get('/services/smm-catalog',           [ServiceController::class, 'smmCatalog']);
             Route::post('/services/validate-meter',       [ServiceController::class, 'validateMeter']);
             Route::get('/services/{code}',                [ServiceController::class, 'show']);
             Route::get('/orders',                         [ServiceController::class, 'orders']);

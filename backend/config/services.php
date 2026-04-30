@@ -77,6 +77,11 @@ return [
         'base_url' => env('BNESIM_BASE_URL', 'https://api.bnesim.com/v1'),
     ],
 
+    'smmpanel' => [
+        'url' => env('SMM_PANEL_URL'),
+        'key' => env('SMM_PANEL_KEY'),
+    ],
+
     'platform' => [
         'base_currency'      => env('PLATFORM_BASE_CURRENCY', 'USD'),
         'markup_percent'     => (float) env('PLATFORM_MARKUP_PERCENT', 15),

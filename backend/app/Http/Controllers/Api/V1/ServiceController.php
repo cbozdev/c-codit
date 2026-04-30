@@ -53,6 +53,10 @@ class ServiceController extends Controller
             'denomination'    => ['nullable', 'numeric', 'min:1', 'max:500'],
             // eSIM fields
             'package_id'      => ['nullable', 'string', 'max:120'],
+            // SMM fields
+            'smm_service_id'  => ['nullable', 'integer', 'min:1'],
+            'link'            => ['nullable', 'string', 'max:500'],
+            'quantity'        => ['nullable', 'integer', 'min:1', 'max:10000000'],
         ]);
 
         $service = Service::where('code', $request->input('service_code'))
@@ -193,6 +197,32 @@ class ServiceController extends Controller
                 'provider'   => 'bnesim',
             ];
         }, $packages);
+    }
+
+    /**
+     * SMM service catalog — boost or accounts, optionally filtered by platform.
+     * GET /services/smm-catalog?category=smm_boost|smm_accounts&platform=instagram
+     */
+    public function smmCatalog(\Illuminate\Http\Request $request)
+    {
+        $request->validate([
+            'category' => ['nullable', 'in:smm_boost,smm_accounts'],
+            'platform' => ['nullable', 'string', 'max:30'],
+        ]);
+
+        $category = $request->input('category', 'smm_boost');
+        $platform = $request->input('platform');
+
+        $svc    = \App\Models\Service::where('code', $category)->first();
+        $markup = $svc ? (float) ($svc->markup_percent ?? 15) : 15;
+
+        try {
+            $panel   = app(\App\Services\Smm\SmmPanelService::class);
+            $catalog = $panel->getCatalog($category, $platform, $markup);
+            return ApiResponse::ok($catalog);
+        } catch (\Throwable $e) {
+            return ApiResponse::fail('Could not load SMM catalog: ' . $e->getMessage(), null, 503);
+        }
     }
 
     /**
