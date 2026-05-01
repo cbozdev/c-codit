@@ -399,7 +399,7 @@ class ServicePurchaseService
 
         $rateUsd     = (float) ($panelService['rate'] ?? 0);
         $baseUsd     = ($quantity / 1000) * $rateUsd;
-        $price       = Money::fromDecimal(number_format(max($baseUsd, 0.0001), 4, '.', ''), 'USD');
+        $price       = Money::fromDecimal(number_format(max($baseUsd, 0.01), 4, '.', ''), 'USD');
         $finalAmount = $this->applyMarkup($price, $service);
 
         $wallet = $this->wallets->getOrCreate($user, 'USD');
