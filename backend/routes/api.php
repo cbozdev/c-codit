@@ -71,8 +71,9 @@ Route::prefix('v1')->group(function () {
         });
 
         // Order actions — cancel & fetch SMS code
-        Route::post('/orders/{id}/cancel',    [ServiceController::class, 'cancel']);
-        Route::post('/orders/{id}/fetch-code',[ServiceController::class, 'fetchCode']);
+        Route::post('/orders/{id}/cancel',      [ServiceController::class, 'cancel']);
+        Route::post('/orders/{id}/fetch-code',  [ServiceController::class, 'fetchCode']);
+        Route::post('/orders/{id}/smm-status',  [ServiceController::class, 'smmOrderStatus']);
 
         // Service purchases
         Route::middleware(['throttle:services', 'idempotent'])->group(function () {

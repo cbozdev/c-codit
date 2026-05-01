@@ -768,6 +768,58 @@ class ServiceController extends Controller
         );
     }
 
+    /**
+     * Poll the SMM panel for order status + notes (account credentials).
+     * POST /orders/{id}/smm-status
+     */
+    public function smmOrderStatus(Request $request, string $publicId)
+    {
+        $order = ServiceOrder::where('public_id', $publicId)
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        if (! in_array($order->service->provider ?? '', ['smmpanel'])) {
+            return ApiResponse::fail('Not an SMM order.', null, 422);
+        }
+
+        if (! $order->provider_order_id) {
+            return ApiResponse::fail('No panel order ID on record.', null, 422);
+        }
+
+        try {
+            $panel  = app(\App\Services\Smm\SmmPanelService::class);
+            $result = $panel->getOrderStatus($order->provider_order_id);
+        } catch (\Throwable $e) {
+            return ApiResponse::fail('Could not reach SMM panel: ' . $e->getMessage(), null, 503);
+        }
+
+        $status  = $result['status']  ?? 'Unknown';
+        $notes   = trim((string) ($result['notes'] ?? $result['note'] ?? ''));
+        $remains = (int) ($result['remains'] ?? 0);
+
+        $delivery = array_merge((array) $order->delivery, [
+            'smm_status' => $status,
+            'remains'    => $remains,
+        ]);
+
+        if ($notes !== '') {
+            $delivery['notes'] = $notes;
+        }
+
+        $order->update(['delivery' => $delivery]);
+
+        if (in_array(strtolower($status), ['completed', 'partial'])) {
+            \App\Support\Audit::log('service.smm_completed', $order, ['status' => $status]);
+        }
+
+        return ApiResponse::ok([
+            'status'   => $status,
+            'remains'  => $remains,
+            'notes'    => $notes ?: null,
+            'delivery' => $order->fresh()->delivery,
+        ], $status);
+    }
+
     public function fetchCode(Request $request, string $publicId)
     {
         $order = ServiceOrder::where('public_id', $publicId)

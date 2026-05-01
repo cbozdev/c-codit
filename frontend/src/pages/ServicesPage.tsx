@@ -1397,6 +1397,74 @@ function SmmAccountsForm({ service, smmServiceId, setSmmServiceId, quantity, set
   );
 }
 
+// ─── SMM Order Status ─────────────────────────────────────────────────────────
+
+function SmmOrderStatus({ order }: { order: ServiceOrder }) {
+  const qc = useQueryClient();
+  const [checking, setChecking] = useState(false);
+  const delivery    = order.delivery as Record<string, unknown> | null;
+  const smmStatus   = delivery?.smm_status as string | null;
+  const notes       = delivery?.notes as string | null;
+  const panelOrder  = delivery?.panel_order as string | number | null;
+
+  async function checkStatus() {
+    setChecking(true);
+    try {
+      await apiCall({ url: `/orders/${order.id}/smm-status`, method: 'POST' });
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      toast.success('Status updated');
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Could not check status');
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  const isDone = smmStatus === 'Completed' || smmStatus === 'Partial';
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      {panelOrder && (
+        <div className="text-xs text-ink-400 dark:text-ink-500">Panel order #{panelOrder}</div>
+      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        {smmStatus && (
+          <span className={clsx(
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+            smmStatus === 'Completed' ? 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300'
+              : smmStatus === 'Partial' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+              : smmStatus === 'Canceled' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+              : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400',
+          )}>
+            <Clock className="h-3 w-3" /> {smmStatus}
+          </span>
+        )}
+        {!isDone && (
+          <button onClick={checkStatus} disabled={checking}
+            className="inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50">
+            <RefreshCw className={clsx('h-3 w-3', checking && 'animate-spin')} />
+            {checking ? 'Checking…' : 'Check status'}
+          </button>
+        )}
+      </div>
+      {/* Account credentials / notes */}
+      {notes && (
+        <div className="mt-1 p-2.5 rounded-lg bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700">
+          <div className="text-xs font-medium text-ink-500 dark:text-ink-400 mb-1">Delivery notes</div>
+          <pre className="text-xs text-ink-800 dark:text-ink-200 whitespace-pre-wrap break-all font-mono leading-relaxed">
+            {notes}
+          </pre>
+          <button
+            onClick={() => { navigator.clipboard.writeText(notes); toast.success('Copied!'); }}
+            className="mt-1.5 flex items-center gap-1 text-xs text-ink-400 hover:text-brand-600 dark:hover:text-brand-400">
+            <Copy className="h-3 w-3" /> Copy credentials
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Order Row ────────────────────────────────────────────────────────────────
 
 function OrderRow({ order }: { order: ServiceOrder }) {
@@ -1407,8 +1475,6 @@ function OrderRow({ order }: { order: ServiceOrder }) {
   const smsCode         = delivery?.sms_code as string | null;
   const isEsim          = delivery?.type === 'esim';
   const isSmm           = delivery?.type === 'smm';
-  const smmStatus       = delivery?.smm_status as string | null;
-  const smmPanelOrder   = delivery?.panel_order as string | number | null;
   const esimCode        = delivery?.activation_code as string | null;
   const esimQrUrl       = delivery?.qrcode_url as string | null;
   const esimInstUrl     = delivery?.instructions_url as string | null;
@@ -1482,21 +1548,7 @@ function OrderRow({ order }: { order: ServiceOrder }) {
         )}
 
         {/* SMM order delivery */}
-        {isSmm && (
-          <div className="mt-2 space-y-0.5 text-xs text-ink-500 dark:text-ink-400">
-            {smmPanelOrder && <div>Panel order #{smmPanelOrder}</div>}
-            {smmStatus && (
-              <div className={clsx(
-                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
-                smmStatus === 'Completed' ? 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300'
-                  : smmStatus === 'Partial' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                  : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400',
-              )}>
-                <Clock className="h-3 w-3" /> {smmStatus}
-              </div>
-            )}
-          </div>
-        )}
+        {isSmm && <SmmOrderStatus order={order} />}
 
         {order.failure_reason && (
           <div className="mt-1.5 flex items-start gap-1 text-xs text-rose-600 dark:text-rose-400">
