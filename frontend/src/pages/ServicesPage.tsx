@@ -1095,7 +1095,8 @@ function SmmBoostForm({ service, smmServiceId, setSmmServiceId, link, setLink, q
   onPurchase: () => void;
   isPending: boolean;
 }) {
-  const [platform, setPlatform] = useState('instagram');
+  const [platform, setPlatform]   = useState('instagram');
+  const [search, setSearch]       = useState('');
 
   const catalog = useQuery<SmmService[]>({
     queryKey: ['smm-catalog', 'smm_boost', platform],
@@ -1105,6 +1106,12 @@ function SmmBoostForm({ service, smmServiceId, setSmmServiceId, link, setLink, q
     }),
     staleTime: 5 * 60 * 1000,
   });
+
+  const filtered = search.trim()
+    ? (catalog.data ?? []).filter((s) =>
+        s.name.toLowerCase().includes(search.trim().toLowerCase())
+      )
+    : (catalog.data ?? []);
 
   const selected = catalog.data?.find((s) => s.service_id === smmServiceId) ?? null;
   const totalPrice = selected ? ((quantity / 1000) * selected.price_per_1k) : 0;
@@ -1127,7 +1134,7 @@ function SmmBoostForm({ service, smmServiceId, setSmmServiceId, link, setLink, q
       <div className="flex flex-wrap gap-1.5 mb-4">
         {SMM_PLATFORMS_BOOST.map((p) => (
           <button key={p.value}
-            onClick={() => { setPlatform(p.value); setSmmServiceId(null); }}
+            onClick={() => { setPlatform(p.value); setSmmServiceId(null); setSearch(''); }}
             className={clsx(
               'px-3 py-1.5 rounded-full text-xs font-medium border transition',
               platform === p.value
@@ -1139,20 +1146,36 @@ function SmmBoostForm({ service, smmServiceId, setSmmServiceId, link, setLink, q
         ))}
       </div>
 
+      {/* Search */}
+      <div className="mb-3 relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-400" />
+        <input
+          className="input pl-9 text-sm"
+          placeholder="Search services…"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setSmmServiceId(null); }}
+        />
+      </div>
+
       {/* Service list */}
       <div className="mb-4">
-        <label className="label">Select service</label>
+        <label className="label">
+          Select service
+          {search.trim() && (
+            <span className="ml-1 font-normal text-ink-400">({filtered.length} result{filtered.length !== 1 ? 's' : ''})</span>
+          )}
+        </label>
         {catalog.isLoading ? (
           <div className="space-y-2 mt-2">
             {[1,2,3].map((i) => <div key={i} className="h-14 rounded-lg bg-ink-100 dark:bg-ink-800 animate-pulse" />)}
           </div>
-        ) : !catalog.data?.length ? (
+        ) : !filtered.length ? (
           <div className="mt-2 py-6 text-center text-sm text-ink-500 dark:text-ink-400">
-            No services available for this platform right now.
+            {search.trim() ? `No services match "${search}"` : 'No services available for this platform right now.'}
           </div>
         ) : (
           <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-ink-200 dark:border-ink-700 divide-y divide-ink-100 dark:divide-ink-800">
-            {catalog.data.map((svc) => (
+            {filtered.map((svc) => (
               <button key={svc.service_id}
                 onClick={() => pickService(svc)}
                 className={clsx(
