@@ -7,29 +7,49 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Standard SMM panel integration (compatible with 90%+ of panels).
+ * Standard SMM panel integration (compatible with Peakerr, JustAnotherPanel, etc.).
  *
- * Required env vars:
- *   SMM_PANEL_URL=https://yourpanel.com/api/v2
- *   SMM_PANEL_KEY=your_api_key
+ * Use the static factories rather than constructing directly:
+ *   SmmPanelService::forBoost()    → SMM_PANEL_URL / SMM_PANEL_KEY
+ *   SmmPanelService::forAccounts() → SMM_ACCOUNTS_PANEL_URL / SMM_ACCOUNTS_PANEL_KEY
  */
 class SmmPanelService
 {
-    private function apiUrl(): string
+    public function __construct(
+        private readonly string $url,
+        private readonly string $key,
+    ) {}
+
+    public static function forBoost(): static
     {
-        return rtrim((string) config('services.smmpanel.url'), '/');
+        return new static(
+            rtrim((string) config('services.smmpanel.url', ''), '/'),
+            (string) config('services.smmpanel.key', ''),
+        );
     }
 
-    private function key(): string
+    public static function forAccounts(): static
     {
-        return (string) config('services.smmpanel.key');
+        $url = config('services.smm_accounts_panel.url') ?: config('services.smmpanel.url', '');
+        $key = config('services.smm_accounts_panel.key') ?: config('services.smmpanel.key', '');
+        return new static(rtrim((string) $url, '/'), (string) $key);
+    }
+
+    public static function forCategory(string $category): static
+    {
+        return $category === 'smm_accounts' ? static::forAccounts() : static::forBoost();
+    }
+
+    private function cachePrefix(): string
+    {
+        return 'smmpanel.' . substr(md5($this->url), 0, 8) . '.';
     }
 
     private function post(array $params): mixed
     {
-        $params['key'] = $this->key();
+        $params['key'] = $this->key;
 
-        $res = Http::asForm()->timeout(30)->post($this->apiUrl(), $params);
+        $res = Http::asForm()->timeout(30)->post($this->url, $params);
 
         if (! $res->successful()) {
             throw new \RuntimeException("SMM panel HTTP {$res->status()}: " . substr($res->body(), 0, 200));
@@ -48,14 +68,15 @@ class SmmPanelService
 
     public function getServices(): array
     {
-        return Cache::remember('smmpanel.services', 3600, function () {
+        $cacheKey = $this->cachePrefix() . 'services';
+        return Cache::remember($cacheKey, 3600, function () {
             try {
                 $data = $this->post(['action' => 'services']);
                 if (! is_array($data)) return [];
-                Log::info('smmpanel.services.loaded', ['count' => count($data)]);
+                Log::info('smmpanel.services.loaded', ['count' => count($data), 'panel' => $this->url]);
                 return $data;
             } catch (\Throwable $e) {
-                Log::warning('smmpanel.services.error', ['error' => $e->getMessage()]);
+                Log::warning('smmpanel.services.error', ['error' => $e->getMessage(), 'panel' => $this->url]);
                 return [];
             }
         });
@@ -74,16 +95,19 @@ class SmmPanelService
     /**
      * Filter panel services by our category (smm_boost vs smm_accounts)
      * and optionally by platform keyword.
+     *
+     * Boost panel (Peakerr): followers, likes, views, comments, shares, etc.
+     * Accounts panel (JustAnotherPanel): services with "account", "pva", "aged", "verified" in the name.
      */
     public function getCatalog(string $category, ?string $platform = null, float $markup = 15): array
     {
         $services = $this->getServices();
 
-        // Split boost vs account services by name keywords
         $boostKeywords   = ['followers', 'likes', 'views', 'comments', 'shares', 'subscribers',
                             'retweets', 'impressions', 'plays', 'streams', 'reposts', 'saves',
                             'reactions', 'story views', 'reel views', 'watch time'];
-        $accountKeywords = ['account', 'accounts', 'pva', 'aged', 'verified', 'profile'];
+
+        $accountKeywords = ['account', 'accounts', 'pva', 'aged', 'verified'];
 
         $targetKeywords = $category === 'smm_accounts' ? $accountKeywords : $boostKeywords;
 
@@ -151,7 +175,7 @@ class SmmPanelService
 
     public function placeOrder(int $serviceId, string $link, int $quantity): array
     {
-        Log::info('smmpanel.order.attempt', compact('serviceId', 'link', 'quantity'));
+        Log::info('smmpanel.order.attempt', compact('serviceId', 'link', 'quantity') + ['panel' => $this->url]);
 
         $params = ['action' => 'add', 'service' => $serviceId, 'quantity' => $quantity];
         if ($link !== '') {

@@ -217,7 +217,7 @@ class ServiceController extends Controller
         $markup = $svc ? (float) ($svc->markup_percent ?? 15) : 15;
 
         try {
-            $panel   = app(\App\Services\Smm\SmmPanelService::class);
+            $panel   = \App\Services\Smm\SmmPanelService::forCategory($category);
             $catalog = $panel->getCatalog($category, $platform, $markup);
             return ApiResponse::ok($catalog);
         } catch (\Throwable $e) {
@@ -787,7 +787,7 @@ class ServiceController extends Controller
         }
 
         try {
-            $panel  = app(\App\Services\Smm\SmmPanelService::class);
+            $panel  = \App\Services\Smm\SmmPanelService::forCategory($order->service->category ?? 'smm');
             $result = $panel->getOrderStatus($order->provider_order_id);
         } catch (\Throwable $e) {
             return ApiResponse::fail('Could not reach SMM panel: ' . $e->getMessage(), null, 503);

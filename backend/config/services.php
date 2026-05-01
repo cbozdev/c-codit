@@ -82,6 +82,11 @@ return [
         'key' => env('SMM_PANEL_KEY'),
     ],
 
+    'smm_accounts_panel' => [
+        'url' => env('SMM_ACCOUNTS_PANEL_URL'),
+        'key' => env('SMM_ACCOUNTS_PANEL_KEY'),
+    ],
+
     'platform' => [
         'base_currency'      => env('PLATFORM_BASE_CURRENCY', 'USD'),
         'markup_percent'     => (float) env('PLATFORM_MARKUP_PERCENT', 15),

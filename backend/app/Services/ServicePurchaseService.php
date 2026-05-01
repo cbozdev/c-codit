@@ -6,7 +6,6 @@ use App\Models\Service;
 use App\Models\ServiceOrder;
 use App\Models\User;
 use App\Services\Esim\AiraloService;
-use App\Services\Smm\SmmPanelService;
 use App\Services\Esim\BnesimService;
 use App\Services\Esim\CelitechService;
 use App\Services\Sms\FiveSimService;
@@ -47,7 +46,6 @@ class ServicePurchaseService
         private readonly AiraloService $airalo,
         private readonly CelitechService $celitech,
         private readonly BnesimService $bnesim,
-        private readonly SmmPanelService $smmPanel,
     ) {}
 
     public function purchase(
@@ -387,7 +385,8 @@ class ServicePurchaseService
             throw new RuntimeException('Invalid SMM order: service_id and quantity are required.');
         }
 
-        $panelService = $this->smmPanel->getServiceById($smmServiceId);
+        $panel        = \App\Services\Smm\SmmPanelService::forCategory($service->category);
+        $panelService = $panel->getServiceById($smmServiceId);
         if (! $panelService) {
             throw new \App\Services\Sms\ServiceUnavailableException('SMM service not found in panel catalog.');
         }
@@ -427,7 +426,7 @@ class ServicePurchaseService
         $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
 
         try {
-            $result = $this->smmPanel->placeOrder($smmServiceId, $link, $quantity);
+            $result = $panel->placeOrder($smmServiceId, $link, $quantity);
         } catch (\Throwable $e) {
             $this->refundOrder($order, $holdTx, $e->getMessage());
             throw $e;
