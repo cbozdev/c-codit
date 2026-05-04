@@ -169,12 +169,21 @@ class SmsPoolService implements SmsNumberProvider
                 }
             });
 
-            $results = [];
+            $results  = [];
+            $sample   = [];   // log first 3 raw responses for diagnostics
             foreach ($responses as $iso => $res) {
-                if ($res instanceof \Throwable) continue;
-                if (! $res->successful()) continue;
+                if ($res instanceof \Throwable) {
+                    if (count($sample) < 3) $sample[$iso] = ['error' => $res->getMessage()];
+                    continue;
+                }
+                if (! $res->successful()) {
+                    if (count($sample) < 3) $sample[$iso] = ['http' => $res->status(), 'body' => substr($res->body(), 0, 100)];
+                    continue;
+                }
 
                 $data  = $res->json();
+                if (count($sample) < 3) $sample[$iso] = $data;
+
                 if (! is_array($data)) continue;
 
                 $stock = (int) ($data['stock'] ?? 0);
@@ -192,6 +201,7 @@ class SmsPoolService implements SmsNumberProvider
                 'service'     => $service,
                 'serviceName' => $serviceName,
                 'found'       => count($results),
+                'sample'      => $sample,
             ]);
 
             usort($results, fn ($a, $b) => $a['price_usd'] <=> $b['price_usd']);
