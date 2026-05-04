@@ -32,6 +32,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware('throttle:webhooks')->group(function () {
         Route::post('/webhooks/flutterwave', [WebhookController::class, 'flutterwave']);
         Route::post('/webhooks/nowpayments', [WebhookController::class, 'nowpayments']);
+        Route::post('/webhooks/smspool',     [WebhookController::class, 'smspool']);
     });
 
     // Authenticated routes
