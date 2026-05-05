@@ -48,6 +48,7 @@ class SmsPoolService implements SmsNumberProvider
         'tiktok'    => 'TikTok',
         'linkedin'  => 'LinkedIn',
         'reddit'    => 'Reddit',
+        'match'     => 'Match / Meetic / Zweisam',
     ];
 
     // ISO code → SMSPool country name (accepted by the /price and /order endpoints)
