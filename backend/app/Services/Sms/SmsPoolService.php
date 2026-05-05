@@ -131,10 +131,10 @@ class SmsPoolService implements SmsNumberProvider
             $data = $res->json();
             if (! is_array($data)) return null;
 
-            $stock = (int) ($data['stock'] ?? 0);
-            $price = (float) ($data['price'] ?? 0);
+            $price       = (float) ($data['price'] ?? 0);
+            $successRate = (int) ($data['success_rate'] ?? -1);
 
-            if ($stock <= 0 || $price <= 0) return null;
+            if ($price <= 0 || $successRate < 0) return null;
 
             return Money::fromDecimal(sprintf('%.4f', $price), 'USD');
         } catch (\Throwable $e) {
@@ -186,13 +186,13 @@ class SmsPoolService implements SmsNumberProvider
 
                 if (! is_array($data)) continue;
 
-                $stock = (int) ($data['stock'] ?? 0);
-                $price = (float) ($data['price'] ?? 0);
-                if ($stock <= 0 || $price <= 0) continue;
+                $price       = (float) ($data['price'] ?? 0);
+                $successRate = (int) ($data['success_rate'] ?? -1);
+                if ($price <= 0 || $successRate < 0) continue;
 
                 $results[] = [
                     'country_code' => $iso,
-                    'count'        => $stock,
+                    'count'        => $successRate,
                     'price_usd'    => $price,
                 ];
             }
