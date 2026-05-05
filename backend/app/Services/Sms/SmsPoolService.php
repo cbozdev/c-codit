@@ -114,7 +114,7 @@ class SmsPoolService implements SmsNumberProvider
     public function getPrice(string $service, string $country): ?Money
     {
         try {
-            $res = $this->client()->get('/price', [
+            $res = $this->client()->get('/request/price', [
                 'key'     => $this->key(),
                 'country' => $this->resolveCountry($country),
                 'service' => $this->resolveService($service),
@@ -161,7 +161,7 @@ class SmsPoolService implements SmsNumberProvider
                     $pool->as($iso)
                         ->withHeaders(['Accept' => 'application/json'])
                         ->timeout(10)
-                        ->get("{$baseUrl}/price", [
+                        ->get("{$baseUrl}/request/price", [
                             'key'     => $key,
                             'country' => $countryName,
                             'service' => $serviceName,
@@ -216,7 +216,7 @@ class SmsPoolService implements SmsNumberProvider
 
         Log::info('smspool.purchase.attempt', ['service' => $svc, 'country' => $cty]);
 
-        $res = $this->client()->post('/order', [
+        $res = $this->client()->post('/purchase/sms', [
             'key'     => $this->key(),
             'country' => $cty,
             'service' => $svc,
@@ -263,7 +263,7 @@ class SmsPoolService implements SmsNumberProvider
     public function cancel(string $providerOrderId): bool
     {
         try {
-            $res  = $this->client()->get('/cancel/'.$providerOrderId, ['key' => $this->key()]);
+            $res  = $this->client()->get('/sms/cancel', ['key' => $this->key(), 'orderid' => $providerOrderId]);
             $body = $res->json();
             return $res->successful() && (($body['success'] ?? 0) == 1);
         } catch (\Throwable) {
@@ -274,7 +274,7 @@ class SmsPoolService implements SmsNumberProvider
     public function fetchCode(string $providerOrderId): ?string
     {
         try {
-            $res = $this->client()->get('/sms/'.$providerOrderId, ['key' => $this->key()]);
+            $res = $this->client()->get('/sms/check', ['key' => $this->key(), 'orderid' => $providerOrderId]);
             if (! $res->successful()) return null;
 
             $body = $res->json();
