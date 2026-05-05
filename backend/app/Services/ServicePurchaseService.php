@@ -467,7 +467,7 @@ class ServicePurchaseService
             $this->wallets->refundSuspense(
                 $holdTx,
                 'svcrefund:'.$order->public_id,
-                'Provider failed: '.mb_substr($reason, 0, 200),
+                'Provider failed: '.mb_substr($reason, 0, 170),
             );
             $order->update([
                 'status'         => 'refunded',

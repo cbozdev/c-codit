@@ -217,7 +217,7 @@ class SmsPoolService implements SmsNumberProvider
 
         Log::info('smspool.purchase.attempt', ['service' => $svc, 'country' => $cty]);
 
-        $res = $this->client()->post('/purchase/sms', [
+        $res = $this->client()->asForm()->post('/purchase/sms', [
             'key'     => $this->key(),
             'country' => $cty,
             'service' => $svc,
