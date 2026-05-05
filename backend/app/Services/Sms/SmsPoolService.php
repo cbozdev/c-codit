@@ -231,15 +231,18 @@ class SmsPoolService implements SmsNumberProvider
 
         if (! $res->successful()) {
             $msg = $res->json('message') ?? $res->json('error') ?? $res->body();
-            throw new ServiceUnavailableException('SMSPool error: '.$msg);
+            throw new ServiceUnavailableException('SMSPool error: '.strip_tags((string) $msg));
         }
 
         $body = $res->json();
 
         if (empty($body['success']) || $body['success'] != 1) {
-            $msg = $body['message'] ?? $body['error'] ?? 'Unknown error';
-            if (stripos((string) $msg, 'out of stock') !== false || stripos((string) $msg, 'no number') !== false) {
+            $msg = strip_tags((string) ($body['message'] ?? $body['error'] ?? 'Unknown error'));
+            if (stripos($msg, 'out of stock') !== false || stripos($msg, 'no number') !== false) {
                 throw new ServiceUnavailableException('No numbers available for this service/country on SMSPool.');
+            }
+            if (stripos($msg, 'balance') !== false || stripos($msg, 'insufficient') !== false) {
+                throw new ServiceUnavailableException('This number is temporarily unavailable. Please try again later.');
             }
             throw new ServiceUnavailableException('SMSPool error: '.$msg);
         }
