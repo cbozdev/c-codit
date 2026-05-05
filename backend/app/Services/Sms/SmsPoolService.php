@@ -19,7 +19,7 @@ class SmsPoolService implements SmsNumberProvider
 {
     public function code(): string { return 'smspool'; }
 
-    private string $baseUrl = 'https://www.smspool.net/api';
+    private string $baseUrl = 'https://api.smspool.net';
 
     private array $serviceMap = [
         'telegram'  => 'Telegram',
