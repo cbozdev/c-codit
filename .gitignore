@@ -6,3 +6,6 @@
 # VS Code — allow extensions recommendations
 .vscode/*
 !.vscode/extensions.json
+
+# Claude Code
+.claude/
