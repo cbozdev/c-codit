@@ -10,7 +10,7 @@ import {
   Ban, UserCheck, Shield, ShieldOff, Wallet,
   ChevronLeft, ChevronRight, ToggleLeft, ToggleRight,
   Plus, Minus, RefreshCw, Eye, ImagePlus, Settings2,
-  DollarSign, TrendingDown, BarChart3,
+  DollarSign, TrendingDown, BarChart3, RotateCcw,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -503,10 +503,13 @@ function UserTxModal({ user, onClose }: { user: AdminUser; onClose: () => void }
 // ─── Transactions Tab ─────────────────────────────────────────────────────────
 
 function TransactionsTab() {
+  const qc                  = useQueryClient();
   const [page, setPage]     = useState(1);
   const [type, setType]     = useState('');
   const [status, setStatus] = useState('');
   const [email, setEmail]   = useState('');
+  const [refundTarget, setRefundTarget] = useState<AdminTransaction | null>(null);
+  const [refundReason, setRefundReason] = useState('');
 
   const txs = useQuery({
     queryKey: ['admin', 'transactions', { page, type, status, email }],
@@ -515,6 +518,21 @@ function TransactionsTab() {
       params: { page, per_page: 50, type: type || undefined, status: status || undefined, user_email: email || undefined },
     }),
   });
+
+  const refund = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiCall<null>({ method: 'POST', url: `/admin/transactions/${id}/refund`, data: { reason } }),
+    onSuccess: () => {
+      toast.success('Transaction refunded.');
+      qc.invalidateQueries({ queryKey: ['admin', 'transactions'] });
+      setRefundTarget(null);
+      setRefundReason('');
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const canRefund = (tx: AdminTransaction) =>
+    tx.type === 'service_purchase' && (tx.status === 'processing' || tx.status === 'failed');
 
   return (
     <div className="space-y-4">
@@ -546,16 +564,16 @@ function TransactionsTab() {
           <table className="min-w-full text-sm">
             <thead className="bg-ink-50 border-b border-ink-100">
               <tr>
-                {['Reference', 'User', 'Type', 'Amount', 'Status', 'Date'].map((h) => (
+                {['Reference', 'User', 'Type', 'Amount', 'Status', 'Date', ''].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-ink-500 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
               {txs.isLoading ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-ink-500">Loading…</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-ink-500">Loading…</td></tr>
               ) : (txs.data?.items ?? []).length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-ink-500">No transactions match filters.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-ink-500">No transactions match filters.</td></tr>
               ) : (txs.data!.items as AdminTransaction[]).map((tx) => {
                 const isCredit = tx.type === 'wallet_funding' || tx.type === 'refund';
                 return (
@@ -573,6 +591,17 @@ function TransactionsTab() {
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={tx.status} /></td>
                     <td className="px-4 py-3 text-ink-600 text-xs whitespace-nowrap">{formatDate(tx.created_at)}</td>
+                    <td className="px-4 py-3">
+                      {canRefund(tx) && (
+                        <button
+                          onClick={() => { setRefundTarget(tx); setRefundReason(''); }}
+                          className="flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 font-medium"
+                          title="Refund this transaction"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" /> Refund
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -596,6 +625,45 @@ function TransactionsTab() {
           </div>
         )}
       </div>
+
+      {/* Refund confirmation modal */}
+      {refundTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h3 className="text-lg font-semibold">Refund Transaction</h3>
+            <div className="rounded-lg bg-ink-50 border border-ink-100 p-3 text-sm space-y-1">
+              <div className="font-mono text-xs text-ink-500">{refundTarget.reference}</div>
+              <div className="font-medium">{refundTarget.user_name} · {refundTarget.user_email}</div>
+              <div className="text-rose-600 font-semibold">{formatMoney(refundTarget.amount_minor, refundTarget.currency)}</div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink-700 mb-1">Reason (optional)</label>
+              <input
+                className="input w-full"
+                placeholder="e.g. Provider failed, order stuck"
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                className="btn-outline"
+                onClick={() => setRefundTarget(null)}
+                disabled={refund.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-danger"
+                disabled={refund.isPending}
+                onClick={() => refund.mutate({ id: refundTarget.id, reason: refundReason })}
+              >
+                {refund.isPending ? 'Refunding…' : 'Confirm Refund'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

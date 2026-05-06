@@ -11,6 +11,7 @@ use App\Http\Resources\UserResource;
 use App\Models\AppSetting;
 use App\Models\Payment;
 use App\Models\Service;
+use App\Models\ServiceOrder;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
@@ -479,6 +480,42 @@ class AdminController extends Controller
                 ? "Message sent to {$sent} users. {$failed} failed."
                 : "Message queued for {$sent} users."
         );
+    }
+
+    // ─── Refund Transaction ───────────────────────────────────────────────────
+
+    public function refundTransaction(Request $request, string $id)
+    {
+        $tx = Transaction::where('public_id', $id)
+            ->orWhere('reference', $id)
+            ->firstOrFail();
+
+        if (! in_array($tx->status, [TransactionStatus::PROCESSING->value, TransactionStatus::FAILED->value], true)) {
+            return ApiResponse::error('Only processing or failed transactions can be refunded.', 422);
+        }
+
+        if ($tx->type !== TransactionType::SERVICE_PURCHASE->value) {
+            return ApiResponse::error('Only service purchase transactions can be refunded this way.', 422);
+        }
+
+        DB::transaction(function () use ($tx, $request) {
+            $reason = 'Admin refund' . ($request->input('reason') ? ': ' . mb_substr($request->input('reason'), 0, 150) : '');
+
+            $this->wallets->refundSuspense($tx, 'adminrefund:'.$tx->public_id, $reason);
+
+            // Mark related service order as refunded if one exists
+            ServiceOrder::where('transaction_id', $tx->id)
+                ->whereIn('status', ['provisioning', 'pending', 'failed'])
+                ->update([
+                    'status'         => 'refunded',
+                    'failure_reason' => $reason,
+                    'refunded_at'    => now(),
+                ]);
+        });
+
+        Audit::log('admin.transaction_refunded', $request->user(), ['transaction' => $tx->reference], actorType: 'admin');
+
+        return ApiResponse::ok(null, 'Transaction refunded successfully.');
     }
 
     // ─── App Settings ─────────────────────────────────────────────────────────
