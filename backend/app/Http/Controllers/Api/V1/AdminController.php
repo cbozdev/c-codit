@@ -491,11 +491,11 @@ class AdminController extends Controller
             ->firstOrFail();
 
         if (! in_array($tx->status, [TransactionStatus::PROCESSING->value, TransactionStatus::FAILED->value], true)) {
-            return ApiResponse::error('Only processing or failed transactions can be refunded.', 422);
+            return ApiResponse::fail('Only processing or failed transactions can be refunded.', null, 422);
         }
 
         if ($tx->type !== TransactionType::SERVICE_PURCHASE->value) {
-            return ApiResponse::error('Only service purchase transactions can be refunded this way.', 422);
+            return ApiResponse::fail('Only service purchase transactions can be refunded this way.', null, 422);
         }
 
         DB::transaction(function () use ($tx, $request) {
