@@ -490,11 +490,11 @@ class AdminController extends Controller
             ->orWhere('reference', $id)
             ->firstOrFail();
 
-        if (! in_array($tx->status, [TransactionStatus::PROCESSING->value, TransactionStatus::FAILED->value], true)) {
+        if (! in_array($tx->status, [TransactionStatus::PROCESSING, TransactionStatus::FAILED], true)) {
             return ApiResponse::fail('Only processing or failed transactions can be refunded.', null, 422);
         }
 
-        if ($tx->type !== TransactionType::SERVICE_PURCHASE->value) {
+        if ($tx->type !== TransactionType::SERVICE_PURCHASE) {
             return ApiResponse::fail('Only service purchase transactions can be refunded this way.', null, 422);
         }
 
