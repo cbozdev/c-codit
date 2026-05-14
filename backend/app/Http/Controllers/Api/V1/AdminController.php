@@ -39,8 +39,8 @@ class AdminController extends Controller
         $q = User::with('wallet')->orderByDesc('id');
         if ($s = $request->input('q')) {
             $q->where(fn ($w) =>
-                $w->where('email', 'ilike', "%{$s}%")
-                  ->orWhere('name',  'ilike', "%{$s}%")
+                $w->where('email', 'like', "%{$s}%")
+                  ->orWhere('name',  'like', "%{$s}%")
             );
         }
         $page = $q->paginate((int) ($request->input('per_page') ?? 25));
@@ -195,7 +195,7 @@ class AdminController extends Controller
         if ($f = $request->input('from'))       $q->where('created_at', '>=', $f);
         if ($to = $request->input('to'))        $q->where('created_at', '<=', $to . ' 23:59:59');
         if ($e = $request->input('user_email')) {
-            $q->whereHas('user', fn ($w) => $w->where('email', 'ilike', "%{$e}%"));
+            $q->whereHas('user', fn ($w) => $w->where('email', 'like', "%{$e}%"));
         }
 
         $page = $q->paginate((int) ($request->input('per_page') ?? 50));
