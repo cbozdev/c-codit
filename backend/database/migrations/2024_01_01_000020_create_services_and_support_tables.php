@@ -65,7 +65,7 @@ return new class extends Migration {
             $t->longText('response_body')->nullable();
             $t->timestamp('locked_at')->nullable();
             $t->timestamp('completed_at')->nullable();
-            $t->timestamp('expires_at')->index();
+            $t->timestamp('expires_at')->nullable()->index();
             $t->timestamps();
         });
 
