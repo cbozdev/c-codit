@@ -77,6 +77,25 @@ return [
         'base_url' => env('BNESIM_BASE_URL', 'https://api.bnesim.com/v1'),
     ],
 
+    'decodo' => [
+        'api_key'          => env('DECODO_API_KEY'),
+        'base_url'         => env('DECODO_BASE_URL', 'https://api.decodo.com/v1'),
+        'enabled'          => (bool) env('DECODO_ENABLED', true),
+        'unsupported_types'=> [],
+    ],
+
+    'brightdata' => [
+        'api_key'          => env('BRIGHTDATA_API_KEY'),
+        'customer_id'      => env('BRIGHTDATA_CUSTOMER_ID'),
+        'enabled'          => (bool) env('BRIGHTDATA_ENABLED', true),
+        'unsupported_types'=> [],
+    ],
+
+    'proxy' => [
+        'provider_priority' => array_filter(explode(',', env('PROXY_PROVIDER_PRIORITY', 'decodo,brightdata'))),
+        'trial_enabled'     => (bool) env('PROXY_TRIAL_ENABLED', true),
+    ],
+
     'smmpanel' => [
         'url' => env('SMM_PANEL_URL'),
         'key' => env('SMM_PANEL_KEY'),

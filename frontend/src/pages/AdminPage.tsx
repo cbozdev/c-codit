@@ -11,6 +11,7 @@ import {
   ChevronLeft, ChevronRight, ToggleLeft, ToggleRight,
   Plus, Minus, RefreshCw, Eye, ImagePlus, Settings2,
   DollarSign, TrendingDown, BarChart3, RotateCcw,
+  Globe, Server,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -39,7 +40,7 @@ type AdminService = {
   markup_percent: number;
 };
 
-type Tab = 'metrics' | 'profit' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings';
+type Tab = 'metrics' | 'profit' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings' | 'proxy';
 
 type ProfitSummary = {
   orders: number; revenue_minor: number; cost_minor: number;
@@ -66,7 +67,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ink-200 overflow-x-auto">
-        {(['metrics', 'profit', 'users', 'transactions', 'services', 'messages', 'livechat', 'settings'] as Tab[]).map((t) => (
+        {(['metrics', 'profit', 'users', 'transactions', 'services', 'proxy', 'messages', 'livechat', 'settings'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2.5 text-sm font-medium capitalize whitespace-nowrap border-b-2 transition -mb-px ${
               tab === t
@@ -83,6 +84,7 @@ export default function AdminPage() {
       {tab === 'users'        && <UsersTab />}
       {tab === 'transactions' && <TransactionsTab />}
       {tab === 'services'     && <ServicesTab />}
+      {tab === 'proxy'        && <ProxyAdminTab />}
       {tab === 'messages'     && <MessagesTab />}
       {tab === 'livechat'     && <LiveChatTab />}
       {tab === 'settings'    && <AppSettingsTab />}
@@ -1310,6 +1312,322 @@ function MetricCard({ label, value, icon: Icon, color }: {
         {Icon && <Icon className="h-3.5 w-3.5" />} {label}
       </div>
       <div className={`text-2xl font-semibold tracking-tight ${text}`}>{value}</div>
+    </div>
+  );
+}
+
+// ─── Proxy Admin Tab ──────────────────────────────────────────────────────────
+
+type ProxyOverview = {
+  total_subscriptions: number;
+  active_subscriptions: number;
+  expired_subscriptions: number;
+  trial_subscriptions: number;
+  revenue_usd: string;
+  by_provider: Record<string, number>;
+  by_type: Record<string, number>;
+  provider_stats: Record<string, { enabled: boolean; failures_1h: number }>;
+};
+
+type AdminProxySub = {
+  id: string;
+  provider: string;
+  proxy_type: string;
+  status: string;
+  location_country: string;
+  is_trial: boolean;
+  bandwidth_gb_used: number;
+  bandwidth_gb_total: number;
+  expires_at: string;
+  created_at: string;
+  user?: { name: string; email: string; public_id: string };
+};
+
+function ProxyAdminTab() {
+  const qc                  = useQueryClient();
+  const [subTab, setSubTab] = useState<'overview' | 'subscriptions' | 'analytics'>('overview');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [providerFilter, setProviderFilter] = useState('');
+
+  const overview = useQuery({
+    queryKey: ['admin', 'proxy', 'overview'],
+    queryFn:  () => apiCall<ProxyOverview>({ url: '/admin/proxy/overview' }),
+  });
+
+  const subscriptions = useQuery({
+    queryKey: ['admin', 'proxy', 'subscriptions', statusFilter, providerFilter],
+    queryFn:  () => apiCall<{ items: AdminProxySub[]; meta: { total: number; current_page: number; last_page: number } }>({
+      url: '/admin/proxy/subscriptions',
+      params: {
+        status:   statusFilter   || undefined,
+        provider: providerFilter || undefined,
+        per_page: 25,
+      },
+    }),
+    enabled: subTab === 'subscriptions',
+  });
+
+  const analytics = useQuery({
+    queryKey: ['admin', 'proxy', 'analytics'],
+    queryFn:  () => apiCall<{
+      revenue:  { date: string; total: number }[];
+      bandwidth:{ date: string; total_mb: number }[];
+      new_subs: { date: string; count: number }[];
+    }>({ url: '/admin/proxy/analytics', params: { days: 30 } }),
+    enabled: subTab === 'analytics',
+  });
+
+  const syncUsage = useMutation({
+    mutationFn: (id: string) => apiCall<null>({ method: 'POST', url: `/admin/proxy/subscriptions/${id}/sync-usage` }),
+    onSuccess: () => { toast.success('Usage synced.'); qc.invalidateQueries({ queryKey: ['admin', 'proxy'] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const cancelSub = useMutation({
+    mutationFn: (id: string) => apiCall<null>({ method: 'POST', url: `/admin/proxy/subscriptions/${id}/cancel` }),
+    onSuccess: () => { toast.success('Subscription cancelled.'); qc.invalidateQueries({ queryKey: ['admin', 'proxy'] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const resetCreds = useMutation({
+    mutationFn: (id: string) => apiCall<null>({ method: 'POST', url: `/admin/proxy/subscriptions/${id}/reset-creds` }),
+    onSuccess: () => toast.success('Credentials reset.'),
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const d = overview.data;
+
+  return (
+    <div className="space-y-4">
+      {/* Sub-tabs */}
+      <div className="flex gap-1 border-b border-ink-200">
+        {(['overview', 'subscriptions', 'analytics'] as const).map((t) => (
+          <button key={t} onClick={() => setSubTab(t)}
+            className={`px-4 py-2 text-sm font-medium capitalize border-b-2 -mb-px transition ${
+              subTab === t ? 'border-ink-900 text-ink-900' : 'border-transparent text-ink-500 hover:text-ink-700'
+            }`}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Overview */}
+      {subTab === 'overview' && (
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard icon={Globe}       label="Total subs"     value={d?.total_subscriptions ?? '…'} />
+            <MetricCard icon={Server}      label="Active"         value={d?.active_subscriptions ?? '…'} color="green" />
+            <MetricCard icon={AlertTriangle} label="Expired"      value={d?.expired_subscriptions ?? '…'} color="amber" />
+            <MetricCard icon={DollarSign}  label="Revenue (USD)"  value={d?.revenue_usd ? `$${d.revenue_usd}` : '…'} />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="card-pad">
+              <h3 className="text-sm font-semibold mb-3">By Provider</h3>
+              {d?.by_provider && Object.entries(d.by_provider).length > 0
+                ? Object.entries(d.by_provider).map(([provider, count]) => (
+                    <div key={provider} className="flex justify-between text-sm py-1.5 border-b border-ink-50 last:border-0">
+                      <span className="capitalize">{provider}</span>
+                      <span className="font-mono font-medium">{count}</span>
+                    </div>
+                  ))
+                : <p className="text-sm text-ink-500">No active subscriptions.</p>
+              }
+            </div>
+
+            <div className="card-pad">
+              <h3 className="text-sm font-semibold mb-3">Provider Health</h3>
+              {d?.provider_stats && Object.entries(d.provider_stats).map(([p, stat]) => (
+                <div key={p} className="flex justify-between items-center py-1.5 border-b border-ink-50 last:border-0">
+                  <div>
+                    <span className="text-sm capitalize">{p}</span>
+                    <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${stat.enabled ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>
+                      {stat.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                  {stat.failures_1h > 0 && (
+                    <span className="text-xs text-rose-600">{stat.failures_1h} fail/1h</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card-pad">
+            <h3 className="text-sm font-semibold mb-3">Active by Type</h3>
+            {d?.by_type && Object.entries(d.by_type).length > 0 ? (
+              <div className="grid sm:grid-cols-2 gap-2">
+                {Object.entries(d.by_type).map(([type, count]) => (
+                  <div key={type} className="flex justify-between text-sm py-1.5">
+                    <span className="text-ink-600 capitalize">{type.replace(/_/g, ' ')}</span>
+                    <span className="font-mono font-medium">{count}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-sm text-ink-500">No data.</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Subscriptions */}
+      {subTab === 'subscriptions' && (
+        <div className="space-y-4">
+          <div className="flex gap-3">
+            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="expired">Expired</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select className="input" value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)}>
+              <option value="">All providers</option>
+              <option value="decodo">Decodo</option>
+              <option value="brightdata">BrightData</option>
+            </select>
+            <button onClick={() => qc.invalidateQueries({ queryKey: ['admin', 'proxy', 'subscriptions'] })} className="btn-outline">
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-ink-50 border-b border-ink-100">
+                  <tr>
+                    {['User', 'Type', 'Provider', 'Country', 'Status', 'Bandwidth', 'Expires', 'Actions'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-ink-500 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink-100">
+                  {subscriptions.isLoading ? (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-ink-500">Loading…</td></tr>
+                  ) : (subscriptions.data?.items ?? []).length === 0 ? (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-ink-500">No subscriptions found.</td></tr>
+                  ) : (subscriptions.data?.items ?? []).map((sub) => (
+                    <tr key={sub.id} className="hover:bg-ink-50/50">
+                      <td className="px-4 py-3">
+                        <div className="text-xs">
+                          <div className="font-medium">{sub.user?.name ?? '—'}</div>
+                          <div className="text-ink-500">{sub.user?.email ?? '—'}</div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {sub.proxy_type.replace(/_/g, ' ')}
+                        {sub.is_trial && <span className="ml-1 badge-warning">Trial</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs capitalize">{sub.provider}</td>
+                      <td className="px-4 py-3 text-xs">{sub.location_country}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          sub.status === 'active' ? 'bg-green-100 text-green-700' :
+                          sub.status === 'expired' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                        }`}>{sub.status}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono">
+                        {sub.bandwidth_gb_total > 0
+                          ? `${sub.bandwidth_gb_used.toFixed(2)}/${sub.bandwidth_gb_total} GB`
+                          : `—`}
+                      </td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">{formatDate(sub.expires_at)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1">
+                          <button onClick={() => syncUsage.mutate(sub.id)} disabled={syncUsage.isPending}
+                            className="btn-ghost text-xs px-2 py-1 text-ink-600">
+                            <RefreshCw className="h-3 w-3" /> Sync
+                          </button>
+                          <button onClick={() => resetCreds.mutate(sub.id)} disabled={resetCreds.isPending}
+                            className="btn-ghost text-xs px-2 py-1 text-brand-600">
+                            <RotateCcw className="h-3 w-3" /> Creds
+                          </button>
+                          {sub.status === 'active' && (
+                            <button onClick={() => { if (confirm('Cancel this subscription?')) cancelSub.mutate(sub.id); }}
+                              disabled={cancelSub.isPending}
+                              className="btn-ghost text-xs px-2 py-1 text-rose-600">
+                              <Ban className="h-3 w-3" /> Cancel
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {subscriptions.data?.meta && (
+              <div className="px-4 py-3 border-t border-ink-100 text-xs text-ink-500">
+                {subscriptions.data.meta.total} total · Page {subscriptions.data.meta.current_page} of {subscriptions.data.meta.last_page}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Analytics */}
+      {subTab === 'analytics' && (
+        <div className="space-y-4">
+          {analytics.isLoading && <p className="text-sm text-ink-500">Loading analytics…</p>}
+          {analytics.data && (
+            <>
+              <div className="card-pad">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-brand-500" /> Revenue (last 30 days)
+                </h3>
+                {analytics.data.revenue.length === 0 ? (
+                  <p className="text-sm text-ink-500">No revenue data.</p>
+                ) : (
+                  <div className="space-y-1 max-h-64 overflow-y-auto">
+                    {analytics.data.revenue.slice(-14).map((r) => (
+                      <div key={r.date} className="flex justify-between text-sm py-1">
+                        <span className="text-ink-600">{r.date}</span>
+                        <span className="font-mono font-medium">${(r.total / 100).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="card-pad">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-brand-500" /> New Subscriptions
+                  </h3>
+                  {analytics.data.new_subs.length === 0 ? (
+                    <p className="text-sm text-ink-500">No data.</p>
+                  ) : (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {analytics.data.new_subs.slice(-7).map((r) => (
+                        <div key={r.date} className="flex justify-between text-sm py-1">
+                          <span className="text-ink-600">{r.date}</span>
+                          <span className="font-mono font-medium">{r.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="card-pad">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-brand-500" /> Bandwidth Synced
+                  </h3>
+                  {analytics.data.bandwidth.length === 0 ? (
+                    <p className="text-sm text-ink-500">No bandwidth data.</p>
+                  ) : (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {analytics.data.bandwidth.slice(-7).map((r) => (
+                        <div key={r.date} className="flex justify-between text-sm py-1">
+                          <span className="text-ink-600">{r.date}</span>
+                          <span className="font-mono font-medium">{(r.total_mb / 1024).toFixed(2)} GB</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\V1\AdminController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\ProxyAdminController;
+use App\Http\Controllers\Api\V1\ProxyController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\SocialAuthController;
 use App\Http\Controllers\Api\V1\WalletController;
@@ -83,6 +85,33 @@ Route::prefix('v1')->group(function () {
             Route::post('/services/virtual-number/purchase', [ServiceController::class, 'purchaseVirtualNumber']);
         });
 
+        // Proxy
+        Route::middleware('throttle:api')->prefix('proxy')->group(function () {
+            Route::get('/plans',                         [ProxyController::class, 'plans']);
+            Route::get('/locations',                     [ProxyController::class, 'locations']);
+            Route::post('/price-estimate',               [ProxyController::class, 'priceEstimate']);
+            Route::get('/trial-status',                  [ProxyController::class, 'trialStatus']);
+            Route::get('/my',                            [ProxyController::class, 'index']);
+            Route::get('/my/{id}',                       [ProxyController::class, 'show']);
+            Route::get('/my/{id}/usage',                 [ProxyController::class, 'usage']);
+            Route::get('/my/{id}/examples',             [ProxyController::class, 'connectionExamples']);
+            Route::post('/my/{id}/test',                 [ProxyController::class, 'testProxy']);
+        });
+
+        Route::middleware(['throttle:services'])->prefix('proxy')->group(function () {
+            Route::post('/claim-trial',                  [ProxyController::class, 'claimTrial']);
+            Route::post('/my/{id}/rotate',               [ProxyController::class, 'rotate']);
+            Route::post('/my/{id}/renew',                [ProxyController::class, 'renew']);
+            Route::post('/my/{id}/cancel',               [ProxyController::class, 'cancel']);
+        });
+
+        Route::middleware('throttle:api')->prefix('proxy-keys')->group(function () {
+            Route::get('/',            [ProxyController::class, 'listApiKeys']);
+            Route::post('/',           [ProxyController::class, 'createApiKey']);
+            Route::post('/{id}/rotate',[ProxyController::class, 'rotateApiKey']);
+            Route::delete('/{id}',     [ProxyController::class, 'revokeApiKey']);
+        });
+
         // Admin
         Route::middleware('role:admin')->prefix('admin')->group(function () {
             // Metrics & Profit
@@ -113,6 +142,17 @@ Route::prefix('v1')->group(function () {
             // App settings
             Route::get('/settings',                             [AdminController::class, 'getSettings']);
             Route::post('/settings',                            [AdminController::class, 'updateSettings']);
+
+            // Proxy admin
+            Route::get('/proxy/overview',                       [ProxyAdminController::class, 'overview']);
+            Route::get('/proxy/subscriptions',                  [ProxyAdminController::class, 'subscriptions']);
+            Route::get('/proxy/analytics',                      [ProxyAdminController::class, 'analytics']);
+            Route::get('/proxy/provider-settings',              [ProxyAdminController::class, 'providerSettings']);
+            Route::post('/proxy/provider-settings',             [ProxyAdminController::class, 'updateProviderSettings']);
+            Route::post('/proxy/subscriptions/{id}/reprovision',[ProxyAdminController::class, 'forceReprovision']);
+            Route::post('/proxy/subscriptions/{id}/reset-creds',[ProxyAdminController::class, 'resetCredentials']);
+            Route::post('/proxy/subscriptions/{id}/sync-usage', [ProxyAdminController::class, 'syncUsage']);
+            Route::post('/proxy/subscriptions/{id}/cancel',     [ProxyAdminController::class, 'cancelSubscription']);
         });
     });
 });

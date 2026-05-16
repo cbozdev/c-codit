@@ -8,7 +8,7 @@ import {
   Smartphone, Globe, CreditCard, Receipt, Phone,
   RefreshCw, Copy, Search, ChevronDown, ChevronUp,
   CheckCircle2, Clock, XCircle, Gift, Wifi, QrCode, ExternalLink,
-  TrendingUp, Users,
+  TrendingUp, Users, Server, ArrowRight,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -230,6 +230,7 @@ const CAT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   utility:        Receipt,
   smm:            TrendingUp,
   smm_accounts:   Users,
+  proxy:          Server,
 };
 
 const CAT_LABELS: Record<string, string> = {
@@ -239,6 +240,7 @@ const CAT_LABELS: Record<string, string> = {
   utility:        'Utility Bills',
   smm:            'Social Media Boost',
   smm_accounts:   'Social Media Accounts',
+  proxy:          'Proxy Services',
 };
 
 // SMM types
@@ -302,6 +304,15 @@ export default function ServicesPage() {
   const [smmQuantity, setSmmQuantity]       = useState(100);
   const [ordersExpanded, setOrdersExpanded] = useState(true);
 
+  // Proxy purchase state
+  const [proxyType, setProxyType]           = useState('residential_rotating');
+  const [proxyProtocol, setProxyProtocol]   = useState('http');
+  const [proxyCountry, setProxyCountry]     = useState('US');
+  const [proxyBandwidth, setProxyBandwidth] = useState(1);
+  const [proxyIpCount, setProxyIpCount]     = useState(1);
+  const [proxyDuration, setProxyDuration]   = useState(30);
+  const [proxySession, setProxySession]     = useState('rotating');
+
   const services = useQuery({
     queryKey: ['services'],
     queryFn: () => apiCall<Service[]>({ url: '/services' }),
@@ -346,6 +357,17 @@ export default function ServicesPage() {
         baseData.smm_service_id = smmServiceId;
         baseData.link           = smmLink;
         baseData.quantity       = smmQuantity;
+      } else if (selected.category === 'proxy') {
+        baseData.proxy_type    = proxyType;
+        baseData.protocol      = proxyProtocol;
+        baseData.country_code  = proxyCountry;
+        baseData.duration_days = proxyDuration;
+        baseData.session_type  = proxySession;
+        if (['residential_rotating','residential_sticky','residential_static','mobile_rotating'].includes(proxyType)) {
+          baseData.bandwidth_gb = proxyBandwidth;
+        } else {
+          baseData.ip_count = proxyIpCount;
+        }
       }
 
       return apiCall<ServiceOrder>({
@@ -357,7 +379,10 @@ export default function ServicesPage() {
     },
     onSuccess(order) {
       const delivery = order.delivery as Record<string, unknown> | null;
-      if (delivery?.phone_number) {
+      if (selected?.category === 'proxy') {
+        toast.success('Proxy provisioned! View it in My Proxies.');
+        qc.invalidateQueries({ queryKey: ['proxy', 'my'] });
+      } else if (delivery?.phone_number) {
         toast.success(`Number assigned: ${delivery.phone_number}`);
       } else if (delivery?.token) {
         toast.success(`Token: ${delivery.token} — check your orders for details.`);
@@ -533,6 +558,22 @@ export default function ServicesPage() {
               setSmmServiceId={setSmmServiceId}
               quantity={smmQuantity}
               setQuantity={setSmmQuantity}
+              onPurchase={() => purchase.mutate()}
+              isPending={purchase.isPending}
+            />
+          )}
+
+          {/* Proxy */}
+          {selected.category === 'proxy' && (
+            <ProxyPurchaseForm
+              service={selected}
+              proxyType={proxyType}           setProxyType={setProxyType}
+              protocol={proxyProtocol}        setProtocol={setProxyProtocol}
+              countryCode={proxyCountry}      setCountryCode={setProxyCountry}
+              bandwidthGb={proxyBandwidth}    setBandwidthGb={setProxyBandwidth}
+              ipCount={proxyIpCount}          setIpCount={setProxyIpCount}
+              durationDays={proxyDuration}    setDurationDays={setProxyDuration}
+              sessionType={proxySession}      setSessionType={setProxySession}
               onPurchase={() => purchase.mutate()}
               isPending={purchase.isPending}
             />
@@ -1710,5 +1751,178 @@ function OrderRow({ order }: { order: ServiceOrder }) {
         {order.refunded_at && <div className="text-xs text-brand-600 mt-0.5">Refunded</div>}
       </div>
     </li>
+  );
+}
+
+// ─── Proxy Purchase Form ──────────────────────────────────────────────────────
+
+const PROXY_TYPES = [
+  { value: 'residential_rotating',  label: 'Residential Rotating',  bandwidth: true },
+  { value: 'residential_sticky',    label: 'Residential Sticky',    bandwidth: true },
+  { value: 'residential_static',    label: 'Residential Static',    bandwidth: true },
+  { value: 'datacenter_shared',     label: 'Datacenter Shared',     bandwidth: false },
+  { value: 'datacenter_dedicated',  label: 'Datacenter Dedicated',  bandwidth: false },
+  { value: 'isp_static',            label: 'ISP Static',            bandwidth: false },
+  { value: 'isp_rotating',          label: 'ISP Rotating',          bandwidth: false },
+  { value: 'mobile_rotating',       label: 'Mobile Rotating',       bandwidth: true },
+];
+
+const PROXY_COUNTRIES = [
+  { code: 'US', label: '🇺🇸 United States' }, { code: 'GB', label: '🇬🇧 United Kingdom' },
+  { code: 'DE', label: '🇩🇪 Germany' },       { code: 'FR', label: '🇫🇷 France' },
+  { code: 'CA', label: '🇨🇦 Canada' },        { code: 'AU', label: '🇦🇺 Australia' },
+  { code: 'JP', label: '🇯🇵 Japan' },         { code: 'IN', label: '🇮🇳 India' },
+  { code: 'BR', label: '🇧🇷 Brazil' },        { code: 'SG', label: '🇸🇬 Singapore' },
+  { code: 'NL', label: '🇳🇱 Netherlands' },   { code: 'SE', label: '🇸🇪 Sweden' },
+  { code: 'NG', label: '🇳🇬 Nigeria' },       { code: 'ZA', label: '🇿🇦 South Africa' },
+  { code: 'AE', label: '🇦🇪 UAE' },           { code: 'TR', label: '🇹🇷 Turkey' },
+];
+
+function ProxyPurchaseForm({
+  service, proxyType, setProxyType, protocol, setProtocol,
+  countryCode, setCountryCode, bandwidthGb, setBandwidthGb,
+  ipCount, setIpCount, durationDays, setDurationDays,
+  sessionType, setSessionType,
+  onPurchase, isPending,
+}: {
+  service: Service;
+  proxyType: string;    setProxyType: (v: string) => void;
+  protocol: string;     setProtocol: (v: string) => void;
+  countryCode: string;  setCountryCode: (v: string) => void;
+  bandwidthGb: number;  setBandwidthGb: (v: number) => void;
+  ipCount: number;      setIpCount: (v: number) => void;
+  durationDays: number; setDurationDays: (v: number) => void;
+  sessionType: string;  setSessionType: (v: string) => void;
+  onPurchase: () => void;
+  isPending: boolean;
+}) {
+  const isBandwidthBased = PROXY_TYPES.find((t) => t.value === proxyType)?.bandwidth ?? true;
+  const isResidential    = proxyType.startsWith('residential');
+
+  const priceQuery = useQuery({
+    queryKey: ['proxy', 'price-estimate', proxyType, bandwidthGb, ipCount, durationDays],
+    queryFn: () => apiCall<{ amount: string; amount_minor: number; currency: string }>({
+      url: '/proxy/price-estimate',
+      params: {
+        proxy_type:    proxyType,
+        bandwidth_gb:  isBandwidthBased ? bandwidthGb : undefined,
+        ip_count:      !isBandwidthBased ? ipCount : undefined,
+        duration_days: durationDays,
+      },
+    }),
+    staleTime: 30_000,
+  });
+
+  const price = priceQuery.data;
+
+  return (
+    <>
+      <h3 className="font-semibold flex items-center gap-2 mb-5 dark:text-white">
+        <Server className="h-4 w-4 text-brand-600" /> {service.name}
+      </h3>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        {/* Proxy Type */}
+        <div>
+          <label className="label">Proxy Type</label>
+          <select className="input" value={proxyType} onChange={(e) => setProxyType(e.target.value)}>
+            {PROXY_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Protocol */}
+        <div>
+          <label className="label">Protocol</label>
+          <select className="input" value={protocol} onChange={(e) => setProtocol(e.target.value)}>
+            <option value="http">HTTP/HTTPS</option>
+            <option value="socks5">SOCKS5</option>
+          </select>
+        </div>
+
+        {/* Country */}
+        <div>
+          <label className="label">Country</label>
+          <select className="input" value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
+            {PROXY_COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Duration */}
+        <div>
+          <label className="label">Duration</label>
+          <select className="input" value={durationDays} onChange={(e) => setDurationDays(Number(e.target.value))}>
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+            <option value={90}>90 days</option>
+          </select>
+        </div>
+
+        {/* Bandwidth (residential / mobile) */}
+        {isBandwidthBased && (
+          <div>
+            <label className="label">Bandwidth (GB)</label>
+            <input type="number" className="input" min={0.1} step={0.5}
+              value={bandwidthGb} onChange={(e) => setBandwidthGb(parseFloat(e.target.value) || 1)} />
+          </div>
+        )}
+
+        {/* IP Count (datacenter / ISP) */}
+        {!isBandwidthBased && (
+          <div>
+            <label className="label">IP Count</label>
+            <input type="number" className="input" min={1} max={100}
+              value={ipCount} onChange={(e) => setIpCount(Math.max(1, parseInt(e.target.value) || 1))} />
+          </div>
+        )}
+
+        {/* Session type (residential only) */}
+        {isResidential && (
+          <div>
+            <label className="label">Session Type</label>
+            <select className="input" value={sessionType} onChange={(e) => setSessionType(e.target.value)}>
+              <option value="rotating">Rotating (new IP per request)</option>
+              <option value="sticky">Sticky (same IP per session)</option>
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Price estimate */}
+      <div className="mt-4 p-4 bg-ink-50 dark:bg-ink-800 rounded-lg flex items-center justify-between">
+        <div>
+          {priceQuery.isLoading && <span className="text-sm text-ink-500">Calculating price…</span>}
+          {price && !priceQuery.isLoading && (
+            <div>
+              <p className="text-xs text-ink-500 uppercase tracking-wide">Estimated cost</p>
+              <p className="text-xl font-bold dark:text-white">{price.amount} {price.currency}</p>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-ink-500">
+          <Server className="h-4 w-4 text-brand-500" />
+          <span>Charged from wallet</span>
+        </div>
+      </div>
+
+      {/* My Proxies link */}
+      <div className="mt-2 flex items-center justify-between">
+        <a href="/proxy" className="text-xs text-ink-500 hover:text-brand-600 flex items-center gap-1">
+          View My Proxies <ArrowRight className="h-3 w-3" />
+        </a>
+      </div>
+
+      <button
+        onClick={onPurchase}
+        disabled={isPending || priceQuery.isLoading}
+        className="btn-primary w-full mt-4"
+      >
+        {isPending ? 'Provisioning proxy…' : `Buy Proxy${price ? ` — ${price.amount}` : ''}`}
+      </button>
+    </>
   );
 }

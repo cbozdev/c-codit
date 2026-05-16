@@ -13,6 +13,7 @@ use App\Services\Sms\ServiceUnavailableException;
 use App\Services\Sms\SmsActivateService;
 use App\Services\Sms\SmsManService;
 use App\Services\Sms\SmsPoolService;
+use App\Services\Proxy\ProxyProvisioningService;
 use App\Services\Wallet\WalletService;
 use App\Support\Audit;
 use App\Support\Money;
@@ -46,6 +47,7 @@ class ServicePurchaseService
         private readonly AiraloService $airalo,
         private readonly CelitechService $celitech,
         private readonly BnesimService $bnesim,
+        private readonly ProxyProvisioningService $proxy,
     ) {}
 
     public function purchase(
@@ -73,6 +75,8 @@ class ServicePurchaseService
             'celitech'    => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->celitech),
             'bnesim'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->bnesim),
             'smmpanel'    => $this->purchaseSmmOrder($user, $service, $request, $idempotencyKey),
+            'proxy_auto', 'decodo', 'brightdata'
+                          => $this->proxy->purchase($user, $service, $request, $idempotencyKey),
             default       => throw new RuntimeException("Unsupported service provider: {$service->provider}"),
         };
     }
