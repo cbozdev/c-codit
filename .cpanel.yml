@@ -4,5 +4,4 @@ deployment:
     - /usr/local/bin/lsphp /home/ccoditco/c-codit/backend/artisan migrate --force --no-interaction
     - /usr/local/bin/lsphp /home/ccoditco/c-codit/backend/artisan config:cache
     - /usr/local/bin/lsphp /home/ccoditco/c-codit/backend/artisan route:cache
-    - /usr/local/bin/lsphp /home/ccoditco/c-codit/backend/artisan view:cache
     - /bin/cp -rf /home/ccoditco/c-codit/frontend/dist/. /home/ccoditco/public_html/
