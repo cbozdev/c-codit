@@ -190,7 +190,7 @@ class NowPaymentsService implements PaymentGateway
         ];
     }
 
-    private function getMinimumUsd(string $payCurrency): float
+    public function getMinimumUsd(string $payCurrency): float
     {
         try {
             $res = $this->client()->get($this->baseUrl . '/min-amount', [

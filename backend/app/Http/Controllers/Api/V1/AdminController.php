@@ -529,17 +529,18 @@ class AdminController extends Controller
     {
         $request->validate([
             'logo_url'      => ['nullable', 'string', 'max:700000'], // supports base64-encoded images up to ~500 KB
+            'favicon_url'   => ['nullable', 'string', 'max:700000'],
             'app_name'      => ['nullable', 'string', 'max:80'],
             'support_email' => ['nullable', 'email', 'max:255'],
         ]);
 
-        foreach (['logo_url', 'app_name', 'support_email'] as $key) {
+        foreach (['logo_url', 'favicon_url', 'app_name', 'support_email'] as $key) {
             if ($request->has($key)) {
                 AppSetting::setValue($key, $request->input($key));
             }
         }
 
-        Audit::log('admin.settings_updated', $request->user(), $request->only(['logo_url', 'app_name', 'support_email']), actorType: 'admin');
+        Audit::log('admin.settings_updated', $request->user(), $request->only(['logo_url', 'favicon_url', 'app_name', 'support_email']), actorType: 'admin');
 
         return ApiResponse::ok(AppSetting::publicSettings(), 'Settings saved.');
     }

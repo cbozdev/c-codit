@@ -8,18 +8,34 @@ use App\Http\Requests\Wallet\FundWalletRequest;
 use App\Http\Resources\TransactionResource;
 use App\Http\Resources\WalletResource;
 use App\Models\Transaction;
+use App\Services\Payment\NowPaymentsService;
 use App\Services\Payment\PaymentOrchestrator;
 use App\Services\Wallet\WalletService;
 use App\Support\ApiResponse;
 use App\Support\Money;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class WalletController extends Controller
 {
     public function __construct(
         private readonly WalletService $wallets,
         private readonly PaymentOrchestrator $payments,
+        private readonly NowPaymentsService $nowpayments,
     ) {}
+
+    public function cryptoMinimums()
+    {
+        $currencies = ['btc', 'eth', 'usdt', 'bnb', 'sol'];
+        $minimums = Cache::remember('np_minimums', 3600, function () use ($currencies) {
+            $result = [];
+            foreach ($currencies as $coin) {
+                $result[$coin] = $this->nowpayments->getMinimumUsd($coin);
+            }
+            return $result;
+        });
+        return ApiResponse::ok($minimums);
+    }
 
     public function show(Request $request)
     {

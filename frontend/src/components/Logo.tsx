@@ -1,8 +1,9 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from '@/lib/api';
 import { clsx } from 'clsx';
 
-type AppSettings = { logo_url?: string | null; app_name?: string | null };
+type AppSettings = { logo_url?: string | null; favicon_url?: string | null; app_name?: string | null };
 
 export function useAppSettings() {
   return useQuery<AppSettings>({
@@ -15,7 +16,19 @@ export function useAppSettings() {
 
 export function Logo({ className, dark }: { className?: string; dark?: boolean }) {
   const { data } = useAppSettings();
-  const logoUrl  = data?.logo_url;
+  const logoUrl   = data?.logo_url;
+  const faviconUrl = data?.favicon_url;
+
+  useEffect(() => {
+    if (!faviconUrl) return;
+    let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = faviconUrl;
+  }, [faviconUrl]);
 
   return (
     <div className={clsx('flex items-center gap-2', className)}>

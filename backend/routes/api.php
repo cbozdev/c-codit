@@ -51,6 +51,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/wallet',                   [WalletController::class, 'show']);
             Route::get('/wallet/transactions',      [WalletController::class, 'transactions']);
             Route::get('/wallet/transactions/{id}', [WalletController::class, 'transaction']);
+            Route::get('/wallet/crypto-minimums',   [WalletController::class, 'cryptoMinimums']);
         });
 
         // Funding

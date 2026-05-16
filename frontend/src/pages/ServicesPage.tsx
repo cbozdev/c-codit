@@ -14,6 +14,77 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { formatDate, formatMoney } from '@/lib/format';
 import { clsx } from 'clsx';
 
+// ─── Service logo map (slug → clearbit domain) ───────────────────────────────
+
+const SERVICE_LOGO: Record<string, string> = {
+  telegram:    'telegram.org',
+  whatsapp:    'whatsapp.com',
+  facebook:    'facebook.com',
+  instagram:   'instagram.com',
+  twitter:     'x.com',
+  tiktok:      'tiktok.com',
+  snapchat:    'snapchat.com',
+  discord:     'discord.com',
+  viber:       'viber.com',
+  wechat:      'wechat.com',
+  linkedin:    'linkedin.com',
+  line:        'line.me',
+  google:      'google.com',
+  apple:       'apple.com',
+  microsoft:   'microsoft.com',
+  amazon:      'amazon.com',
+  netflix:     'netflix.com',
+  spotify:     'spotify.com',
+  uber:        'uber.com',
+  airbnb:      'airbnb.com',
+  steam:       'store.steampowered.com',
+  yahoo:       'yahoo.com',
+  tinder:      'tinder.com',
+  bumble:      'bumble.com',
+  badoo:       'badoo.com',
+  hinge:       'hinge.co',
+  match:       'match.com',
+  pof:         'pof.com',
+  okcupid:     'okcupid.com',
+  happn:       'happn.com',
+  lovoo:       'lovoo.com',
+  zoosk:       'zoosk.com',
+  meetic:      'meetic.com',
+  grindr:      'grindr.com',
+  tagged:      'tagged.com',
+  meetme:      'meetme.com',
+  skout:       'skout.com',
+  mamba:       'mamba.ru',
+  paypal:      'paypal.com',
+  binance:     'binance.com',
+  coinbase:    'coinbase.com',
+  bybit:       'bybit.com',
+  kucoin:      'kucoin.com',
+  okx:         'okx.com',
+  kraken:      'kraken.com',
+  bitget:      'bitget.com',
+  bolt:        'bolt.eu',
+  jumia:       'jumia.com',
+  doordash:    'doordash.com',
+  lyft:        'lyft.com',
+  openai:      'openai.com',
+};
+
+function ServiceLogo({ slug, size = 20 }: { slug: string; size?: number }) {
+  const domain = SERVICE_LOGO[slug];
+  if (!domain) return null;
+  return (
+    <img
+      src={`https://logo.clearbit.com/${domain}`}
+      alt={slug}
+      width={size}
+      height={size}
+      className="rounded-sm object-contain flex-shrink-0"
+      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+    />
+  );
+}
+
 // ─── Provider service list (for virtual numbers) ──────────────────────────────
 
 const PROVIDER_SERVICES = [
@@ -84,6 +155,10 @@ const PROVIDER_SERVICES = [
 ];
 
 const ALL_PROVIDER_SERVICES = PROVIDER_SERVICES.flatMap((g) => g.items);
+
+const PROVIDER_UNAVAILABLE: Record<string, string[]> = {
+  smspool: ['whatsapp'],
+};
 
 
 // ─── Virtual number price row ─────────────────────────────────────────────────
@@ -555,17 +630,64 @@ function VirtualNumberForm({
             onChange={(e) => { setServiceSearch(e.target.value); setCountry(''); }}
           />
         </div>
-        <select className="input" value={providerSvc} onChange={(e) => handleAppChange(e.target.value)} size={1}>
+        <div className="rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden max-h-52 overflow-y-auto bg-white dark:bg-ink-900">
           {filteredServices ? (
-            filteredServices.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)
+            filteredServices.map((s) => {
+              const unavailable = PROVIDER_UNAVAILABLE[service.provider]?.includes(s.value);
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => !unavailable && handleAppChange(s.value)}
+                  disabled={unavailable}
+                  className={clsx(
+                    'w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition',
+                    unavailable
+                      ? 'opacity-40 cursor-not-allowed text-ink-500 dark:text-ink-500'
+                      : providerSvc === s.value
+                        ? 'bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 font-medium'
+                        : 'hover:bg-ink-50 dark:hover:bg-ink-800 text-ink-800 dark:text-ink-200',
+                  )}
+                >
+                  <ServiceLogo slug={s.value} size={18} />
+                  {s.label}
+                  {unavailable && <span className="ml-auto text-xs text-ink-400 dark:text-ink-500">Unavailable</span>}
+                </button>
+              );
+            })
           ) : (
             PROVIDER_SERVICES.map((g) => (
-              <optgroup key={g.group} label={g.group}>
-                {g.items.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </optgroup>
+              <div key={g.group}>
+                <div className="px-3 py-1.5 text-xs font-semibold text-ink-400 dark:text-ink-500 uppercase tracking-wide bg-ink-50 dark:bg-ink-800/60 border-b border-ink-100 dark:border-ink-700">
+                  {g.group}
+                </div>
+                {g.items.map((s) => {
+                  const unavailable = PROVIDER_UNAVAILABLE[service.provider]?.includes(s.value);
+                  return (
+                    <button
+                      key={s.value}
+                      type="button"
+                      onClick={() => !unavailable && handleAppChange(s.value)}
+                      disabled={unavailable}
+                      className={clsx(
+                        'w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition',
+                        unavailable
+                          ? 'opacity-40 cursor-not-allowed text-ink-500 dark:text-ink-500'
+                          : providerSvc === s.value
+                            ? 'bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 font-medium'
+                            : 'hover:bg-ink-50 dark:hover:bg-ink-800 text-ink-800 dark:text-ink-200',
+                      )}
+                    >
+                      <ServiceLogo slug={s.value} size={18} />
+                      {s.label}
+                      {unavailable && <span className="ml-auto text-xs text-ink-400 dark:text-ink-500">Unavailable</span>}
+                    </button>
+                  );
+                })}
+              </div>
             ))
           )}
-        </select>
+        </div>
       </div>
 
       {/* Country price chart */}

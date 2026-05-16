@@ -24,7 +24,7 @@ class AppSetting extends Model
     /** Returns all public-facing settings safe to expose without auth. */
     public static function publicSettings(): array
     {
-        $keys = ['logo_url', 'app_name', 'support_email'];
+        $keys = ['logo_url', 'favicon_url', 'app_name', 'support_email'];
         $rows = static::whereIn('key', $keys)->pluck('value', 'key');
         return $rows->toArray();
     }

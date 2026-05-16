@@ -987,10 +987,13 @@ function AppSettingsTab() {
   const { data: current } = useAppSettings();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [logoUrl, setLogoUrl]     = useState('');
-  const [appName, setAppName]     = useState('');
-  const [support, setSupport]     = useState('');
-  const [preview, setPreview]     = useState<string | null>(null);
+  const [logoUrl, setLogoUrl]         = useState('');
+  const [appName, setAppName]         = useState('');
+  const [support, setSupport]         = useState('');
+  const [preview, setPreview]         = useState<string | null>(null);
+  const [faviconUrl, setFaviconUrl]   = useState('');
+  const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  const faviconRef = useRef<HTMLInputElement>(null);
 
   // Seed fields from current settings once loaded
   useState(() => {
@@ -998,6 +1001,7 @@ function AppSettingsTab() {
       setLogoUrl(current.logo_url ?? '');
       setAppName((current as any).app_name ?? '');
       setSupport((current as any).support_email ?? '');
+      setFaviconUrl((current as any).favicon_url ?? '');
     }
   });
 
@@ -1007,6 +1011,7 @@ function AppSettingsTab() {
       url: '/admin/settings',
       data: {
         logo_url:      (preview ?? logoUrl) || null,
+        favicon_url:   (faviconPreview ?? faviconUrl) || null,
         app_name:      appName || null,
         support_email: support || null,
       },
@@ -1014,6 +1019,7 @@ function AppSettingsTab() {
     onSuccess: () => {
       toast.success('Settings saved.');
       setPreview(null);
+      setFaviconPreview(null);
       qc.invalidateQueries({ queryKey: ['app-settings'] });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -1025,6 +1031,15 @@ function AppSettingsTab() {
     if (file.size > 500 * 1024) { toast.error('Image must be under 500 KB.'); return; }
     const reader = new FileReader();
     reader.onload = () => setPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  function onFaviconChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 200 * 1024) { toast.error('Favicon must be under 200 KB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setFaviconPreview(reader.result as string);
     reader.readAsDataURL(file);
   }
 
@@ -1070,6 +1085,42 @@ function AppSettingsTab() {
             </div>
             <p className="text-xs text-ink-500 dark:text-ink-400">
               Paste a URL or upload an image (PNG/SVG, max 500 KB). Displayed in the sidebar and header.
+            </p>
+          </div>
+        </div>
+
+        {/* Favicon */}
+        <div className="space-y-3">
+          <label className="label">Favicon</label>
+
+          {(faviconPreview ?? faviconUrl) && (
+            <div className="flex items-center gap-3 p-3 rounded-xl border border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800">
+              <img src={faviconPreview ?? faviconUrl} alt="Favicon preview" className="h-8 w-8 rounded object-contain bg-white border border-ink-200" />
+              <div className="text-xs text-ink-500 dark:text-ink-400">
+                {faviconPreview ? 'File ready to save' : 'Current favicon'}
+              </div>
+              <button onClick={() => { setFaviconPreview(null); setFaviconUrl(''); }}
+                className="ml-auto text-xs text-rose-600 hover:underline">Remove</button>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                className="input flex-1"
+                placeholder="https://example.com/favicon.ico"
+                value={faviconPreview ? '(file selected)' : faviconUrl}
+                onChange={(e) => { setFaviconUrl(e.target.value); setFaviconPreview(null); }}
+                disabled={!!faviconPreview}
+              />
+              <button onClick={() => faviconRef.current?.click()}
+                className="btn-outline flex items-center gap-1.5 whitespace-nowrap">
+                <ImagePlus className="h-4 w-4" /> Upload
+              </button>
+              <input ref={faviconRef} type="file" accept="image/*" className="hidden" onChange={onFaviconChange} />
+            </div>
+            <p className="text-xs text-ink-500 dark:text-ink-400">
+              Upload a PNG, ICO, or SVG (max 200 KB). Shown in browser tabs.
             </p>
           </div>
         </div>

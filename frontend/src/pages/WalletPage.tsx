@@ -51,6 +51,21 @@ export default function WalletPage() {
     queryFn: () => apiCall<Wallet>({ url: '/wallet' }),
   });
 
+  const cryptoMins = useQuery({
+    queryKey: ['crypto-minimums'],
+    queryFn: () => apiCall<Record<string, number>>({ url: '/wallet/crypto-minimums' }),
+    staleTime: 60 * 60 * 1000,
+    enabled: provider === 'nowpayments',
+  });
+
+  // Map pay_currency slug to the key returned by the minimums API
+  const CRYPTO_MIN_KEY: Record<string, string> = {
+    usdttrc20: 'usdt', usdterc20: 'usdt', usdtbsc: 'usdt',
+    btc: 'btc', eth: 'eth', bnbbsc: 'bnb', sol: 'sol',
+  };
+  const cryptoMinForSelected = cryptoMins.data?.[CRYPTO_MIN_KEY[payCurrency] ?? ''] ?? 10;
+  const roundedCryptoMin = Math.ceil(cryptoMinForSelected);
+
   const fund = useMutation({
     mutationFn: () => apiCall<FundingResponse>({
       url: '/wallet/fund',
@@ -77,8 +92,7 @@ export default function WalletPage() {
 
   const cur        = CURRENCIES.find((c) => c.value === currency) ?? CURRENCIES[0];
   const numericAmt = parseFloat(amount || '0');
-  // $10 minimum for all crypto (matches backend NowPayments enforcement)
-  const minAmount  = provider === 'nowpayments' ? 10 : cur.min;
+  const minAmount  = provider === 'nowpayments' ? roundedCryptoMin : cur.min;
   const canSubmit  = !fund.isPending && numericAmt >= minAmount;
 
   function handleCurrencyChange(val: string) {
@@ -90,7 +104,7 @@ export default function WalletPage() {
   function switchProvider(p: Provider) {
     setProvider(p);
     if (p === 'nowpayments') {
-      setAmount('25');
+      setAmount(String(Math.max(25, roundedCryptoMin)));
     } else {
       setAmount(cur.quick[1].toString());
     }
@@ -253,7 +267,7 @@ export default function WalletPage() {
                 You can change your cryptocurrency on NowPayments' secure checkout page.
               </div>
               <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2">
-                ⚠ Minimum: <strong>$10 USD</strong> for all cryptocurrencies.
+                ⚠ Minimum: <strong>${cryptoMins.isLoading ? '…' : roundedCryptoMin} USD</strong> for {payCurrency.toUpperCase().replace('TRC20','').replace('ERC20','').replace('BSC','')}.
               </div>
             </div>
           )}
@@ -284,7 +298,7 @@ export default function WalletPage() {
             )}
             <div className="flex flex-wrap gap-2 mt-3">
               {(provider === 'nowpayments'
-                ? [10, 25, 50, 100, 200, 500]
+                ? [roundedCryptoMin, 25, 50, 100, 200, 500].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b)
                 : cur.quick
               ).map((q) => (
                 <button key={q} type="button" onClick={() => setAmount(String(q))}
