@@ -1,17 +1,8 @@
 ---
 deployment:
   tasks:
-    - export REPO=/home/ccoditco/c-codit
-    - export PHP=/usr/local/bin/lsphp
-
-    # Run database migrations (safe — skips already-run migrations)
-    - $PHP $REPO/backend/artisan migrate --force --no-interaction
-
-    # Rebuild config, route, and view caches
-    - $PHP $REPO/backend/artisan config:cache
-    - $PHP $REPO/backend/artisan route:cache
-    - $PHP $REPO/backend/artisan view:cache
-
-    # Copy built frontend assets to the app subdomain document root
-    # Adjust the destination path if your app.c-codit.com document root differs
-    - /bin/cp -rf $REPO/frontend/dist/. /home/ccoditco/public_html/
+    - /usr/local/bin/lsphp /home/ccoditco/c-codit/backend/artisan migrate --force --no-interaction
+    - /usr/local/bin/lsphp /home/ccoditco/c-codit/backend/artisan config:cache
+    - /usr/local/bin/lsphp /home/ccoditco/c-codit/backend/artisan route:cache
+    - /usr/local/bin/lsphp /home/ccoditco/c-codit/backend/artisan view:cache
+    - /bin/cp -rf /home/ccoditco/c-codit/frontend/dist/. /home/ccoditco/public_html/
