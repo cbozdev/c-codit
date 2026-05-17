@@ -310,7 +310,7 @@ export default function ServicesPage() {
   const [proxyCountry, setProxyCountry]     = useState('US');
   const [proxyBandwidth, setProxyBandwidth] = useState(1);
   const [proxyIpCount, setProxyIpCount]     = useState(1);
-  const [proxyDuration, setProxyDuration]   = useState(30);
+  const [proxyDuration, setProxyDuration]   = useState(1);
   const [proxySession, setProxySession]     = useState('rotating');
 
   const services = useQuery({
@@ -1855,6 +1855,7 @@ function ProxyPurchaseForm({
         <div>
           <label className="label">Duration</label>
           <select className="input" value={durationDays} onChange={(e) => setDurationDays(Number(e.target.value))}>
+            <option value={1}>1 day</option>
             <option value={7}>7 days</option>
             <option value={30}>30 days</option>
             <option value={60}>60 days</option>

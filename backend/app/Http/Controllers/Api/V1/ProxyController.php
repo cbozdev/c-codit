@@ -98,8 +98,9 @@ class ProxyController extends Controller
         );
 
         return ApiResponse::ok([
-            'amount_usd'   => number_format($amountMinor / 100, 2),
+            'amount'       => '$' . number_format($amountMinor / 100, 2),
             'amount_minor' => $amountMinor,
+            'currency'     => 'USD',
         ]);
     }
 
