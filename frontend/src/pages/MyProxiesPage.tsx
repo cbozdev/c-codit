@@ -57,9 +57,12 @@ function BandwidthBar({ used, total }: { used: number; total: number }) {
 
 // ─── Credentials Modal ────────────────────────────────────────────────────────
 
+type TestResult = { success: boolean; ip?: string; country?: string; city?: string | null; speed_ms?: number; error?: string };
+
 function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: () => void }) {
-  const [showPw, setShowPw] = useState(false);
-  const [tab, setTab]       = useState<'credentials' | 'examples'>('credentials');
+  const [showPw, setShowPw]       = useState(false);
+  const [tab, setTab]             = useState<'credentials' | 'examples'>('credentials');
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['proxy', sub.id, 'credentials'],
@@ -67,6 +70,12 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
       url: `/proxy/my/${sub.id}`,
       params: { with_credentials: true },
     }),
+  });
+
+  const testProxy = useMutation({
+    mutationFn: () => apiCall<TestResult>({ method: 'POST', url: `/proxy/my/${sub.id}/test` }),
+    onSuccess:  (r) => setTestResult(r),
+    onError:    () => setTestResult({ success: false, error: 'Test failed' }),
   });
 
   const creds  = data ?? sub;
@@ -141,6 +150,49 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* IP Check */}
+              <div className="pt-1">
+                <button
+                  onClick={() => testProxy.mutate()}
+                  disabled={testProxy.isPending}
+                  className="btn-outline text-xs w-full flex items-center justify-center gap-2"
+                >
+                  <Wifi className="h-3.5 w-3.5" />
+                  {testProxy.isPending ? 'Checking IP…' : 'Check Exit IP'}
+                </button>
+
+                {testResult && (
+                  <div className={clsx(
+                    'mt-2 rounded-lg px-4 py-3 text-sm',
+                    testResult.success
+                      ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                      : 'bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800',
+                  )}>
+                    {testResult.success ? (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                          <span className="font-mono font-semibold text-green-700 dark:text-green-300 text-base">
+                            {testResult.ip}
+                          </span>
+                          <button onClick={() => copyToClipboard(testResult.ip!, 'IP copied')} className="btn-ghost p-1">
+                            <Copy className="h-3 w-3 text-green-600" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-green-600 dark:text-green-400 pl-6">
+                          {testResult.country}{testResult.city ? `, ${testResult.city}` : ''} · {testResult.speed_ms}ms
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                        <span className="text-xs">{testResult.error ?? 'Could not reach proxy'}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}
