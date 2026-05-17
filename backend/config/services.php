@@ -79,7 +79,8 @@ return [
 
     'decodo' => [
         'api_key'          => env('DECODO_API_KEY'),
-        'base_url'         => env('DECODO_BASE_URL', 'https://api.decodo.com/v1'),
+        'username'         => env('DECODO_USERNAME'),
+        'password'         => env('DECODO_PASSWORD'),
         'enabled'          => (bool) env('DECODO_ENABLED', true),
         'unsupported_types'=> [],
     ],

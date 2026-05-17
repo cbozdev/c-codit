@@ -4,178 +4,125 @@ namespace App\Services\Proxy;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * Decodo (formerly Smartproxy) API integration.
+ * Decodo (formerly Smartproxy) proxy integration.
  *
- * Docs: https://docs.decodo.com/reference
- * Auth: Bearer token via x-api-key header
+ * Provisioning uses gateway credentials (no management API needed).
+ * Username format: user-{account}-country-{cc}[-session-{id}]
+ * Gateway: gate.decodo.com:7777 (HTTP), gate.decodo.com:7000 (SOCKS5)
  */
 class DecodoService
 {
-    private string $baseUrl = 'https://api.decodo.com/v1';
-
-    private function client()
-    {
-        return Http::withHeaders([
-            'Authorization' => 'Token ' . config('services.decodo.api_key'),
-            'Content-Type'  => 'application/json',
-            'Accept'        => 'application/json',
-        ])->timeout(15);
-    }
-
     public function isEnabled(): bool
     {
-        return (bool) config('services.decodo.enabled', true)
-            && ! empty(config('services.decodo.api_key'));
+        return (bool) config('services.decodo.enabled', false)
+            && ! empty(config('services.decodo.username'))
+            && ! empty(config('services.decodo.password'));
     }
 
-    // ─── Locations ────────────────────────────────────────────────────────────
+    // ─── Locations (static fallback — no API needed) ──────────────────────────
 
     public function getLocations(string $proxyType = 'residential'): array
     {
-        $res = $this->client()->get("{$this->baseUrl}/locations", [
-            'product_type' => $this->mapProxyType($proxyType),
-        ]);
-
-        if ($res->failed()) {
-            Log::warning('decodo.locations.failed', ['status' => $res->status()]);
-            return [];
-        }
-
-        return collect($res->json('data', []))->map(fn($loc) => [
-            'country_code' => strtoupper($loc['country_code'] ?? ''),
-            'country_name' => $loc['country_name'] ?? '',
-            'city'         => $loc['city'] ?? null,
-            'available'    => $loc['available'] ?? true,
-        ])->toArray();
+        return $this->staticLocations();
     }
 
-    // ─── Create subscription ──────────────────────────────────────────────────
+    // ─── Create subscription (credential-based, no API call) ─────────────────
 
     public function createSubscription(array $options): array
     {
-        $payload = [
-            'product_type'   => $this->mapProxyType($options['proxy_type']),
-            'country_code'   => strtolower($options['country_code'] ?? 'us'),
-            'city'           => $options['city'] ?? null,
-            'bandwidth_gb'   => $options['bandwidth_gb'] ?? null,
-            'ip_count'       => $options['ip_count'] ?? 1,
-            'threads'        => $options['threads'] ?? 10,
-            'duration_days'  => $options['duration_days'] ?? 30,
-            'protocol'       => $options['protocol'] ?? 'http',
-            'session_type'   => $options['session_type'] ?? 'rotating',
-            'username'       => $options['username'] ?? null,
-            'password'       => $options['password'] ?? null,
-        ];
+        $username = config('services.decodo.username');
+        $password = config('services.decodo.password');
 
-        $payload = array_filter($payload, fn($v) => $v !== null);
-
-        $res  = $this->client()->post("{$this->baseUrl}/subscriptions", $payload);
-        $body = $res->json();
-
-        Log::info('decodo.create_subscription', [
-            'status' => $res->status(),
-            'id'     => $body['data']['id'] ?? null,
-        ]);
-
-        if ($res->failed()) {
-            throw new RuntimeException('Decodo: ' . ($body['message'] ?? $body['error'] ?? 'Failed to create subscription'));
+        if (empty($username) || empty($password)) {
+            throw new RuntimeException('Decodo gateway credentials not configured (DECODO_USERNAME / DECODO_PASSWORD).');
         }
 
-        $data = $body['data'] ?? $body;
+        $proxyType   = $options['proxy_type'];
+        $country     = strtolower($options['country_code'] ?? 'us');
+        $sessionType = $options['session_type'] ?? 'rotating';
+        $protocol    = $options['protocol'] ?? 'http';
+        $duration    = (int) ($options['duration_days'] ?? 30);
+        $sessionId   = Str::random(16);
+
+        $proxyUsername = $this->buildUsername($username, $country, $sessionType, $sessionId);
+        $host          = $this->resolveHost($proxyType, $protocol);
+        $port          = $this->resolvePort($proxyType, $protocol);
+
+        Log::info('decodo.credential_provisioned', [
+            'proxy_type'  => $proxyType,
+            'country'     => $country,
+            'session_type'=> $sessionType,
+            'host'        => $host,
+            'port'        => $port,
+        ]);
 
         return [
-            'provider_subscription_id' => (string) ($data['id'] ?? $data['subscription_id'] ?? ''),
-            'host'                     => $data['host'] ?? $this->resolveHost($options['proxy_type'], $options['protocol'] ?? 'http'),
-            'port'                     => (int) ($data['port'] ?? $this->resolvePort($options['proxy_type'], $options['protocol'] ?? 'http')),
-            'username'                 => $data['username'] ?? $data['credentials']['username'] ?? '',
-            'password'                 => $data['password'] ?? $data['credentials']['password'] ?? '',
-            'bandwidth_gb_total'       => (float) ($data['bandwidth_gb'] ?? $options['bandwidth_gb'] ?? 0),
-            'expires_at'               => $data['expires_at'] ?? now()->addDays($options['duration_days'] ?? 30)->toISOString(),
+            'provider_subscription_id' => $sessionId,
+            'host'                     => $host,
+            'port'                     => $port,
+            'username'                 => $proxyUsername,
+            'password'                 => $password,
+            'bandwidth_gb_total'       => (float) ($options['bandwidth_gb'] ?? 0),
+            'expires_at'               => now()->addDays($duration)->toISOString(),
         ];
     }
 
-    // ─── Get credentials ──────────────────────────────────────────────────────
+    // ─── Get credentials (returns stored values — no API) ────────────────────
 
     public function getCredentials(string $subscriptionId): array
     {
-        $res  = $this->client()->get("{$this->baseUrl}/subscriptions/{$subscriptionId}/credentials");
-        $body = $res->json();
-
-        if ($res->failed()) {
-            throw new RuntimeException('Decodo: ' . ($body['message'] ?? 'Failed to fetch credentials'));
-        }
-
-        $data = $body['data'] ?? $body;
-        return [
-            'username' => $data['username'] ?? '',
-            'password' => $data['password'] ?? '',
-        ];
+        // Credentials are stored encrypted in our DB; this is a no-op for Decodo
+        return [];
     }
 
-    // ─── Usage ────────────────────────────────────────────────────────────────
+    // ─── Usage (graceful degradation — no API) ────────────────────────────────
 
     public function getUsage(string $subscriptionId): array
     {
-        $res  = $this->client()->get("{$this->baseUrl}/subscriptions/{$subscriptionId}/usage");
-        $body = $res->json();
-
-        if ($res->failed()) return ['bandwidth_gb_used' => 0];
-
-        $data = $body['data'] ?? $body;
-        return [
-            'bandwidth_gb_used' => (float) ($data['bandwidth_used_gb'] ?? $data['used_gb'] ?? 0),
-            'bandwidth_gb_total'=> (float) ($data['bandwidth_total_gb'] ?? $data['total_gb'] ?? 0),
-        ];
+        // Usage tracking via Decodo dashboard; return 0 to avoid blocking
+        return ['bandwidth_gb_used' => 0, 'bandwidth_gb_total' => 0];
     }
 
-    // ─── Renew ────────────────────────────────────────────────────────────────
+    // ─── Renew (extend expiry + new session ID) ───────────────────────────────
 
     public function renewSubscription(string $subscriptionId, int $days = 30): array
     {
-        $res  = $this->client()->post("{$this->baseUrl}/subscriptions/{$subscriptionId}/renew", [
-            'duration_days' => $days,
-        ]);
-        $body = $res->json();
+        // For gateway-credential proxies, renewal means issuing new credentials
+        $username    = config('services.decodo.username');
+        $password    = config('services.decodo.password');
+        $newSession  = Str::random(16);
+        $newUsername = $this->buildUsername($username, 'us', 'rotating', $newSession);
 
-        if ($res->failed()) {
-            throw new RuntimeException('Decodo: ' . ($body['message'] ?? 'Failed to renew subscription'));
-        }
-
-        $data = $body['data'] ?? $body;
         return [
-            'expires_at' => $data['expires_at'] ?? now()->addDays($days)->toISOString(),
+            'expires_at'               => now()->addDays($days)->toISOString(),
+            'provider_subscription_id' => $newSession,
+            'username'                 => $newUsername,
+            'password'                 => $password,
         ];
     }
 
-    // ─── Cancel ───────────────────────────────────────────────────────────────
+    // ─── Cancel (local only) ──────────────────────────────────────────────────
 
     public function cancelSubscription(string $subscriptionId): void
     {
-        $res = $this->client()->delete("{$this->baseUrl}/subscriptions/{$subscriptionId}");
-
-        if ($res->failed() && $res->status() !== 404) {
-            throw new RuntimeException('Decodo: Failed to cancel subscription');
-        }
+        // Nothing to call on Decodo's side for gateway-credential proxies
     }
 
     // ─── Rotate session ───────────────────────────────────────────────────────
 
     public function rotateSession(string $subscriptionId): array
     {
-        $res  = $this->client()->post("{$this->baseUrl}/subscriptions/{$subscriptionId}/rotate");
-        $body = $res->json();
+        $username   = config('services.decodo.username');
+        $password   = config('services.decodo.password');
+        $newSession = Str::random(16);
 
-        if ($res->failed()) {
-            throw new RuntimeException('Decodo: Failed to rotate session');
-        }
-
-        $data = $body['data'] ?? $body;
         return [
-            'username' => $data['username'] ?? '',
-            'password' => $data['password'] ?? '',
+            'username' => $this->buildUsername($username, 'us', 'rotating', $newSession),
+            'password' => $password,
         ];
     }
 
@@ -184,24 +131,22 @@ class DecodoService
     public function testProxy(array $credentials): array
     {
         try {
-            $proxyUrl = "{$credentials['protocol']}://{$credentials['username']}:{$credentials['password']}@{$credentials['host']}:{$credentials['port']}";
-
-            $start = microtime(true);
-            $res   = Http::withOptions(['proxy' => $proxyUrl])
-                ->timeout(10)
-                ->get('https://ip.decodo.com/json');
-            $ms = (int) round((microtime(true) - $start) * 1000);
+            $proto    = $credentials['protocol'] ?? 'http';
+            $proxyUrl = "{$proto}://{$credentials['username']}:{$credentials['password']}@{$credentials['host']}:{$credentials['port']}";
+            $start    = microtime(true);
+            $res      = Http::withOptions(['proxy' => $proxyUrl])->timeout(10)->get('https://ip.decodo.com/json');
+            $ms       = (int) round((microtime(true) - $start) * 1000);
 
             if ($res->successful()) {
                 $data = $res->json();
                 return [
-                    'success'       => true,
-                    'ip'            => $data['ip'] ?? 'unknown',
-                    'country'       => $data['country'] ?? 'unknown',
-                    'city'          => $data['city'] ?? null,
-                    'speed_ms'      => $ms,
-                    'anonymity'     => 'Elite',
-                    'dns_leak'      => false,
+                    'success'   => true,
+                    'ip'        => $data['ip'] ?? 'unknown',
+                    'country'   => $data['country'] ?? 'unknown',
+                    'city'      => $data['city'] ?? null,
+                    'speed_ms'  => $ms,
+                    'anonymity' => 'Elite',
+                    'dns_leak'  => false,
                 ];
             }
         } catch (\Throwable $e) {
@@ -213,26 +158,28 @@ class DecodoService
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    private function mapProxyType(string $type): string
+    private function buildUsername(string $baseUser, string $country, string $sessionType, string $sessionId): string
     {
-        return match (true) {
-            str_starts_with($type, 'residential') => 'residential',
-            str_starts_with($type, 'datacenter')  => 'datacenter',
-            str_starts_with($type, 'isp')         => 'isp',
-            str_starts_with($type, 'mobile')      => 'mobile',
-            default                                => $type,
-        };
+        $parts = ["user-{$baseUser}"];
+
+        if ($country && $country !== 'all') {
+            $parts[] = "country-{$country}";
+        }
+
+        if (in_array($sessionType, ['sticky', 'static'], true)) {
+            $parts[] = "session-{$sessionId}";
+        }
+
+        return implode('-', $parts);
     }
 
     private function resolveHost(string $proxyType, string $protocol): string
     {
-        $socks = $protocol === 'socks5';
         return match (true) {
-            str_starts_with($proxyType, 'residential') => $socks ? 'gate.decodo.com'   : 'gate.decodo.com',
-            str_starts_with($proxyType, 'datacenter')  => $socks ? 'dc.decodo.com'     : 'dc.decodo.com',
-            str_starts_with($proxyType, 'isp')         => $socks ? 'isp.decodo.com'    : 'isp.decodo.com',
-            str_starts_with($proxyType, 'mobile')      => $socks ? 'mobile.decodo.com' : 'mobile.decodo.com',
-            default                                     => 'gate.decodo.com',
+            str_starts_with($proxyType, 'datacenter') => 'dc.decodo.com',
+            str_starts_with($proxyType, 'isp')        => 'isp.decodo.com',
+            str_starts_with($proxyType, 'mobile')     => 'mobile.decodo.com',
+            default                                    => 'gate.decodo.com',
         };
     }
 
@@ -243,5 +190,26 @@ class DecodoService
             'https'  => 8443,
             default  => 7777,
         };
+    }
+
+    private function staticLocations(): array
+    {
+        return [
+            ['country_code' => 'US', 'country_name' => 'United States', 'city' => null, 'available' => true],
+            ['country_code' => 'GB', 'country_name' => 'United Kingdom', 'city' => null, 'available' => true],
+            ['country_code' => 'DE', 'country_name' => 'Germany',        'city' => null, 'available' => true],
+            ['country_code' => 'FR', 'country_name' => 'France',         'city' => null, 'available' => true],
+            ['country_code' => 'CA', 'country_name' => 'Canada',         'city' => null, 'available' => true],
+            ['country_code' => 'AU', 'country_name' => 'Australia',      'city' => null, 'available' => true],
+            ['country_code' => 'IN', 'country_name' => 'India',          'city' => null, 'available' => true],
+            ['country_code' => 'BR', 'country_name' => 'Brazil',         'city' => null, 'available' => true],
+            ['country_code' => 'JP', 'country_name' => 'Japan',          'city' => null, 'available' => true],
+            ['country_code' => 'SG', 'country_name' => 'Singapore',      'city' => null, 'available' => true],
+            ['country_code' => 'NL', 'country_name' => 'Netherlands',    'city' => null, 'available' => true],
+            ['country_code' => 'NG', 'country_name' => 'Nigeria',        'city' => null, 'available' => true],
+            ['country_code' => 'ZA', 'country_name' => 'South Africa',   'city' => null, 'available' => true],
+            ['country_code' => 'KE', 'country_name' => 'Kenya',          'city' => null, 'available' => true],
+            ['country_code' => 'GH', 'country_name' => 'Ghana',          'city' => null, 'available' => true],
+        ];
     }
 }
