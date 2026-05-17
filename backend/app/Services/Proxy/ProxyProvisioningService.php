@@ -283,7 +283,11 @@ class ProxyProvisioningService
         );
 
         try {
-            $result = $this->getProviderService($sub->provider)->renewSubscription($sub->provider_subscription_id, $days);
+            $country     = strtolower($sub->location_country ?? 'us');
+            $sessionType = $this->sessionTypeFromProxyType($sub->proxy_type);
+            $result      = $this->getProviderService($sub->provider)->renewSubscription(
+                $sub->provider_subscription_id, $days, $country, $sessionType,
+            );
             $this->wallets->settleSuspense($holdTx, 'proxy_renew_settle:'.$sub->public_id.':'.now()->timestamp);
 
             $sub->update([
@@ -334,7 +338,13 @@ class ProxyProvisioningService
 
     public function rotateCredentials(ProxySubscription $sub): ProxySubscription
     {
-        $creds = $this->getProviderService($sub->provider)->rotateSession($sub->provider_subscription_id);
+        $country     = strtolower($sub->location_country ?? 'us');
+        $sessionType = $this->sessionTypeFromProxyType($sub->proxy_type);
+        $creds       = $this->getProviderService($sub->provider)->rotateSession(
+            $sub->provider_subscription_id,
+            $country,
+            $sessionType,
+        );
 
         if (! empty($creds['username'])) $sub->username = $creds['username'];
         if (! empty($creds['password'])) $sub->setPassword($creds['password']);
@@ -403,6 +413,13 @@ class ProxyProvisioningService
             'brightdata' => $this->brightData,
             default      => throw new RuntimeException("Unknown proxy provider: {$provider}"),
         };
+    }
+
+    private function sessionTypeFromProxyType(string $proxyType): string
+    {
+        if (str_ends_with($proxyType, '_sticky'))  return 'sticky';
+        if (str_ends_with($proxyType, '_static'))  return 'static';
+        return 'rotating';
     }
 
     private function validateRequest(array $request): void

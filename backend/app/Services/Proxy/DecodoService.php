@@ -11,7 +11,7 @@ use RuntimeException;
  * Decodo (formerly Smartproxy) proxy integration.
  *
  * Provisioning uses gateway credentials (no management API needed).
- * Username format: user-{account}-country-{cc}[-session-{id}]
+ * Username format: user.{account}.country-{cc}[.session-{id}]
  * Gateway: gate.decodo.com:7777 (HTTP), gate.decodo.com:7000 (SOCKS5)
  */
 class DecodoService
@@ -89,18 +89,16 @@ class DecodoService
 
     // ─── Renew (extend expiry + new session ID) ───────────────────────────────
 
-    public function renewSubscription(string $subscriptionId, int $days = 30): array
+    public function renewSubscription(string $subscriptionId, int $days = 30, string $country = 'us', string $sessionType = 'rotating'): array
     {
-        // For gateway-credential proxies, renewal means issuing new credentials
-        $username    = config('services.decodo.username');
-        $password    = config('services.decodo.password');
-        $newSession  = Str::random(16);
-        $newUsername = $this->buildUsername($username, 'us', 'rotating', $newSession);
+        $username   = config('services.decodo.username');
+        $password   = config('services.decodo.password');
+        $newSession = Str::random(16);
 
         return [
             'expires_at'               => now()->addDays($days)->toISOString(),
             'provider_subscription_id' => $newSession,
-            'username'                 => $newUsername,
+            'username'                 => $this->buildUsername($username, $country, $sessionType, $newSession),
             'password'                 => $password,
         ];
     }
@@ -114,14 +112,14 @@ class DecodoService
 
     // ─── Rotate session ───────────────────────────────────────────────────────
 
-    public function rotateSession(string $subscriptionId): array
+    public function rotateSession(string $subscriptionId, string $country = 'us', string $sessionType = 'rotating'): array
     {
         $username   = config('services.decodo.username');
         $password   = config('services.decodo.password');
         $newSession = Str::random(16);
 
         return [
-            'username' => $this->buildUsername($username, 'us', 'rotating', $newSession),
+            'username' => $this->buildUsername($username, $country, $sessionType, $newSession),
             'password' => $password,
         ];
     }
@@ -160,7 +158,9 @@ class DecodoService
 
     private function buildUsername(string $baseUser, string $country, string $sessionType, string $sessionId): string
     {
-        $parts = ["user-{$baseUser}"];
+        // Decodo format: user.{account}.country-{cc}[.session-{id}]
+        // Dots separate the segments; hyphens are used within each qualifier
+        $parts = ["user.{$baseUser}"];
 
         if ($country && $country !== 'all') {
             $parts[] = "country-{$country}";
@@ -170,7 +170,7 @@ class DecodoService
             $parts[] = "session-{$sessionId}";
         }
 
-        return implode('-', $parts);
+        return implode('.', $parts);
     }
 
     private function resolveHost(string $proxyType, string $protocol): string
