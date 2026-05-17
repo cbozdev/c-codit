@@ -75,8 +75,26 @@ class ProxyAdminController extends Controller
 
         $page = $q->paginate((int) ($request->input('per_page', 25)));
 
+        $items = collect($page->items())->map(fn($sub) => [
+            'id'                 => $sub->public_id,
+            'provider'           => $sub->provider,
+            'proxy_type'         => $sub->proxy_type,
+            'status'             => $sub->status,
+            'location_country'   => $sub->location_country,
+            'is_trial'           => (bool) $sub->is_trial,
+            'bandwidth_gb_used'  => (float) $sub->bandwidth_gb_used,
+            'bandwidth_gb_total' => (float) $sub->bandwidth_gb_total,
+            'expires_at'         => $sub->expires_at?->toISOString(),
+            'created_at'         => $sub->created_at->toISOString(),
+            'user'               => $sub->user ? [
+                'name'      => $sub->user->name,
+                'email'     => $sub->user->email,
+                'public_id' => $sub->user->public_id,
+            ] : null,
+        ]);
+
         return ApiResponse::ok([
-            'items' => $page->items(),
+            'items' => $items,
             'meta'  => [
                 'total'        => $page->total(),
                 'current_page' => $page->currentPage(),

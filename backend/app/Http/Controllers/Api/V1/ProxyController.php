@@ -114,7 +114,7 @@ class ProxyController extends Controller
             ->get()
             ->map(fn($s) => $this->formatSubscription($s));
 
-        return ApiResponse::ok($subs);
+        return ApiResponse::ok(['items' => $subs]);
     }
 
     public function show(Request $request, string $id)
