@@ -12,6 +12,7 @@ use App\Services\Sms\FiveSimService;
 use App\Services\Sms\SmsActivateService;
 use App\Services\Sms\SmsManService;
 use App\Services\Wallet\WalletService;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -66,6 +67,11 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Schema::defaultStringLength(191);
+
+        ResetPassword::createUrlUsing(function ($notifiable, string $token): string {
+            $frontend = rtrim((string) config('app.frontend_url'), '/');
+            return $frontend . '/reset-password?token=' . $token . '&email=' . urlencode($notifiable->getEmailForPasswordReset());
+        });
 
         // Register Resend HTTP transport (bypasses SMTP limitations)
         Mail::extend('resend', function () {
