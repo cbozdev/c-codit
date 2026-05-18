@@ -193,7 +193,11 @@ class ProxyController extends Controller
         $speed   = (bool) $request->input('speed_upgrade', false);
         $accessIp = $request->input('access_ip');
 
-        $sub = $this->provisioning->purchaseListing($request->user(), $listing, $days, $speed, $accessIp);
+        try {
+            $sub = $this->provisioning->purchaseListing($request->user(), $listing, $days, $speed, $accessIp);
+        } catch (\RuntimeException $e) {
+            return ApiResponse::fail($e->getMessage(), null, 422);
+        }
 
         return ApiResponse::ok($this->formatSubscription($sub, true), 'Proxy purchased successfully.');
     }
@@ -213,7 +217,11 @@ class ProxyController extends Controller
             'rotation_minutes'=> ['nullable', 'integer', 'in:5,10,30'],
         ]);
 
-        $subscriptions = $this->provisioning->purchaseSocialPlan($request->user(), $request->validated());
+        try {
+            $subscriptions = $this->provisioning->purchaseSocialPlan($request->user(), $request->validated());
+        } catch (\RuntimeException $e) {
+            return ApiResponse::fail($e->getMessage(), null, 422);
+        }
 
         return ApiResponse::ok(
             array_map(fn($s) => $this->formatSubscription($s, true), $subscriptions),
