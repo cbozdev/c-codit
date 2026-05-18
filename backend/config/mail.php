@@ -16,6 +16,10 @@ return [
         ],
         'log'     => ['transport' => 'log', 'channel' => env('MAIL_LOG_CHANNEL')],
         'array'   => ['transport' => 'array'],
+        'sendmail' => [
+            'transport' => 'sendmail',
+            'path'      => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i'),
+        ],
         'failover'=> ['transport' => 'failover', 'mailers' => ['smtp', 'log']],
     ],
     'from' => [
