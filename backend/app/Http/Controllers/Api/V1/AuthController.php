@@ -164,7 +164,11 @@ class AuthController extends Controller
     public function forgotPassword(Request $request)
     {
         $request->validate(['email' => ['required', 'email']]);
-        Password::sendResetLink(['email' => strtolower((string) $request->input('email'))]);
+        try {
+            Password::sendResetLink(['email' => strtolower((string) $request->input('email'))]);
+        } catch (\Throwable $e) {
+            Log::error('auth.forgot_password.mail_failed', ['error' => $e->getMessage()]);
+        }
         return ApiResponse::ok(null, 'If the email exists, a reset link was sent.');
     }
 
@@ -195,7 +199,11 @@ class AuthController extends Controller
         if ($user->email_verified_at) {
             return ApiResponse::ok(null, 'Email already verified.');
         }
-        $user->sendEmailVerificationNotification();
+        try {
+            $user->sendEmailVerificationNotification();
+        } catch (\Throwable $e) {
+            Log::error('auth.send_verification.mail_failed', ['error' => $e->getMessage()]);
+        }
         return ApiResponse::ok(null, 'Verification email sent.');
     }
 
