@@ -1,1 +1,0 @@
-import{j as a,n}from"./index-BKqqjEUv.js";const d={success:"badge-success",completed:"badge-success",pending:"badge-warning",processing:"badge-warning",provisioning:"badge-warning",failed:"badge-danger",refunded:"badge-muted",reversed:"badge-muted"};function r({status:e}){const s=d[e]??"badge-muted";return a.jsx("span",{className:n(s),children:e.replace("_"," ")})}export{r as S};

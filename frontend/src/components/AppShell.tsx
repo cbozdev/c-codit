@@ -19,16 +19,38 @@ const NAV = [
   { to: '/profile',      label: 'Profile',      icon: UserIcon },
 ];
 
-function NavItem({ to, label, icon: Icon, onClick }: { to: string; label: string; icon: React.ComponentType<{ className?: string }>; onClick?: () => void }) {
+function Avatar({ name }: { name?: string }) {
+  const initials = (name ?? 'U')
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+  return (
+    <div className="h-7 w-7 rounded-full bg-gradient-to-br from-brand-500 to-violet-600 flex items-center justify-center text-white text-xs font-semibold shrink-0">
+      {initials}
+    </div>
+  );
+}
+
+function NavItem({ to, label, icon: Icon, onClick }: {
+  to: string; label: string;
+  icon: React.ComponentType<{ className?: string }>; onClick?: () => void;
+}) {
   return (
     <NavLink to={to} onClick={onClick}
       className={({ isActive }) => clsx(
-        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition',
+        'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
         isActive
-          ? 'bg-ink-900 text-white dark:bg-ink-100 dark:text-ink-900'
-          : 'text-ink-700 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800',
+          ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400'
+          : 'text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800 hover:text-ink-900 dark:hover:text-ink-100',
       )}>
-      <Icon className="h-4 w-4" /> {label}
+      {({ isActive }) => (
+        <>
+          <Icon className={clsx('h-4 w-4 shrink-0', isActive ? 'text-brand-600' : '')} />
+          {label}
+        </>
+      )}
     </NavLink>
   );
 }
@@ -49,25 +71,37 @@ export default function AppShell() {
 
   const SidebarContent = ({ onNav }: { onNav?: () => void }) => (
     <>
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
         {NAV.map((item) => <NavItem key={item.to} {...item} onClick={onNav} />)}
         {isAdmin && (
           <NavLink to="/admin" onClick={onNav}
             className={({ isActive }) => clsx(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition',
-              isActive ? 'bg-brand-500 text-ink-950' : 'text-ink-700 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800',
+              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
+              isActive
+                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+                : 'text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800',
             )}>
-            <Shield className="h-4 w-4" /> Admin
+            <Shield className="h-4 w-4 shrink-0" /> Admin
           </NavLink>
         )}
       </nav>
-      <div className="border-t border-ink-100 dark:border-ink-800 p-3 space-y-1">
+
+      {/* User footer */}
+      <div className="border-t border-ink-100 dark:border-ink-800 p-3 space-y-0.5">
+        {/* User info */}
+        <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl mb-1">
+          <Avatar name={user?.name} />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-ink-800 dark:text-ink-100 truncate">{user?.name}</p>
+            <p className="text-[10px] text-ink-400 dark:text-ink-500 truncate">{user?.email}</p>
+          </div>
+        </div>
         <button onClick={toggle}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-ink-700 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-ink-800 transition">
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink-600 dark:text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800 transition">
           {dark ? <><Sun className="h-4 w-4" /> Light mode</> : <><Moon className="h-4 w-4" /> Dark mode</>}
         </button>
         <button onClick={onLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-ink-700 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-ink-800 transition">
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition">
           <LogOut className="h-4 w-4" /> Sign out
         </button>
       </div>
@@ -77,9 +111,10 @@ export default function AppShell() {
   return (
     <div className="min-h-screen flex bg-ink-50 dark:bg-ink-950">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-64 flex-col border-r border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900">
-        <div className="px-6 py-5 border-b border-ink-100 dark:border-ink-800">
+      <aside className="hidden lg:flex w-64 flex-col border-r border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 sticky top-0 h-screen">
+        <div className="px-5 py-5 border-b border-ink-100 dark:border-ink-800 flex items-center justify-between">
           <Logo />
+          <NotificationBell />
         </div>
         <SidebarContent />
       </aside>
@@ -116,7 +151,7 @@ export default function AppShell() {
               <NavLink to="/admin"
                 className={({ isActive }) => clsx(
                   'p-2 rounded-lg transition',
-                  isActive ? 'text-brand-600' : 'text-ink-500',
+                  isActive ? 'text-amber-600' : 'text-ink-400 hover:text-ink-700',
                 )}>
                 <Shield className="h-5 w-5" />
               </NavLink>
@@ -136,18 +171,22 @@ export default function AppShell() {
           {NAV.slice(0, isAdmin ? 4 : 5).map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to}
               className={({ isActive }) => clsx(
-                'flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px] font-medium rounded-lg',
-                isActive ? 'text-ink-900 dark:text-white' : 'text-ink-500 dark:text-ink-500',
+                'flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px] font-medium rounded-lg transition',
+                isActive ? 'text-brand-600 dark:text-brand-400' : 'text-ink-400 dark:text-ink-500',
               )}>
-              <Icon className="h-5 w-5" />
-              {label}
+              {({ isActive }) => (
+                <>
+                  <Icon className={clsx('h-5 w-5', isActive && 'scale-110 transition-transform')} />
+                  {label}
+                </>
+              )}
             </NavLink>
           ))}
           {isAdmin && (
             <NavLink to="/admin"
               className={({ isActive }) => clsx(
                 'flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px] font-medium rounded-lg',
-                isActive ? 'text-brand-600' : 'text-ink-500 dark:text-ink-500',
+                isActive ? 'text-amber-600' : 'text-ink-400 dark:text-ink-500',
               )}>
               <Shield className="h-5 w-5" />
               Admin
