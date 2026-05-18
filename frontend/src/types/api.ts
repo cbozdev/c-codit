@@ -135,3 +135,33 @@ export type ProxyApiKey = {
   last_used_at: string | null;
   created_at: string;
 };
+
+export type ProxyListing = {
+  id: string;
+  country_code: string;
+  country_name: string;
+  state_code: string | null;
+  state_name: string | null;
+  city: string | null;
+  isp: string | null;
+  zip: string | null;
+  ip_display: string | null;
+  connection_type: 'wifi' | 'cell';
+  protocol: 'http' | 'socks5';
+  speed_ms: number;
+  price_minor: number;
+  price: string;
+  is_available: boolean;
+};
+
+export type MarketplaceCountries = {
+  us_total: number;
+  world_total: number;
+  us_states: { code: string; name: string; count: number }[];
+  world: { code: string; name: string; count: number }[];
+};
+
+export type MarketplacePage = {
+  items: ProxyListing[];
+  meta: { current_page: number; last_page: number; per_page: number; total: number };
+};

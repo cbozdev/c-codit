@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProxyApiKey;
+use App\Models\ProxyListing;
 use App\Models\ProxySubscription;
 use App\Models\ProxyTrial;
 use App\Models\Service;
+use App\Models\UserIpWhitelist;
 use App\Services\Proxy\BrightDataService;
 use App\Services\Proxy\DecodoService;
 use App\Services\Proxy\ProxyProvisioningService;
@@ -102,6 +104,133 @@ class ProxyController extends Controller
             'amount_minor' => $amountMinor,
             'currency'     => 'USD',
         ]);
+    }
+
+    // ─── Marketplace ──────────────────────────────────────────────────────────
+
+    public function marketplace(Request $request)
+    {
+        $request->validate([
+            'country'    => ['nullable', 'string', 'max:5'],
+            'state'      => ['nullable', 'string', 'max:5'],
+            'type'       => ['nullable', 'in:wifi,cell'],
+            'protocol'   => ['nullable', 'in:http,socks5'],
+            'per_page'   => ['nullable', 'integer', 'min:10', 'max:100'],
+        ]);
+
+        $q = ProxyListing::where('is_available', true)
+            ->orderBy('sort_order');
+
+        if ($country = strtoupper($request->input('country', ''))) {
+            $q->where('country_code', $country);
+        }
+        if ($state = strtoupper($request->input('state', ''))) {
+            $q->where('state_code', $state);
+        }
+        if ($type = $request->input('type')) {
+            $q->where('connection_type', $type);
+        }
+        if ($protocol = $request->input('protocol')) {
+            $q->where('protocol', $protocol);
+        }
+
+        $perPage = (int) $request->input('per_page', 20);
+        $paged   = $q->paginate($perPage);
+
+        return ApiResponse::ok([
+            'items' => $paged->map(fn($l) => $l->toMarketplaceArray())->values(),
+            'meta'  => [
+                'current_page' => $paged->currentPage(),
+                'last_page'    => $paged->lastPage(),
+                'per_page'     => $paged->perPage(),
+                'total'        => $paged->total(),
+            ],
+        ]);
+    }
+
+    public function marketplaceCountries()
+    {
+        // US states
+        $usStates = ProxyListing::where('country_code', 'US')
+            ->where('is_available', true)
+            ->whereNotNull('state_code')
+            ->selectRaw('state_code, state_name, COUNT(*) as count')
+            ->groupBy('state_code', 'state_name')
+            ->orderBy('state_code')
+            ->get()
+            ->map(fn($r) => ['code' => $r->state_code, 'name' => $r->state_name, 'count' => (int) $r->count]);
+
+        // World countries (non-US)
+        $world = ProxyListing::where('country_code', '!=', 'US')
+            ->where('is_available', true)
+            ->selectRaw('country_code, country_name, COUNT(*) as count')
+            ->groupBy('country_code', 'country_name')
+            ->orderBy('country_name')
+            ->get()
+            ->map(fn($r) => ['code' => $r->country_code, 'name' => $r->country_name, 'count' => (int) $r->count]);
+
+        $usTotal    = ProxyListing::where('country_code', 'US')->where('is_available', true)->count();
+        $worldTotal = ProxyListing::where('country_code', '!=', 'US')->where('is_available', true)->count();
+
+        return ApiResponse::ok([
+            'us_total'    => $usTotal,
+            'world_total' => $worldTotal,
+            'us_states'   => $usStates,
+            'world'       => $world,
+        ]);
+    }
+
+    public function purchaseListing(Request $request, string $id)
+    {
+        $listing = ProxyListing::where('public_id', $id)->where('is_available', true)->firstOrFail();
+
+        $sub = $this->provisioning->purchaseListing($request->user(), $listing);
+
+        return ApiResponse::ok($this->formatSubscription($sub, true), 'Proxy purchased successfully.');
+    }
+
+    // ─── IP Whitelist ──────────────────────────────────────────────────────────
+
+    public function getWhitelist(Request $request)
+    {
+        $ips = UserIpWhitelist::where('user_id', $request->user()->id)
+            ->orderBy('created_at')
+            ->pluck('ip_address');
+
+        return ApiResponse::ok(['ips' => $ips]);
+    }
+
+    public function updateWhitelist(Request $request)
+    {
+        $request->validate([
+            'ips'   => ['required', 'array', 'max:5'],
+            'ips.*' => ['required', 'ip'],
+        ]);
+
+        $user = $request->user();
+        $ips  = array_unique(array_filter($request->input('ips')));
+
+        UserIpWhitelist::where('user_id', $user->id)->delete();
+
+        foreach ($ips as $ip) {
+            UserIpWhitelist::create(['user_id' => $user->id, 'ip_address' => $ip]);
+        }
+
+        return ApiResponse::ok(['ips' => $ips], 'IP whitelist updated.');
+    }
+
+    // ─── My proxies history ────────────────────────────────────────────────────
+
+    public function history(Request $request)
+    {
+        $subs = ProxySubscription::where('user_id', $request->user()->id)
+            ->whereIn('status', ['expired', 'cancelled', 'suspended'])
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get()
+            ->map(fn($s) => $this->formatSubscription($s));
+
+        return ApiResponse::ok(['items' => $subs]);
     }
 
     // ─── My proxies ───────────────────────────────────────────────────────────

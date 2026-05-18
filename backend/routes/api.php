@@ -92,10 +92,16 @@ Route::prefix('v1')->group(function () {
             Route::get('/price-estimate',                [ProxyController::class, 'priceEstimate']);
             Route::get('/trial-status',                  [ProxyController::class, 'trialStatus']);
             Route::get('/my',                            [ProxyController::class, 'index']);
+            Route::get('/my/history',                    [ProxyController::class, 'history']);
             Route::get('/my/{id}',                       [ProxyController::class, 'show']);
             Route::get('/my/{id}/usage',                 [ProxyController::class, 'usage']);
-            Route::get('/my/{id}/examples',             [ProxyController::class, 'connectionExamples']);
+            Route::get('/my/{id}/examples',              [ProxyController::class, 'connectionExamples']);
             Route::post('/my/{id}/test',                 [ProxyController::class, 'testProxy']);
+            // Marketplace
+            Route::get('/marketplace',                   [ProxyController::class, 'marketplace']);
+            Route::get('/marketplace/countries',         [ProxyController::class, 'marketplaceCountries']);
+            // IP Whitelist
+            Route::get('/whitelist',                     [ProxyController::class, 'getWhitelist']);
         });
 
         Route::middleware(['throttle:services'])->prefix('proxy')->group(function () {
@@ -103,6 +109,8 @@ Route::prefix('v1')->group(function () {
             Route::post('/my/{id}/rotate',               [ProxyController::class, 'rotate']);
             Route::post('/my/{id}/renew',                [ProxyController::class, 'renew']);
             Route::post('/my/{id}/cancel',               [ProxyController::class, 'cancel']);
+            Route::post('/marketplace/{id}/buy',         [ProxyController::class, 'purchaseListing']);
+            Route::put('/whitelist',                     [ProxyController::class, 'updateWhitelist']);
         });
 
         Route::middleware('throttle:api')->prefix('proxy-keys')->group(function () {

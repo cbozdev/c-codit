@@ -2,6 +2,7 @@
 
 namespace App\Services\Proxy;
 
+use App\Models\ProxyListing;
 use App\Models\ProxySubscription;
 use App\Models\ProxyTrial;
 use App\Models\ProxyUsageLog;
@@ -233,6 +234,103 @@ class ProxyProvisioningService
         ]);
 
         return $sub;
+    }
+
+    // ─── Purchase from marketplace listing ───────────────────────────────────
+
+    public function purchaseListing(User $user, ProxyListing $listing, int $durationDays = 30): ProxySubscription
+    {
+        $amountMinor  = $listing->price_minor;
+        $walletAmount = Money::minor($amountMinor, 'USD');
+        $wallet       = $this->wallets->getOrCreate($user, 'USD');
+        $idempKey     = 'proxy_listing:' . $listing->public_id . ':' . $user->id . ':' . now()->timestamp;
+
+        $holdTx = $this->wallets->holdForPurchase(
+            wallet:         $wallet,
+            amount:         $walletAmount,
+            idempotencyKey: $idempKey,
+            reference:      $wallet,
+            description:    "Proxy: {$listing->country_name}" . ($listing->state_code ? " ({$listing->state_code})" : ''),
+        );
+
+        $proxyType   = $listing->connection_type === 'cell' ? 'mobile_rotating' : 'residential_rotating';
+        $sessionType = 'rotating';
+        $country     = strtolower($listing->country_code);
+        $protocol    = $listing->protocol;
+
+        try {
+            $provider = $this->routing->selectProvider($proxyType);
+            $result   = $this->provisionWithFallback($provider, $proxyType, [
+                'proxy_type'    => $proxyType,
+                'protocol'      => $protocol,
+                'country_code'  => $listing->country_code,
+                'city'          => $listing->city,
+                'bandwidth_gb'  => 0,
+                'ip_count'      => 1,
+                'threads'       => 10,
+                'duration_days' => $durationDays,
+                'session_type'  => $sessionType,
+            ], null);
+        } catch (\Throwable $e) {
+            $this->wallets->refundSuspense($holdTx, 'proxy_listing_refund:' . $idempKey, $e->getMessage());
+            throw new RuntimeException('Proxy provisioning failed. Your wallet has been refunded.');
+        }
+
+        return DB::transaction(function () use (
+            $user, $listing, $holdTx, $result,
+            $proxyType, $protocol, $durationDays, $amountMinor
+        ) {
+            $sub = new ProxySubscription([
+                'public_id'                => (string) Str::uuid(),
+                'user_id'                  => $user->id,
+                'provider'                 => $result['provider'],
+                'provider_subscription_id' => $result['provider_subscription_id'],
+                'proxy_type'               => $proxyType,
+                'protocol'                 => $protocol,
+                'host'                     => $result['host'],
+                'port'                     => $result['port'],
+                'username'                 => $result['username'],
+                'location_country'         => strtoupper($listing->country_code),
+                'location_city'            => $listing->city,
+                'bandwidth_gb_total'       => 0,
+                'bandwidth_gb_used'        => 0,
+                'ip_count'                 => 1,
+                'threads'                  => 10,
+                'status'                   => 'active',
+                'is_trial'                 => false,
+                'duration_days'            => $durationDays,
+                'expires_at'               => now()->addDays($durationDays),
+                'provisioned_at'           => now(),
+                'config'                   => [
+                    'listing_id'      => $listing->public_id,
+                    'connection_type' => $listing->connection_type,
+                    'isp'             => $listing->isp,
+                    'state_code'      => $listing->state_code,
+                    'state_name'      => $listing->state_name,
+                ],
+            ]);
+            $sub->setPassword($result['password']);
+            $sub->save();
+
+            ProxyUsageLog::create([
+                'subscription_id' => $sub->id,
+                'user_id'         => $user->id,
+                'event_type'      => 'provisioned',
+                'bandwidth_mb'    => 0,
+                'data'            => ['provider' => $result['provider'], 'listing_id' => $listing->public_id],
+            ]);
+
+            $this->wallets->settleSuspense($holdTx, 'proxy_listing_settle:' . $listing->public_id . ':' . $sub->public_id);
+
+            Audit::log('proxy.listing_purchased', $user, [
+                'subscription_id' => $sub->public_id,
+                'listing_id'      => $listing->public_id,
+                'country'         => $listing->country_code,
+                'amount_minor'    => $amountMinor,
+            ]);
+
+            return $sub->fresh();
+        });
     }
 
     // ─── Sync usage ───────────────────────────────────────────────────────────
