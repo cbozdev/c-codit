@@ -109,7 +109,10 @@ Route::prefix('v1')->group(function () {
             Route::post('/my/{id}/rotate',               [ProxyController::class, 'rotate']);
             Route::post('/my/{id}/renew',                [ProxyController::class, 'renew']);
             Route::post('/my/{id}/cancel',               [ProxyController::class, 'cancel']);
+            Route::post('/my/{id}/toggle-renew',         [ProxyController::class, 'toggleAutoRenew']);
+            Route::post('/my/{id}/refund',               [ProxyController::class, 'refundSubscription']);
             Route::post('/marketplace/{id}/buy',         [ProxyController::class, 'purchaseListing']);
+            Route::post('/social-buy',                   [ProxyController::class, 'socialBuy']);
             Route::put('/whitelist',                     [ProxyController::class, 'updateWhitelist']);
         });
 

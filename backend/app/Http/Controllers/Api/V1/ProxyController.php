@@ -182,11 +182,43 @@ class ProxyController extends Controller
 
     public function purchaseListing(Request $request, string $id)
     {
-        $listing = ProxyListing::where('public_id', $id)->where('is_available', true)->firstOrFail();
+        $request->validate([
+            'duration_days'  => ['nullable', 'integer', 'in:1,7,14,21,30'],
+            'speed_upgrade'  => ['nullable', 'boolean'],
+            'access_ip'      => ['nullable', 'ip'],
+        ]);
 
-        $sub = $this->provisioning->purchaseListing($request->user(), $listing);
+        $listing = ProxyListing::where('public_id', $id)->where('is_available', true)->firstOrFail();
+        $days    = (int) $request->input('duration_days', 30);
+        $speed   = (bool) $request->input('speed_upgrade', false);
+        $accessIp = $request->input('access_ip');
+
+        $sub = $this->provisioning->purchaseListing($request->user(), $listing, $days, $speed, $accessIp);
 
         return ApiResponse::ok($this->formatSubscription($sub, true), 'Proxy purchased successfully.');
+    }
+
+    public function socialBuy(Request $request)
+    {
+        $request->validate([
+            'connection_type' => ['required', 'in:wifi,cell,all'],
+            'protocol'        => ['required', 'in:http,socks5'],
+            'duration_days'   => ['required', 'integer', 'in:1,7,14,21,30'],
+            'quantity'        => ['required', 'integer', 'min:1', 'max:50'],
+            'country_code'    => ['nullable', 'string', 'size:2'],
+            'state_code'      => ['nullable', 'string', 'max:5'],
+            'carrier'         => ['nullable', 'string', 'max:80'],
+            'speed_upgrade'   => ['nullable', 'boolean'],
+            'access_ip'       => ['nullable', 'ip'],
+            'rotation_minutes'=> ['nullable', 'integer', 'in:5,10,30'],
+        ]);
+
+        $subscriptions = $this->provisioning->purchaseSocialPlan($request->user(), $request->validated());
+
+        return ApiResponse::ok(
+            array_map(fn($s) => $this->formatSubscription($s, true), $subscriptions),
+            count($subscriptions) . ' proxy(ies) activated successfully.',
+        );
     }
 
     // ─── IP Whitelist ──────────────────────────────────────────────────────────
@@ -217,6 +249,37 @@ class ProxyController extends Controller
         }
 
         return ApiResponse::ok(['ips' => $ips], 'IP whitelist updated.');
+    }
+
+    // ─── Auto-renew toggle ────────────────────────────────────────────────────
+
+    public function toggleAutoRenew(Request $request, string $id)
+    {
+        $sub = ProxySubscription::where('public_id', $id)
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        $sub->update(['auto_renew' => ! $sub->auto_renew]);
+
+        return ApiResponse::ok(['auto_renew' => $sub->auto_renew]);
+    }
+
+    // ─── 1-hour refund ────────────────────────────────────────────────────────
+
+    public function refundSubscription(Request $request, string $id)
+    {
+        $sub = ProxySubscription::where('public_id', $id)
+            ->where('user_id', $request->user()->id)
+            ->where('status', 'active')
+            ->firstOrFail();
+
+        if (! $sub->provisioned_at || $sub->provisioned_at->diffInMinutes(now()) > 60) {
+            return ApiResponse::fail('Refund window has passed. Refunds are only available within 1 hour of activation.', null, 422);
+        }
+
+        $this->provisioning->refundSubscription($sub, $request->user());
+
+        return ApiResponse::ok(null, 'Refund processed. Funds returned to your wallet.');
     }
 
     // ─── My proxies history ────────────────────────────────────────────────────
