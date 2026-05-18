@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { apiCall, newIdempotencyKey } from '@/lib/api';
-import type { Paginated, Service, ServiceOrder } from '@/types/api';
+import type { GiftCardProduct, Paginated, Service, ServiceOrder } from '@/types/api';
 import {
   Smartphone, Globe, CreditCard, Receipt, Phone,
   RefreshCw, Copy, Search, ChevronDown, ChevronUp,
@@ -304,6 +304,12 @@ export default function ServicesPage() {
   const [smmQuantity, setSmmQuantity]       = useState(100);
   const [ordersExpanded, setOrdersExpanded] = useState(true);
 
+  // Gift card state
+  const [gcCountry, setGcCountry]           = useState('US');
+  const [gcProductId, setGcProductId]       = useState<number | null>(null);
+  const [gcProduct, setGcProduct]           = useState<GiftCardProduct | null>(null);
+  const [gcRecipientEmail, setGcRecipientEmail] = useState('');
+
   // Proxy purchase state
   const [proxyType, setProxyType]           = useState('residential_rotating');
   const [proxyProtocol, setProxyProtocol]   = useState('http');
@@ -351,6 +357,8 @@ export default function ServicesPage() {
         if (selected.code === 'utility_electricity') baseData.meter_type = meterType;
       } else if (selected.category === 'giftcard') {
         baseData.denomination = denomination;
+        if (gcProductId) baseData.reloadly_product_id = gcProductId;
+        if (gcRecipientEmail) baseData.recipient_email = gcRecipientEmail;
       } else if (selected.category === 'esim') {
         baseData.package_id = esimPackageId;
       } else if (selected.category === 'smm' || selected.category === 'smm_accounts') {
@@ -493,8 +501,16 @@ export default function ServicesPage() {
           {selected.category === 'giftcard' && (
             <GiftCardForm
               service={selected}
+              country={gcCountry}
+              setCountry={setGcCountry}
+              productId={gcProductId}
+              setProductId={setGcProductId}
+              product={gcProduct}
+              setProduct={setGcProduct}
               denomination={denomination}
               setDenomination={setDenomination}
+              recipientEmail={gcRecipientEmail}
+              setRecipientEmail={setGcRecipientEmail}
               onPurchase={() => purchase.mutate()}
               isPending={purchase.isPending}
             />
@@ -826,37 +842,179 @@ function VirtualNumberForm({
 
 // ─── Gift Card Form ───────────────────────────────────────────────────────────
 
-function GiftCardForm({ service, denomination, setDenomination, onPurchase, isPending }: {
-  service: Service; denomination: number;
-  setDenomination: (v: number) => void; onPurchase: () => void; isPending: boolean;
+const GC_COUNTRIES = [
+  { code: 'US', label: '🇺🇸 United States' },
+  { code: 'GB', label: '🇬🇧 United Kingdom' },
+  { code: 'CA', label: '🇨🇦 Canada' },
+  { code: 'AU', label: '🇦🇺 Australia' },
+  { code: 'DE', label: '🇩🇪 Germany' },
+  { code: 'FR', label: '🇫🇷 France' },
+  { code: 'NG', label: '🇳🇬 Nigeria' },
+  { code: 'GH', label: '🇬🇭 Ghana' },
+  { code: 'KE', label: '🇰🇪 Kenya' },
+  { code: 'ZA', label: '🇿🇦 South Africa' },
+  { code: 'IN', label: '🇮🇳 India' },
+  { code: 'BR', label: '🇧🇷 Brazil' },
+  { code: 'MX', label: '🇲🇽 Mexico' },
+  { code: 'AE', label: '🇦🇪 UAE' },
+];
+
+function GiftCardForm({ country, setCountry, setProductId, product, setProduct, denomination, setDenomination, recipientEmail, setRecipientEmail, onPurchase, isPending }: {
+  service?: Service;
+  country: string; setCountry: (v: string) => void;
+  productId?: number | null; setProductId: (v: number | null) => void;
+  product: GiftCardProduct | null; setProduct: (v: GiftCardProduct | null) => void;
+  denomination: number; setDenomination: (v: number) => void;
+  recipientEmail: string; setRecipientEmail: (v: string) => void;
+  onPurchase: () => void; isPending: boolean;
 }) {
+  const [search, setSearch] = useState('');
+
+  const productsQ = useQuery<GiftCardProduct[]>({
+    queryKey: ['giftcard-products', country],
+    queryFn: () => apiCall<GiftCardProduct[]>({ url: '/services/giftcard-products', params: { country } }),
+    staleTime: 300_000,
+  });
+
+  const filtered = (productsQ.data ?? []).filter((p) =>
+    !search || p.brand.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const denominations: number[] = product
+    ? product.denomination_type === 'fixed'
+      ? product.fixed_denominations
+      : GIFT_DENOMINATIONS.filter((d) => d >= product.min_amount && d <= product.max_amount)
+    : [];
+
+  const total = denomination > 0 ? `$${denomination.toFixed(2)}` : '–';
+
+  function selectProduct(p: GiftCardProduct) {
+    setProductId(p.product_id);
+    setProduct(p);
+    const first = p.denomination_type === 'fixed' ? p.fixed_denominations[0] : p.min_amount;
+    setDenomination(first ?? 10);
+  }
+
+  function clearProduct() {
+    setProductId(null);
+    setProduct(null);
+    setDenomination(25);
+  }
+
   return (
     <>
       <h3 className="font-semibold flex items-center gap-2 mb-5 dark:text-white">
-        <Gift className="h-4 w-4 text-brand-600" /> {service.name}
+        <Gift className="h-4 w-4 text-brand-600" /> Gift Cards
       </h3>
-      <div>
-        <label className="label">Amount</label>
-        <div className="flex flex-wrap gap-2 mt-1">
-          {GIFT_DENOMINATIONS.map((d) => (
-            <button key={d} onClick={() => setDenomination(d)}
-              className={clsx(
-                'px-4 py-2 rounded-lg border text-sm font-medium transition',
-                denomination === d
-                  ? 'bg-ink-900 text-white border-ink-900 dark:bg-white dark:text-ink-900'
-                  : 'border-ink-200 text-ink-700 hover:border-ink-400 dark:border-ink-700 dark:text-ink-300',
-              )}>
-              ${d}
-            </button>
+
+      {/* Country selector */}
+      <div className="mb-4">
+        <label className="label">Country</label>
+        <select value={country} onChange={(e) => { setCountry(e.target.value); clearProduct(); }}
+          className="input mt-1">
+          {GC_COUNTRIES.map((c) => (
+            <option key={c.code} value={c.code}>{c.label}</option>
           ))}
+        </select>
+      </div>
+
+      {/* Product picker */}
+      {!product ? (
+        <div>
+          <label className="label">Brand</label>
+          <div className="relative mt-1 mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search brands…" className="input pl-9" />
+          </div>
+          {productsQ.isLoading && (
+            <p className="text-sm text-ink-400 text-center py-6">Loading gift cards…</p>
+          )}
+          {productsQ.isError && (
+            <p className="text-sm text-rose-500 text-center py-4">Could not load gift cards. Try again.</p>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+            {filtered.map((p) => (
+              <button key={p.product_id} onClick={() => selectProduct(p)}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-ink-200 dark:border-ink-700 hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition text-center">
+                {p.logo_url ? (
+                  <img src={p.logo_url} alt={p.brand} className="h-8 w-auto object-contain" />
+                ) : (
+                  <Gift className="h-8 w-8 text-ink-400" />
+                )}
+                <span className="text-xs font-medium text-ink-700 dark:text-ink-200 leading-tight">{p.brand}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-      <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-sm text-amber-800 dark:text-amber-400">
-        ⚠ Gift cards are delivered as digital codes. All sales are final once delivered.
-      </div>
-      <button onClick={onPurchase} disabled={isPending} className="btn-brand mt-5">
-        {isPending ? 'Processing…' : `Buy $${denomination} gift card`}
-      </button>
+      ) : (
+        <>
+          {/* Selected brand */}
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-ink-50 dark:bg-ink-800 mb-4">
+            {product.logo_url ? (
+              <img src={product.logo_url} alt={product.brand} className="h-8 w-auto object-contain" />
+            ) : (
+              <Gift className="h-8 w-8 text-ink-400" />
+            )}
+            <div className="flex-1">
+              <p className="font-medium text-sm dark:text-white">{product.brand}</p>
+              <p className="text-xs text-ink-400">{product.country_code} · {product.currency}</p>
+            </div>
+            <button onClick={clearProduct} className="text-xs text-ink-400 hover:text-ink-700 dark:hover:text-ink-200">
+              Change
+            </button>
+          </div>
+
+          {/* Denomination */}
+          <div className="mb-4">
+            <label className="label">Amount</label>
+            {denominations.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mt-1">
+                {denominations.map((d) => (
+                  <button key={d} onClick={() => setDenomination(d)}
+                    className={clsx(
+                      'px-4 py-2 rounded-lg border text-sm font-medium transition',
+                      denomination === d
+                        ? 'bg-ink-900 text-white border-ink-900 dark:bg-white dark:text-ink-900'
+                        : 'border-ink-200 text-ink-700 hover:border-ink-400 dark:border-ink-700 dark:text-ink-300',
+                    )}>
+                    ${d}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-1">
+                <input type="number" value={denomination || ''}
+                  onChange={(e) => setDenomination(parseFloat(e.target.value) || 0)}
+                  placeholder={`$${product.min_amount}–$${product.max_amount}`}
+                  className="input" min={product.min_amount} max={product.max_amount} step={0.01} />
+                <p className="text-xs text-ink-400 mt-1">Enter any amount between ${product.min_amount} and ${product.max_amount}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Optional recipient email */}
+          <div className="mb-4">
+            <label className="label">Recipient email <span className="text-ink-400 font-normal">(optional — defaults to your account email)</span></label>
+            <input type="email" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)}
+              placeholder="recipient@email.com" className="input mt-1" />
+          </div>
+
+          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-sm text-amber-800 dark:text-amber-400 mb-4">
+            Gift card code delivered instantly to email. All sales are final once the code is revealed.
+          </div>
+
+          <div className="flex items-center justify-between mb-4 text-sm">
+            <span className="text-ink-500">Total</span>
+            <span className="font-semibold dark:text-white">{total}</span>
+          </div>
+
+          <button onClick={onPurchase} disabled={isPending || !denomination || denomination <= 0}
+            className="btn-brand w-full">
+            {isPending ? 'Processing…' : `Buy ${product.brand} Gift Card · ${total}`}
+          </button>
+        </>
+      )}
     </>
   );
 }

@@ -107,6 +107,12 @@ return [
         'key' => env('SMM_ACCOUNTS_PANEL_KEY'),
     ],
 
+    'reloadly' => [
+        'client_id'     => env('RELOADLY_CLIENT_ID'),
+        'client_secret' => env('RELOADLY_CLIENT_SECRET'),
+        'sandbox'       => (bool) env('RELOADLY_SANDBOX', false),
+    ],
+
     'platform' => [
         'base_currency'      => env('PLATFORM_BASE_CURRENCY', 'USD'),
         'markup_percent'     => (float) env('PLATFORM_MARKUP_PERCENT', 15),

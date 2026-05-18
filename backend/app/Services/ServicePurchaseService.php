@@ -70,7 +70,8 @@ class ServicePurchaseService
             'smsman'      => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsMan),
             'smspool'     => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsPool),
             'flutterwave' => $this->purchaseUtilityBill($user, $service, $request, $idempotencyKey),
-            'internal'    => $this->purchaseGiftCard($user, $service, $request, $idempotencyKey),
+            'internal', 'reloadly'
+                          => $this->purchaseGiftCard($user, $service, $request, $idempotencyKey),
             'airalo'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->airalo),
             'celitech'    => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->celitech),
             'bnesim'      => $this->purchaseEsim($user, $service, $request, $idempotencyKey, $this->bnesim),
@@ -252,11 +253,14 @@ class ServicePurchaseService
         array $request,
         string $idempotencyKey,
     ): ServiceOrder {
-        $denomination = (float) ($request['denomination'] ?? 10);
-        $priceMinor = $this->giftCards->getPrice($service->code, $denomination);
-        $finalAmount = Money::minor($priceMinor, 'USD');
+        $denomination    = (float) ($request['denomination'] ?? 10);
+        $productId       = (int) ($request['reloadly_product_id'] ?? 0);
+        $recipientEmail  = $request['recipient_email'] ?? null;
 
-        $wallet = $this->wallets->getOrCreate($user, 'USD');
+        // Price = denomination amount (Reloadly charges sender == recipient for USD cards)
+        $priceMinor  = $this->giftCards->getPrice($service->code, $denomination);
+        $finalAmount = Money::minor($priceMinor, 'USD');
+        $wallet      = $this->wallets->getOrCreate($user, 'USD');
 
         $order = ServiceOrder::create([
             'user_id'         => $user->id,
@@ -269,17 +273,28 @@ class ServicePurchaseService
         ]);
 
         $holdTx = $this->wallets->holdForPurchase(
-            wallet: $wallet,
-            amount: $finalAmount,
+            wallet:         $wallet,
+            amount:         $finalAmount,
             idempotencyKey: 'svcorder:'.$order->public_id,
-            reference: $order,
-            description: "Gift Card: {$service->name} \${$denomination}",
+            reference:      $order,
+            description:    "Gift Card: {$service->name} \${$denomination}",
         );
 
         $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
 
         try {
-            $result = $this->giftCards->purchase($service->code, $denomination);
+            if ($service->provider === 'reloadly' && $productId > 0) {
+                $result = $this->giftCards->purchase($user, $productId, $denomination, $order->public_id, $recipientEmail);
+            } else {
+                // Legacy manual fulfillment (internal provider)
+                $result = [
+                    'type'       => 'giftcard',
+                    'provider'   => 'manual',
+                    'product'    => $service->code,
+                    'denomination' => $denomination,
+                    'note'       => 'Gift card will be delivered to your registered email within 24 hours.',
+                ];
+            }
         } catch (\Throwable $e) {
             $this->refundOrder($order, $holdTx, $e->getMessage());
             throw $e;
@@ -289,7 +304,7 @@ class ServicePurchaseService
             $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
             $order->update([
                 'status'            => 'completed',
-                'provider_order_id' => $result['provider_order_id'] ?? null,
+                'provider_order_id' => $result['transaction_id'] ?? null,
                 'delivery'          => $result,
                 'provisioned_at'    => now(),
             ]);

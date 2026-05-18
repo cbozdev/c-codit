@@ -7,6 +7,7 @@ use App\Http\Resources\ServiceOrderResource;
 use App\Http\Resources\ServiceResource;
 use App\Models\Service;
 use App\Models\ServiceOrder;
+use App\Services\GiftCardService;
 use App\Services\ServicePurchaseService;
 use App\Services\Sms\ServiceUnavailableException;
 use App\Support\ApiResponse;
@@ -14,7 +15,10 @@ use Illuminate\Http\Request;
 
 class ServiceController extends Controller
 {
-    public function __construct(private readonly ServicePurchaseService $purchases) {}
+    public function __construct(
+        private readonly ServicePurchaseService $purchases,
+        private readonly GiftCardService        $giftCards,
+    ) {}
 
     public function index()
     {
@@ -50,7 +54,9 @@ class ServiceController extends Controller
             'plan'            => ['nullable', 'string', 'max:50'],
             'plan_code'       => ['nullable', 'string', 'max:20'],
             // Gift card fields
-            'denomination'    => ['nullable', 'numeric', 'min:1', 'max:500'],
+            'denomination'         => ['nullable', 'numeric', 'min:1', 'max:500'],
+            'reloadly_product_id'  => ['nullable', 'integer', 'min:1'],
+            'recipient_email'      => ['nullable', 'email', 'max:150'],
             // eSIM fields
             'package_id'      => ['nullable', 'string', 'max:120'],
             // SMM fields
@@ -96,6 +102,37 @@ class ServiceController extends Controller
     public function purchaseVirtualNumber(Request $request)
     {
         return $this->purchase($request);
+    }
+
+    /**
+     * List Reloadly gift card products.
+     * GET /services/giftcard-products?country=US
+     */
+    public function giftCardProducts(Request $request)
+    {
+        $request->validate(['country' => ['nullable', 'string', 'size:2']]);
+        $country = strtoupper($request->input('country', 'US'));
+
+        try {
+            $products = $this->giftCards->getProducts($country);
+            return ApiResponse::ok($products);
+        } catch (\Throwable $e) {
+            return ApiResponse::fail('Could not load gift cards: ' . $e->getMessage(), null, 503);
+        }
+    }
+
+    /**
+     * Get denominations for a specific Reloadly product.
+     * GET /services/giftcard-products/{id}
+     */
+    public function giftCardProduct(Request $request, int $id)
+    {
+        try {
+            $product = $this->giftCards->getProduct($id);
+            return ApiResponse::ok($product);
+        } catch (\Throwable $e) {
+            return ApiResponse::fail('Could not load gift card details: ' . $e->getMessage(), null, 503);
+        }
     }
 
     /**

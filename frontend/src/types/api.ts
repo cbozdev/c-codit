@@ -165,3 +165,19 @@ export type MarketplacePage = {
   items: ProxyListing[];
   meta: { current_page: number; last_page: number; per_page: number; total: number };
 };
+
+export type GiftCardProduct = {
+  product_id: number;
+  name: string;
+  brand: string;
+  country_code: string;
+  currency: string;
+  logo_url: string | null;
+  denomination_type: 'fixed' | 'range';
+  fixed_denominations: number[];
+  min_amount: number;
+  max_amount: number;
+  sender_fee: number;
+  sender_fee_pct: number;
+  category: string;
+};
