@@ -168,7 +168,7 @@ class FiveSimService implements SmsNumberProvider
 
         Log::info('5sim.purchase.attempt', ['product' => $product, 'country' => $countryKey]);
 
-        $res = $this->client()->get("/user/buy/activation/{$countryKey}/any/{$product}");
+        $res = $this->client()->get("/user/buy/activation/{$countryKey}/virtual28/{$product}");
 
         Log::info('5sim.purchase.response', [
             'status'  => $res->status(),
@@ -181,7 +181,7 @@ class FiveSimService implements SmsNumberProvider
             $body = $res->json();
             $msg  = $body['message'] ?? $res->body();
             if (str_contains((string) $msg, 'no free phones') || str_contains((string) $msg, 'no free')) {
-                throw new ServiceUnavailableException('No phone numbers available for this service/country. Try a different country.');
+                throw new ServiceUnavailableException('No numbers available from Virtual28 for this service/country. Try a different country.');
             }
             throw new ServiceUnavailableException('5sim error: ' . $msg);
         }
