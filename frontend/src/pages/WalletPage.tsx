@@ -118,20 +118,27 @@ export default function WalletPage() {
       </div>
 
       {/* Balance card */}
-      <div className="rounded-2xl p-6 bg-gradient-to-br from-ink-950 to-ink-900 text-white border border-ink-900">
-        <div className="flex items-start justify-between">
+      <div className="relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-ink-950 via-ink-900 to-brand-950 text-white border border-ink-800 shadow-lg">
+        <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-brand-500/10 blur-2xl pointer-events-none" />
+        <div className="absolute right-16 bottom-0 h-24 w-24 rounded-full bg-violet-500/10 blur-xl pointer-events-none" />
+        <div className="relative flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm text-ink-300">Available balance</div>
+            <div className="flex items-center gap-2 text-ink-300 text-sm">
+              <ArrowDownToLine className="h-4 w-4" /> Available balance
+            </div>
             <div className="mt-2 text-4xl font-semibold tracking-tight">
               {wallet.isLoading
-                ? <span className="inline-block bg-ink-700 rounded h-9 w-44 animate-pulse" />
+                ? <span className="inline-block bg-ink-700 rounded-lg h-10 w-44 animate-pulse" />
                 : formatMoney(wallet.data?.balance_minor ?? 0, wallet.data?.currency ?? 'USD')}
             </div>
-            <div className="text-ink-400 text-sm mt-1">{wallet.data?.currency ?? 'USD'} wallet</div>
+            <div className="text-ink-400 text-xs mt-1.5 flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 inline-block" />
+              {wallet.data?.currency ?? 'USD'} · Instantly available
+            </div>
           </div>
         </div>
         {wallet.data?.is_frozen && (
-          <div className="mt-3 inline-flex items-center gap-1.5 bg-rose-500/20 text-rose-300 text-xs px-3 py-1.5 rounded-full">
+          <div className="relative mt-4 inline-flex items-center gap-1.5 bg-rose-500/20 text-rose-300 text-xs px-3 py-1.5 rounded-full border border-rose-500/30">
             🔒 Wallet frozen — {wallet.data.frozen_reason}
           </div>
         )}
