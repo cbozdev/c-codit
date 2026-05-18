@@ -9,6 +9,7 @@ use App\Http\Resources\ServiceResource;
 use App\Http\Resources\TransactionResource;
 use App\Http\Resources\UserResource;
 use App\Models\AppSetting;
+use App\Models\AuditLog;
 use App\Models\ServiceConfig;
 use App\Models\Payment;
 use App\Models\Service;
@@ -23,6 +24,8 @@ use App\Support\Audit;
 use App\Support\Money;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 
 class AdminController extends Controller
 {
@@ -151,6 +154,18 @@ class AdminController extends Controller
             'reason'       => $request->input('reason'),
             'admin_id'     => $admin->id,
         ], actorType: 'admin');
+
+        // Alert if adjustment > $100
+        if ($amount->amountMinor >= 10000) {
+            try {
+                $adminEmail = config('mail.from.address', 'no-reply@c-codit.com');
+                $dir = strtoupper((string) $request->input('direction'));
+                Mail::raw(
+                    "Admin wallet adjustment alert:\n\nAdmin: {$admin->name} ({$admin->email})\nUser: {$user->name} ({$user->email})\nDirection: {$dir}\nAmount: {$amount->currency} {$amount->amountMinor}\nReason: {$request->input('reason')}\nTime: " . now()->toDateTimeString(),
+                    fn ($m) => $m->to($adminEmail)->subject("[C-codit Alert] Large wallet {$dir} — {$amount->currency} " . number_format($amount->amountMinor / 100, 2))
+                );
+            } catch (\Throwable) {}
+        }
 
         return ApiResponse::ok(
             new TransactionResource($tx),
@@ -644,5 +659,124 @@ class AdminController extends Controller
         ], actorType: 'admin');
 
         return ApiResponse::ok(null, 'Key removed.');
+    }
+
+    // ─── Audit Log Viewer ─────────────────────────────────────────────────────
+
+    public function auditLogs(Request $request)
+    {
+        $query = AuditLog::query()
+            ->leftJoin('users', 'audit_logs.user_id', '=', 'users.id')
+            ->select('audit_logs.*', 'users.name as user_name', 'users.email as user_email')
+            ->orderByDesc('audit_logs.created_at');
+
+        if ($search = $request->input('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('audit_logs.action', 'like', '%' . $search . '%')
+                  ->orWhere('users.email', 'like', '%' . $search . '%');
+            });
+        }
+
+        if ($action = $request->input('action')) {
+            $query->where('audit_logs.action', 'like', $action . '%');
+        }
+
+        $rows = $query->paginate(50);
+
+        return ApiResponse::ok([
+            'items' => $rows->map(fn ($r) => [
+                'id'           => $r->id,
+                'action'       => $r->action,
+                'user_name'    => $r->user_name,
+                'user_email'   => $r->user_email,
+                'actor_type'   => $r->actor_type,
+                'ip_address'   => $r->ip_address,
+                'context'      => is_string($r->context) ? json_decode($r->context, true) : $r->context,
+                'created_at'   => $r->created_at,
+            ]),
+            'meta' => [
+                'current_page' => $rows->currentPage(),
+                'last_page'    => $rows->lastPage(),
+                'total'        => $rows->total(),
+            ],
+        ]);
+    }
+
+    // ─── Service Health ───────────────────────────────────────────────────────
+
+    public function serviceHealth()
+    {
+        $checks = [];
+
+        // 5sim
+        try {
+            $r = Http::withHeaders(['Authorization' => 'Bearer ' . config('services.fivesim.api_key')])->timeout(8)->get('https://5sim.net/v1/guest/prices?country=usa&product=google');
+            $checks['5sim'] = ['status' => $r->successful() ? 'ok' : 'degraded', 'code' => $r->status()];
+        } catch (\Throwable) { $checks['5sim'] = ['status' => 'down', 'code' => null]; }
+
+        // Flutterwave
+        try {
+            $r = Http::withToken(config('services.flutterwave.secret_key'))->timeout(8)->get(config('services.flutterwave.base_url', 'https://api.flutterwave.com/v3') . '/banks/NG');
+            $checks['flutterwave'] = ['status' => $r->successful() ? 'ok' : 'degraded', 'code' => $r->status()];
+        } catch (\Throwable) { $checks['flutterwave'] = ['status' => 'down', 'code' => null]; }
+
+        // NOWPayments
+        try {
+            $r = Http::withHeaders(['x-api-key' => config('services.nowpayments.api_key')])->timeout(8)->get(config('services.nowpayments.base_url', 'https://api.nowpayments.io/v1') . '/status');
+            $checks['nowpayments'] = ['status' => $r->successful() ? 'ok' : 'degraded', 'code' => $r->status()];
+        } catch (\Throwable) { $checks['nowpayments'] = ['status' => 'down', 'code' => null]; }
+
+        // Reloadly
+        try {
+            $r = Http::timeout(8)->post('https://auth.reloadly.com/oauth/token', [
+                'client_id'     => config('services.reloadly.client_id'),
+                'client_secret' => config('services.reloadly.client_secret'),
+                'grant_type'    => 'client_credentials',
+                'audience'      => 'https://giftcards.reloadly.com',
+            ]);
+            $checks['reloadly'] = ['status' => $r->successful() ? 'ok' : 'degraded', 'code' => $r->status()];
+        } catch (\Throwable) { $checks['reloadly'] = ['status' => 'down', 'code' => null]; }
+
+        // Alert admin if any provider is down
+        $downProviders = collect($checks)->filter(fn ($c) => $c['status'] === 'down')->keys()->values()->toArray();
+        if (count($downProviders) > 0) {
+            $cacheKey = 'health_alert_sent:' . implode(',', $downProviders);
+            if (! \Illuminate\Support\Facades\Cache::has($cacheKey)) {
+                \Illuminate\Support\Facades\Cache::put($cacheKey, true, now()->addMinutes(60));
+                try {
+                    $adminEmail = config('mail.from.address', 'no-reply@c-codit.com');
+                    Mail::raw(
+                        'PROVIDER DOWN: ' . implode(', ', $downProviders) . "\n\nChecked at: " . now()->toDateTimeString(),
+                        fn ($m) => $m->to($adminEmail)->subject('[C-codit Alert] Provider(s) down: ' . implode(', ', $downProviders))
+                    );
+                } catch (\Throwable) {}
+            }
+        }
+
+        return ApiResponse::ok(['providers' => $checks, 'checked_at' => now()->toDateTimeString()]);
+    }
+
+    // ─── Referral Stats ───────────────────────────────────────────────────────
+
+    public function referralStats(Request $request)
+    {
+        $topReferrers = User::withCount(['referrals as total_referrals'])
+            ->having('total_referrals', '>', 0)
+            ->orderByDesc('total_referrals')
+            ->limit(20)
+            ->get(['id', 'name', 'email', 'referral_code'])
+            ->map(fn ($u) => [
+                'name'           => $u->name,
+                'email'          => $u->email,
+                'referral_code'  => $u->referral_code,
+                'total_referrals'=> $u->total_referrals,
+            ]);
+
+        $totalReferrals = User::whereNotNull('referred_by')->count();
+
+        return ApiResponse::ok([
+            'total_referrals' => $totalReferrals,
+            'top_referrers'   => $topReferrers,
+        ]);
     }
 }

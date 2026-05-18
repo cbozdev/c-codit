@@ -26,12 +26,12 @@ const DURATIONS: { days: number; label: string }[] = [
 
 // Base 30-day prices in cents for each type/protocol
 const BASE_30D: Record<string, number> = {
-  'wifi-http':    800,
-  'wifi-socks5':  950,
-  'cell-http':   1100,
-  'cell-socks5': 1300,
-  'all-http':     900,
-  'all-socks5':  1100,
+  'wifi-http':    72,
+  'wifi-socks5':  80,
+  'cell-http':    95,
+  'cell-socks5': 117,
+  'all-http':    80,
+  'all-socks5':  95,
 };
 
 function dailyPrice(connectionType: string, protocol: string): number {

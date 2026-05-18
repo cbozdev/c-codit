@@ -12,6 +12,7 @@ import {
   Plus, Minus, RefreshCw, Eye, ImagePlus, Settings2,
   DollarSign, TrendingDown, BarChart3, RotateCcw,
   Globe, Server, Key, EyeOff, Trash2, CheckCircle2,
+  Gift,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -40,7 +41,14 @@ type AdminService = {
   markup_percent: number;
 };
 
-type Tab = 'metrics' | 'profit' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings' | 'proxy' | 'apikeys';
+type Tab = 'metrics' | 'profit' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings' | 'proxy' | 'apikeys' | 'auditlog' | 'health' | 'referrals';
+
+const TAB_LABELS: Record<Tab, string> = {
+  metrics: 'Metrics', profit: 'Profit', users: 'Users',
+  transactions: 'Transactions', services: 'Services', proxy: 'Proxy',
+  messages: 'Messages', livechat: 'Live chat', settings: 'Settings',
+  apikeys: 'API Keys', auditlog: 'Audit log', health: 'Health', referrals: 'Referrals',
+};
 
 type ProfitSummary = {
   orders: number; revenue_minor: number; cost_minor: number;
@@ -67,14 +75,14 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ink-200 overflow-x-auto">
-        {(['metrics', 'profit', 'users', 'transactions', 'services', 'proxy', 'messages', 'livechat', 'settings', 'apikeys'] as Tab[]).map((t) => (
+        {(['metrics', 'profit', 'users', 'transactions', 'services', 'proxy', 'messages', 'livechat', 'settings', 'apikeys', 'auditlog', 'health', 'referrals'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2.5 text-sm font-medium capitalize whitespace-nowrap border-b-2 transition -mb-px ${
+            className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition -mb-px ${
               tab === t
                 ? 'border-ink-900 text-ink-900'
                 : 'border-transparent text-ink-500 hover:text-ink-700'
             }`}>
-            {t}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
@@ -89,6 +97,9 @@ export default function AdminPage() {
       {tab === 'livechat'     && <LiveChatTab />}
       {tab === 'settings'    && <AppSettingsTab />}
       {tab === 'apikeys'     && <ApiKeysTab />}
+      {tab === 'auditlog'    && <AuditLogTab />}
+      {tab === 'health'      && <HealthTab />}
+      {tab === 'referrals'   && <ReferralsTab />}
     </div>
   );
 }
@@ -1285,6 +1296,276 @@ function ProfitTab() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// ─── Audit Log Tab ────────────────────────────────────────────────────────────
+
+type AuditLogEntry = {
+  id: string; user_email: string | null; user_name: string | null;
+  action: string; description: string | null; ip: string | null; created_at: string;
+};
+
+function AuditLogTab() {
+  const [search, setSearch] = useState('');
+  const [action, setAction] = useState('');
+  const [page, setPage]     = useState(1);
+
+  const logs = useQuery({
+    queryKey: ['admin', 'audit-logs', { search, action, page }],
+    queryFn: () => apiCall<Paginated<AuditLogEntry>>({
+      url: '/admin/audit-logs',
+      params: { q: search || undefined, action: action || undefined, page, per_page: 50 },
+    }),
+  });
+
+  const chip = (a: string) => {
+    const map: Record<string, string> = {
+      login: 'bg-blue-50 text-blue-700',
+      logout: 'bg-ink-100 text-ink-600',
+      register: 'bg-brand-50 text-brand-700',
+      password_changed: 'bg-amber-50 text-amber-700',
+      '2fa_enabled': 'bg-emerald-50 text-emerald-700',
+      '2fa_disabled': 'bg-rose-50 text-rose-700',
+      account_deleted: 'bg-rose-100 text-rose-800',
+      admin_wallet_adjust: 'bg-violet-50 text-violet-700',
+      admin_suspend: 'bg-rose-50 text-rose-700',
+      admin_role_change: 'bg-amber-50 text-amber-700',
+    };
+    return map[a] ?? 'bg-ink-100 text-ink-600';
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
+          <input className="input pl-9" placeholder="Search by user, email, or description…"
+            value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        </div>
+        <select className="input w-52" value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }}>
+          <option value="">All actions</option>
+          <option value="login">Login</option>
+          <option value="logout">Logout</option>
+          <option value="register">Register</option>
+          <option value="password_changed">Password changed</option>
+          <option value="2fa_enabled">2FA enabled</option>
+          <option value="2fa_disabled">2FA disabled</option>
+          <option value="account_deleted">Account deleted</option>
+          <option value="admin_wallet_adjust">Wallet adjustment</option>
+          <option value="admin_suspend">Suspend</option>
+          <option value="admin_role_change">Role change</option>
+        </select>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-ink-50 border-b border-ink-100">
+              <tr>
+                {['Time', 'User', 'Action', 'Details', 'IP'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-ink-500 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100">
+              {logs.isLoading ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-500">Loading…</td></tr>
+              ) : (logs.data?.items ?? []).length === 0 ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-500">No audit log entries match your filters.</td></tr>
+              ) : logs.data!.items.map((log) => (
+                <tr key={log.id} className="hover:bg-ink-50/50">
+                  <td className="px-4 py-3 text-xs text-ink-500 whitespace-nowrap">{formatDate(log.created_at)}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-xs">
+                      <div className="font-medium">{log.user_name ?? '—'}</div>
+                      <div className="text-ink-500">{log.user_email ?? 'System'}</div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${chip(log.action)}`}>
+                      {log.action.replace(/_/g, ' ')}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-ink-600 max-w-xs truncate">{log.description ?? '—'}</td>
+                  <td className="px-4 py-3 text-xs font-mono text-ink-500">{log.ip ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {logs.data && logs.data.meta.last_page > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-ink-100">
+            <span className="text-xs text-ink-500">
+              Page {logs.data.meta.current_page} of {logs.data.meta.last_page} · {logs.data.meta.total} total
+            </span>
+            <div className="flex gap-1">
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="btn-outline px-2 py-1.5">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button onClick={() => setPage((p) => p + 1)} disabled={page >= logs.data.meta.last_page} className="btn-outline px-2 py-1.5">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Service Health Tab ───────────────────────────────────────────────────────
+
+type HealthResult = {
+  provider: string; status: 'up' | 'down'; response_ms: number | null; checked_at: string;
+};
+
+function HealthTab() {
+  const qc = useQueryClient();
+
+  const health = useQuery({
+    queryKey: ['admin', 'health'],
+    queryFn: () => apiCall<HealthResult[]>({ url: '/admin/health' }),
+    staleTime: 60_000,
+    refetchOnMount: true,
+  });
+
+  const allUp = health.data?.every((h) => h.status === 'up');
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2">
+            <Activity className="h-4 w-4 text-brand-600" /> Provider health
+          </h2>
+          <p className="text-sm text-ink-500 mt-0.5">Live HTTP reachability check for all integrated providers.</p>
+        </div>
+        <button onClick={() => qc.invalidateQueries({ queryKey: ['admin', 'health'] })} className="btn-outline text-sm">
+          <RefreshCw className="h-4 w-4" /> Check now
+        </button>
+      </div>
+
+      {health.isLoading ? (
+        <div className="text-sm text-ink-500 py-12 text-center">Checking providers…</div>
+      ) : (
+        <>
+          {allUp !== undefined && (
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium ${
+              allUp
+                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
+                : 'bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400'
+            }`}>
+              <div className={`h-2.5 w-2.5 rounded-full ${allUp ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
+              {allUp ? 'All systems operational' : 'One or more providers are down'}
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {(health.data ?? []).map((h) => (
+              <div key={h.provider} className={`card-pad flex items-center justify-between gap-4 ${
+                h.status === 'down' ? 'border border-rose-200 dark:border-rose-800' : ''
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`h-3 w-3 rounded-full shrink-0 ${
+                    h.status === 'up' ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
+                  }`} />
+                  <div>
+                    <p className="font-medium capitalize text-sm">{h.provider.replace(/_/g, ' ')}</p>
+                    <p className="text-xs text-ink-500">
+                      {h.status === 'up'
+                        ? `${h.response_ms != null ? h.response_ms + ' ms' : 'OK'}`
+                        : 'Unreachable'}
+                      {h.checked_at ? ` · checked ${formatDate(h.checked_at)}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                  h.status === 'up'
+                    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400'
+                    : 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400'
+                }`}>
+                  {h.status === 'up' ? 'Online' : 'Down'}
+                </span>
+              </div>
+            ))}
+            {(health.data ?? []).length === 0 && (
+              <div className="text-sm text-ink-500 py-4 text-center">No providers configured.</div>
+            )}
+          </div>
+        </>
+      )}
+
+      <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-400">
+        Checks run on page load. Providers that go down trigger an admin email alert (60-minute dedup to avoid spam).
+      </div>
+    </div>
+  );
+}
+
+// ─── Referrals Tab ────────────────────────────────────────────────────────────
+
+type TopReferrer = {
+  user_name: string; user_email: string; total_referrals: number; code: string;
+};
+
+function ReferralsTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin', 'referrals'],
+    queryFn: () => apiCall<{ total: number; top_referrers: TopReferrer[] }>({ url: '/admin/referrals' }),
+  });
+
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <div>
+        <h2 className="font-semibold flex items-center gap-2">
+          <Gift className="h-4 w-4 text-brand-600" /> Referral programme
+        </h2>
+        <p className="text-sm text-ink-500 mt-0.5">Users earn $1.00 when someone they refer completes their first order.</p>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <MetricCard icon={Users} label="Total referrals" value={data?.total ?? '…'} />
+        <MetricCard icon={Gift} label="Commission paid" value={data ? formatMoney((data.total ?? 0) * 100) : '…'} color="green" />
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-ink-700 dark:text-ink-300 mb-3">Top referrers</h3>
+        <div className="card overflow-hidden">
+          <table className="min-w-full text-sm">
+            <thead className="bg-ink-50 dark:bg-ink-800 border-b border-ink-100 dark:border-ink-700">
+              <tr>
+                {['#', 'User', 'Referral code', 'Referrals', 'Commission'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-ink-500 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
+              {isLoading ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-500">Loading…</td></tr>
+              ) : (data?.top_referrers ?? []).length === 0 ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-500">No referrals recorded yet.</td></tr>
+              ) : data!.top_referrers.map((r, i) => (
+                <tr key={r.user_email} className="hover:bg-ink-50/50 dark:hover:bg-ink-800/50">
+                  <td className="px-4 py-3 text-ink-400 text-sm font-mono">{i + 1}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-sm">{r.user_name}</div>
+                    <div className="text-xs text-ink-500">{r.user_email}</div>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-sm font-semibold tracking-widest">{r.code}</td>
+                  <td className="px-4 py-3 font-semibold">{r.total_referrals}</td>
+                  <td className="px-4 py-3 text-brand-700 dark:text-brand-400 font-mono font-medium">
+                    {formatMoney(r.total_referrals * 100)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-ink-400 mt-2">Commission = $1.00 × number of referred users who completed their first order.</p>
+      </div>
     </div>
   );
 }

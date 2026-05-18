@@ -68,6 +68,15 @@ class AppServiceProvider extends ServiceProvider
 
         Schema::defaultStringLength(191);
 
+        // Fall back to database queue if Redis is unavailable (shared hosting)
+        try {
+            if (config('queue.default') === 'redis') {
+                \Illuminate\Support\Facades\Redis::connection()->ping();
+            }
+        } catch (\Throwable) {
+            config(['queue.default' => 'database']);
+        }
+
         // Load API keys stored in the DB and override config() values at runtime
         try {
             if (Schema::hasTable('service_configs')) {

@@ -21,6 +21,7 @@ const AdminPage          = lazy(() => import('@/pages/AdminPage'));
 const LegalPage          = lazy(() => import('@/pages/LegalPage'));
 const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'));
 const MyProxiesPage      = lazy(() => import('@/pages/MyProxiesPage'));
+const TwoFactorPage      = lazy(() => import('@/pages/TwoFactorPage'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, initialized } = useAuth();
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="/forgot-password"    element={<ForgotPasswordPage />} />
         <Route path="/reset-password"     element={<ResetPasswordPage />} />
         <Route path="/verify-email"       element={<VerifyEmailPage />} />
+        <Route path="/2fa"                element={<TwoFactorPage />} />
         <Route path="/legal/:doc"         element={<LegalPage />} />
         <Route path="/legal"              element={<Navigate to="/legal/terms" replace />} />
 

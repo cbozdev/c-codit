@@ -3,10 +3,12 @@
 use App\Http\Controllers\Api\V1\AdminController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\ProxyAdminController;
 use App\Http\Controllers\Api\V1\ProxyController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\SocialAuthController;
+use App\Http\Controllers\Api\V1\TwoFactorController;
 use App\Http\Controllers\Api\V1\WalletController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -20,6 +22,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware('throttle:auth')->group(function () {
         Route::post('/auth/register',         [AuthController::class, 'register']);
         Route::post('/auth/login',            [AuthController::class, 'login']);
+        Route::post('/auth/2fa/verify',       [AuthController::class, 'verifyTwoFactor']);
         Route::post('/auth/forgot-password',  [AuthController::class, 'forgotPassword']);
         Route::post('/auth/reset-password',   [AuthController::class, 'resetPassword']);
         Route::get('/auth/verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])
@@ -45,8 +48,20 @@ Route::prefix('v1')->group(function () {
         Route::get('/auth/me',                [AuthController::class, 'me']);
         Route::patch('/auth/profile',         [AuthController::class, 'updateProfile']);
         Route::post('/auth/change-password',  [AuthController::class, 'changePassword']);
+        Route::delete('/auth/account',        [AuthController::class, 'deleteAccount']);
+        Route::get('/auth/referral',          [AuthController::class, 'referralInfo']);
         Route::post('/auth/email/send-verification', [AuthController::class, 'sendVerificationEmail'])
             ->middleware('throttle:6,1');
+
+        // 2FA
+        Route::get('/profile/2fa/setup',     [TwoFactorController::class, 'setup']);
+        Route::post('/profile/2fa/confirm',  [TwoFactorController::class, 'confirm']);
+        Route::delete('/profile/2fa',        [TwoFactorController::class, 'disable']);
+
+        // Notifications
+        Route::get('/notifications',          [NotificationController::class, 'index']);
+        Route::post('/notifications/read-all',[NotificationController::class, 'markAllRead']);
+        Route::post('/notifications/{id}/read',[NotificationController::class, 'markRead']);
 
         // Wallet
         Route::middleware('throttle:api')->group(function () {
@@ -160,6 +175,15 @@ Route::prefix('v1')->group(function () {
             Route::get('/api-keys',                             [AdminController::class, 'getApiKeys']);
             Route::post('/api-keys',                            [AdminController::class, 'updateApiKey']);
             Route::delete('/api-keys',                          [AdminController::class, 'deleteApiKey']);
+
+            // Audit logs
+            Route::get('/audit-logs',                           [AdminController::class, 'auditLogs']);
+
+            // Service health
+            Route::get('/health',                               [AdminController::class, 'serviceHealth']);
+
+            // Referral stats
+            Route::get('/referrals',                            [AdminController::class, 'referralStats']);
 
             // Proxy admin
             Route::get('/proxy/overview',                       [ProxyAdminController::class, 'overview']);

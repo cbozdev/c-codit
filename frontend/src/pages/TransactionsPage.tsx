@@ -4,7 +4,50 @@ import { apiCall } from '@/lib/api';
 import { formatMoney, formatDate } from '@/lib/format';
 import type { Paginated, Transaction } from '@/types/api';
 import { StatusBadge } from '@/components/StatusBadge';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Printer } from 'lucide-react';
+
+function printReceipt(tx: Transaction) {
+  const isCredit = tx.type === 'wallet_funding' || tx.type === 'refund';
+  const win = window.open('', '_blank', 'width=420,height=620');
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html><head>
+<meta charset="utf-8">
+<title>Receipt · ${tx.reference}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Courier New', monospace; padding: 32px 24px; max-width: 340px; margin: 0 auto; color: #111; }
+  h1 { font-size: 18px; text-align: center; margin-bottom: 4px; font-family: sans-serif; }
+  .sub { text-align: center; font-size: 12px; color: #666; margin-bottom: 20px; font-family: sans-serif; }
+  .divider { border-top: 1px dashed #ccc; margin: 14px 0; }
+  .row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 3px 0; }
+  .label { color: #555; }
+  .val { text-align: right; word-break: break-all; max-width: 60%; }
+  .amount-row { font-size: 20px; font-weight: bold; padding: 8px 0; }
+  .credit { color: #16a34a; }
+  .debit { color: #111; }
+  .footer { text-align: center; font-size: 11px; color: #999; margin-top: 20px; font-family: sans-serif; }
+  @media print { body { padding: 16px; } }
+</style>
+</head><body>
+<h1>C-codit</h1>
+<p class="sub">Transaction Receipt</p>
+<div class="divider"></div>
+<div class="row"><span class="label">Reference</span><span class="val">${tx.reference}</span></div>
+<div class="row"><span class="label">Type</span><span class="val">${tx.type.replace(/_/g, ' ')}</span></div>
+<div class="row"><span class="label">Status</span><span class="val">${tx.status}</span></div>
+<div class="row"><span class="label">Date</span><span class="val">${formatDate(tx.created_at)}</span></div>
+${tx.description ? `<div class="row"><span class="label">Note</span><span class="val">${tx.description}</span></div>` : ''}
+<div class="divider"></div>
+<div class="row amount-row ${isCredit ? 'credit' : 'debit'}">
+  <span>${isCredit ? 'Credited' : 'Debited'}</span>
+  <span>${isCredit ? '+' : '−'}${formatMoney(tx.amount_minor, tx.currency)}</span>
+</div>
+<div class="divider"></div>
+<p class="footer">Thank you for using C-codit<br>support@c-codit.com</p>
+<script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); }<\/script>
+</body></html>`);
+  win.document.close();
+}
 
 export default function TransactionsPage() {
   const [page, setPage] = useState(1);
@@ -57,6 +100,7 @@ export default function TransactionsPage() {
                   <th className="px-2 py-3 font-medium">Amount</th>
                   <th className="px-2 py-3 font-medium">Status</th>
                   <th className="px-2 py-3 font-medium">When</th>
+                  <th className="px-2 py-3 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -76,6 +120,12 @@ export default function TransactionsPage() {
                       </td>
                       <td className="px-2 py-3"><StatusBadge status={tx.status} /></td>
                       <td className="px-2 py-3 text-ink-600">{formatDate(tx.created_at)}</td>
+                      <td className="px-2 py-3">
+                        <button onClick={() => printReceipt(tx)} title="Print receipt"
+                          className="p-1.5 text-ink-400 hover:text-ink-700 transition rounded">
+                          <Printer className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}

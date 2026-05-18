@@ -11,15 +11,19 @@ use App\Models\User;
 use App\Services\Wallet\WalletService;
 use App\Support\ApiResponse;
 use App\Support\Audit;
+use App\Support\Totp;
+use App\Support\UserNotify;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -29,6 +33,10 @@ class AuthController extends Controller
     public function register(RegisterRequest $request)
     {
         $user = DB::transaction(function () use ($request) {
+            $referrer = null;
+            if ($ref = $request->input('referral_code')) {
+                $referrer = User::where('referral_code', strtoupper($ref))->first();
+            }
             $u = User::create([
                 'name'              => $request->string('name')->toString(),
                 'email'             => strtolower($request->string('email')->toString()),
@@ -37,6 +45,7 @@ class AuthController extends Controller
                 'country'           => $request->input('country'),
                 'terms_accepted_at' => now(),
                 'terms_version'     => '1.0',
+                'referred_by'       => $referrer?->id,
             ]);
             $u->assignRole('user');
             $this->wallets->getOrCreate($u, config('services.platform.base_currency'));
@@ -67,31 +76,71 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request)
     {
-        $key = 'login:'.strtolower((string) $request->input('email')).':'.$request->ip();
+        $email      = strtolower((string) $request->input('email'));
+        $ipKey      = 'login:' . $email . ':' . $request->ip();
+        $lockoutKey = 'lockout:' . $email;
 
-        if (RateLimiter::tooManyAttempts($key, 5)) {
-            $seconds = RateLimiter::availableIn($key);
+        // Hard lockout (10 cumulative failures across IPs)
+        if (Cache::has($lockoutKey)) {
+            $remaining = (int) ceil((Cache::get($lockoutKey . ':exp', now()->timestamp) - now()->timestamp) / 60);
+            return ApiResponse::fail("Account temporarily locked. Try again in {$remaining} minute(s).", null, 423);
+        }
+
+        // Per-IP rate limit (5 per minute)
+        if (RateLimiter::tooManyAttempts($ipKey, 5)) {
+            $seconds = RateLimiter::availableIn($ipKey);
             throw ValidationException::withMessages([
-                'email' => ["Too many login attempts. Please try again in {$seconds} seconds."],
+                'email' => ["Too many login attempts. Try again in {$seconds} seconds."],
             ]);
         }
 
-        $user = User::where('email', strtolower((string) $request->input('email')))->first();
+        $user = User::where('email', $email)->first();
 
         if (! $user || ! Hash::check((string) $request->input('password'), (string) $user->password)) {
-            RateLimiter::hit($key, 60);
-            return ApiResponse::fail('Invalid credentials.', [
-                'errors' => ['email' => ['Invalid credentials.']],
-            ], 422);
+            RateLimiter::hit($ipKey, 60);
+
+            // Track cumulative failures for lockout
+            $failures = (int) Cache::increment('login_failures:' . $email);
+            Cache::put('login_failures:' . $email, $failures, now()->addMinutes(30));
+
+            if ($failures >= 10) {
+                Cache::put($lockoutKey, true, now()->addMinutes(15));
+                Cache::put($lockoutKey . ':exp', now()->addMinutes(15)->timestamp, now()->addMinutes(15));
+                Cache::forget('login_failures:' . $email);
+
+                // Email user about lockout
+                try {
+                    if ($user) {
+                        Mail::raw(
+                            "Hi {$user->name},\n\nYour account has been temporarily locked due to too many failed login attempts. It will unlock in 15 minutes.\n\nIf this wasn't you, please reset your password immediately.\n\nC-codit Security",
+                            fn ($m) => $m->to($user->email)->subject('Account temporarily locked — C-codit')
+                        );
+                        UserNotify::send($user, 'security', 'Account temporarily locked', 'Too many failed login attempts. Locked for 15 minutes.');
+                    }
+                } catch (\Throwable) {}
+
+                return ApiResponse::fail('Account temporarily locked due to too many failed attempts. Try again in 15 minutes.', null, 423);
+            }
+
+            return ApiResponse::fail('Invalid credentials.', ['errors' => ['email' => ['Invalid credentials.']]], 422);
         }
 
-        RateLimiter::clear($key);
+        // Successful auth — clear failure counters
+        RateLimiter::clear($ipKey);
+        Cache::forget('login_failures:' . $email);
 
         if ($user->is_suspended) {
             return ApiResponse::fail(
                 'Your account has been suspended' . ($user->suspension_reason ? ': ' . $user->suspension_reason : '.'),
                 null, 403
             );
+        }
+
+        // 2FA check for admins
+        if ($user->hasTwoFactorEnabled()) {
+            $challenge = (string) Str::uuid();
+            Cache::put('2fa_challenge:' . $challenge, $user->id, now()->addMinutes(5));
+            return ApiResponse::ok(['requires_2fa' => true, 'challenge' => $challenge], '2FA required.');
         }
 
         $user->update(['last_login_at' => now()]);
@@ -108,6 +157,37 @@ class AuthController extends Controller
             'user'  => new UserResource($user),
             'token' => $token,
         ], 'Welcome back.');
+    }
+
+    public function verifyTwoFactor(Request $request)
+    {
+        $request->validate([
+            'challenge' => ['required', 'string'],
+            'code'      => ['required', 'string'],
+        ]);
+
+        $userId = Cache::pull('2fa_challenge:' . $request->input('challenge'));
+        if (! $userId) {
+            return ApiResponse::fail('Challenge expired or invalid. Please log in again.', null, 422);
+        }
+
+        $user = User::findOrFail($userId);
+
+        if (! Totp::verify((string) $user->two_factor_secret, (string) $request->input('code'))) {
+            return ApiResponse::fail('Invalid authentication code.', null, 422);
+        }
+
+        $user->update(['last_login_at' => now()]);
+
+        $token = $user->createToken(
+            'web-'.($request->userAgent() ?? 'client'),
+            ['*'],
+            now()->addMinutes((int) config('sanctum.expiration')),
+        )->plainTextToken;
+
+        Audit::log('user.login_2fa', $user, ['ip' => $request->ip()], userId: $user->id);
+
+        return ApiResponse::ok(['user' => new UserResource($user), 'token' => $token], 'Welcome back.');
     }
 
     public function logout(Request $request)
@@ -215,5 +295,54 @@ class AuthController extends Controller
         }
         $user->markEmailAsVerified();
         return ApiResponse::ok(null, 'Email verified.');
+    }
+
+    public function deleteAccount(Request $request)
+    {
+        $request->validate(['password' => ['required', 'string']]);
+
+        $user = $request->user();
+
+        if (! Hash::check($request->input('password'), $user->password)) {
+            return ApiResponse::fail('Incorrect password.', null, 422);
+        }
+
+        Audit::log('user.account_deleted', $user, ['email' => $user->email], userId: $user->id);
+
+        // Revoke all tokens
+        $user->tokens()->delete();
+
+        // Anonymise PII — keep transaction records for financial compliance
+        $user->update([
+            'name'                    => 'Deleted User',
+            'email'                   => 'deleted_' . $user->id . '@c-codit.invalid',
+            'phone'                   => null,
+            'country'                 => null,
+            'google_id'               => null,
+            'apple_id'                => null,
+            'two_factor_secret'       => null,
+            'two_factor_confirmed_at' => null,
+            'referral_code'           => null,
+        ]);
+
+        // Freeze wallet so balance cannot be touched
+        if ($user->wallet) {
+            $user->wallet->update(['is_frozen' => true, 'frozen_reason' => 'Account deleted']);
+        }
+
+        $user->delete(); // soft delete
+
+        return ApiResponse::ok(null, 'Account deleted. Your financial records are retained for compliance.');
+    }
+
+    public function referralInfo(Request $request)
+    {
+        $user = $request->user();
+        $referrals = User::where('referred_by', $user->id)->count();
+        return ApiResponse::ok([
+            'code'      => $user->referral_code,
+            'referrals' => $referrals,
+            'link'      => rtrim((string) config('app.frontend_url'), '/') . '/register?ref=' . $user->referral_code,
+        ]);
     }
 }

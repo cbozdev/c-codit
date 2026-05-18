@@ -23,33 +23,52 @@ class User extends Authenticatable implements MustVerifyEmail
         'last_login_at', 'last_login_ip',
         'terms_accepted_at', 'terms_version',
         'google_id', 'apple_id',
+        'two_factor_secret', 'two_factor_confirmed_at',
+        'referral_code', 'referred_by',
     ];
 
-    protected $hidden = ['password', 'remember_token'];
+
+    protected $hidden = ['password', 'remember_token', 'two_factor_secret'];
 
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-            'last_login_at' => 'datetime',
-            'terms_accepted_at' => 'datetime',
-            'is_active' => 'boolean',
-            'is_suspended' => 'boolean',
+            'email_verified_at'        => 'datetime',
+            'password'                 => 'hashed',
+            'last_login_at'            => 'datetime',
+            'terms_accepted_at'        => 'datetime',
+            'two_factor_confirmed_at'  => 'datetime',
+            'is_active'                => 'boolean',
+            'is_suspended'             => 'boolean',
         ];
+    }
+
+    public function hasTwoFactorEnabled(): bool
+    {
+        return $this->two_factor_secret !== null && $this->two_factor_confirmed_at !== null;
     }
 
     protected static function booted(): void
     {
         static::creating(function (self $u) {
-            if (! $u->public_id) $u->public_id = (string) Str::uuid();
+            if (! $u->public_id)     $u->public_id     = (string) Str::uuid();
+            if (! $u->referral_code) $u->referral_code = self::generateReferralCode();
         });
+    }
+
+    public static function generateReferralCode(): string
+    {
+        do {
+            $code = strtoupper(Str::random(8));
+        } while (self::withTrashed()->where('referral_code', $code)->exists());
+        return $code;
     }
 
     public function wallet(): HasOne         { return $this->hasOne(Wallet::class); }
     public function transactions(): HasMany  { return $this->hasMany(Transaction::class); }
     public function payments(): HasMany      { return $this->hasMany(Payment::class); }
     public function serviceOrders(): HasMany { return $this->hasMany(ServiceOrder::class); }
+    public function referrals(): HasMany     { return $this->hasMany(User::class, 'referred_by'); }
 
     public function getRouteKeyName(): string { return 'public_id'; }
 

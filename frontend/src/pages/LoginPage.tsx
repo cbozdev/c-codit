@@ -37,7 +37,11 @@ export default function LoginPage() {
     }
 
     try {
-      await login(email.trim().toLowerCase(), password);
+      const result = await login(email.trim().toLowerCase(), password);
+      if (result?.requires_2fa) {
+        navigate('/2fa', { state: { challenge: result.challenge }, replace: true });
+        return;
+      }
       toast.success('Welcome back!');
       navigate(next, { replace: true });
     } catch (err) {

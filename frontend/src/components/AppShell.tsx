@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/auth';
 import { useTheme } from '@/context/theme';
 import { Logo } from './Logo';
+import NotificationBell from './NotificationBell';
 import {
   LayoutDashboard, Wallet, ListOrdered, Layers,
   User as UserIcon, LogOut, Shield, Sun, Moon, Menu, X, Globe,
@@ -110,6 +111,7 @@ export default function AppShell() {
             <Logo />
           </div>
           <div className="flex items-center gap-1">
+            <NotificationBell />
             {isAdmin && (
               <NavLink to="/admin"
                 className={({ isActive }) => clsx(

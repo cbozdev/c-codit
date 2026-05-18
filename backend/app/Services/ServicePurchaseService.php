@@ -17,6 +17,7 @@ use App\Services\Proxy\ProxyProvisioningService;
 use App\Services\Wallet\WalletService;
 use App\Support\Audit;
 use App\Support\Money;
+use App\Support\UserNotify;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -142,6 +143,9 @@ class ServicePurchaseService
                 'provisioned_at' => now(),
             ]);
         });
+
+        UserNotify::send($user, 'order_completed', 'Order completed', 'Your virtual number is ready.', ['order_id' => $order->public_id]);
+        $this->maybeRewardReferrer($user);
 
         Audit::log('service.purchased', $order, ['amount_minor' => $finalAmount->amountMinor]);
         return $order->fresh();
@@ -503,5 +507,34 @@ class ServicePurchaseService
             ? (float) $service->markup_percent
             : (float) config('services.platform.markup_percent', 15);
         return $providerCost->add($providerCost->mulPercent($markup));
+    }
+
+    private function maybeRewardReferrer(User $user): void
+    {
+        if (! $user->referred_by) return;
+
+        // Only reward on the user's first ever completed order
+        $completedOrders = \App\Models\ServiceOrder::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->count();
+
+        if ($completedOrders !== 1) return;
+
+        $referrer = \App\Models\User::find($user->referred_by);
+        if (! $referrer || ! $referrer->wallet) return;
+
+        try {
+            $reward = Money::fromDecimal('1.00', 'USD');
+            $this->wallets->fundFromPayment(
+                wallet: $referrer->wallet,
+                amount: $reward,
+                cashAccountCode: \App\Services\Ledger\ChartOfAccounts::REFUND_POOL,
+                idempotencyKey: 'referral:' . $user->id,
+                description: "Referral bonus — {$user->name} completed their first order",
+            );
+            UserNotify::send($referrer, 'referral_bonus', 'Referral bonus earned!', "\${reward->format()} added to your wallet because {$user->name} completed their first order.", ['amount' => '1.00']);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('referral.reward_failed', ['user' => $user->id, 'referrer' => $referrer->id, 'error' => $e->getMessage()]);
+        }
     }
 }
