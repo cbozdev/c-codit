@@ -12,10 +12,10 @@ use App\Services\Sms\FiveSimService;
 use App\Services\Sms\SmsActivateService;
 use App\Services\Sms\SmsManService;
 use App\Services\Wallet\WalletService;
+use App\Models\ServiceConfig;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
@@ -67,6 +67,20 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Schema::defaultStringLength(191);
+
+        // Load API keys stored in the DB and override config() values at runtime
+        try {
+            if (Schema::hasTable('service_configs')) {
+                ServiceConfig::all()->each(function (ServiceConfig $row): void {
+                    $val = $row->getDecryptedValue();
+                    if ($val !== null) {
+                        config([ServiceConfig::configPath($row->group, $row->key) => $val]);
+                    }
+                });
+            }
+        } catch (\Throwable) {
+            // DB not ready (e.g. during initial migration) — skip silently
+        }
 
         ResetPassword::createUrlUsing(function ($notifiable, string $token): string {
             $frontend = rtrim((string) config('app.frontend_url'), '/');

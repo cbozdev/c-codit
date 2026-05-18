@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, ToggleLeft, ToggleRight,
   Plus, Minus, RefreshCw, Eye, ImagePlus, Settings2,
   DollarSign, TrendingDown, BarChart3, RotateCcw,
-  Globe, Server,
+  Globe, Server, Key, EyeOff, Trash2, CheckCircle2,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -40,7 +40,7 @@ type AdminService = {
   markup_percent: number;
 };
 
-type Tab = 'metrics' | 'profit' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings' | 'proxy';
+type Tab = 'metrics' | 'profit' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings' | 'proxy' | 'apikeys';
 
 type ProfitSummary = {
   orders: number; revenue_minor: number; cost_minor: number;
@@ -67,7 +67,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ink-200 overflow-x-auto">
-        {(['metrics', 'profit', 'users', 'transactions', 'services', 'proxy', 'messages', 'livechat', 'settings'] as Tab[]).map((t) => (
+        {(['metrics', 'profit', 'users', 'transactions', 'services', 'proxy', 'messages', 'livechat', 'settings', 'apikeys'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2.5 text-sm font-medium capitalize whitespace-nowrap border-b-2 transition -mb-px ${
               tab === t
@@ -88,6 +88,7 @@ export default function AdminPage() {
       {tab === 'messages'     && <MessagesTab />}
       {tab === 'livechat'     && <LiveChatTab />}
       {tab === 'settings'    && <AppSettingsTab />}
+      {tab === 'apikeys'     && <ApiKeysTab />}
     </div>
   );
 }
@@ -1628,6 +1629,219 @@ function ProxyAdminTab() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── API Keys Tab ─────────────────────────────────────────────────────────────
+
+type ApiKeyEntry = {
+  group: string; key: string; label: string; is_secret: boolean;
+  has_value: boolean; preview: string | null; updated_at: string | null;
+};
+
+const SERVICE_GROUPS = [
+  { id: 'fivesim',     label: '5sim',         icon: '📱', color: 'bg-violet-50 border-violet-200 dark:bg-violet-900/20 dark:border-violet-800' },
+  { id: 'smsactivate', label: 'SMS Activate', icon: '💬', color: 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' },
+  { id: 'smsman',      label: 'SMS Man',      icon: '📨', color: 'bg-cyan-50 border-cyan-200 dark:bg-cyan-900/20 dark:border-cyan-800' },
+  { id: 'smspool',     label: 'SMSPool',      icon: '🌊', color: 'bg-teal-50 border-teal-200 dark:bg-teal-900/20 dark:border-teal-800' },
+  { id: 'flutterwave', label: 'Flutterwave',  icon: '💳', color: 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800' },
+  { id: 'nowpayments', label: 'NOWPayments',  icon: '₿',  color: 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800' },
+  { id: 'reloadly',    label: 'Reloadly',     icon: '🎁', color: 'bg-pink-50 border-pink-200 dark:bg-pink-900/20 dark:border-pink-800' },
+  { id: 'decodo',      label: 'Decodo Proxy', icon: '🔒', color: 'bg-slate-50 border-slate-200 dark:bg-slate-900/20 dark:border-slate-700' },
+];
+
+function ApiKeysTab() {
+  const qc = useQueryClient();
+  const [showVal, setShowVal]           = useState<Record<string, boolean>>({});
+  const [editVal, setEditVal]           = useState<Record<string, string>>({});
+  const [saving, setSaving]             = useState<Record<string, boolean>>({});
+  const [removing, setRemoving]         = useState<Record<string, boolean>>({});
+  const [customGroup, setCustomGroup]   = useState('');
+  const [customKey, setCustomKey]       = useState('');
+  const [customValue, setCustomValue]   = useState('');
+  const [addingCustom, setAddingCustom] = useState(false);
+
+  const { data: keys = [], isLoading } = useQuery<ApiKeyEntry[]>({
+    queryKey: ['admin-api-keys'],
+    queryFn: () => apiCall<ApiKeyEntry[]>({ method: 'GET', url: '/admin/api-keys' }),
+    staleTime: 30_000,
+  });
+
+  const eid = (e: ApiKeyEntry) => `${e.group}.${e.key}`;
+
+  async function saveKey(entry: ApiKeyEntry) {
+    const id = eid(entry), val = editVal[id]?.trim();
+    if (!val) return;
+    setSaving(s => ({ ...s, [id]: true }));
+    try {
+      await apiCall({ method: 'POST', url: '/admin/api-keys', data: { group: entry.group, key: entry.key, value: val } });
+      toast.success(`${entry.label} saved.`);
+      setEditVal(v => { const n = { ...v }; delete n[id]; return n; });
+      qc.invalidateQueries({ queryKey: ['admin-api-keys'] });
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setSaving(s => ({ ...s, [id]: false })); }
+  }
+
+  async function removeKey(entry: ApiKeyEntry) {
+    const id = eid(entry);
+    setRemoving(r => ({ ...r, [id]: true }));
+    try {
+      await apiCall({ method: 'DELETE', url: '/admin/api-keys', data: { group: entry.group, key: entry.key } });
+      toast.success(`${entry.label} removed.`);
+      qc.invalidateQueries({ queryKey: ['admin-api-keys'] });
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setRemoving(r => ({ ...r, [id]: false })); }
+  }
+
+  async function saveCustom() {
+    if (!customGroup.trim() || !customKey.trim() || !customValue.trim()) { toast.error('Fill in all fields.'); return; }
+    setAddingCustom(true);
+    try {
+      await apiCall({ method: 'POST', url: '/admin/api-keys', data: {
+        group: customGroup.trim().toLowerCase(), key: customKey.trim().toLowerCase(), value: customValue.trim(),
+      }});
+      toast.success('Key saved.');
+      setCustomGroup(''); setCustomKey(''); setCustomValue('');
+      qc.invalidateQueries({ queryKey: ['admin-api-keys'] });
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setAddingCustom(false); }
+  }
+
+  const byGroup = (g: string) => keys.filter(k => k.group === g);
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div>
+        <h2 className="text-lg font-semibold dark:text-white flex items-center gap-2">
+          <Key className="h-5 w-5 text-ink-500" /> API Keys
+        </h2>
+        <p className="text-sm text-ink-500 mt-0.5">
+          Keys saved here override <code className="text-xs bg-ink-100 dark:bg-ink-700 px-1 rounded">.env</code> at runtime. Values are encrypted at rest.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="text-sm text-ink-400 py-8 text-center">Loading…</div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {SERVICE_GROUPS.map(group => {
+            const entries = byGroup(group.id);
+            if (!entries.length) return null;
+            return (
+              <div key={group.id} className={`rounded-xl border p-4 space-y-3 ${group.color}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{group.icon}</span>
+                  <span className="font-semibold text-sm dark:text-white">{group.label}</span>
+                  <span className="ml-auto text-xs text-ink-400">
+                    {entries.filter(e => e.has_value).length}/{entries.length} set
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {entries.map(entry => {
+                    const id = eid(entry), editing = id in editVal, shown = showVal[id];
+                    return (
+                      <div key={id} className="bg-white dark:bg-ink-800 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {entry.has_value
+                              ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                              : <div className="h-3.5 w-3.5 rounded-full border-2 border-ink-300 shrink-0" />}
+                            <span className="text-xs font-medium text-ink-700 dark:text-ink-300 truncate">{entry.label}</span>
+                          </div>
+                          {entry.has_value && !editing && (
+                            <button onClick={() => removeKey(entry)} disabled={removing[id]}
+                              className="p-1 text-ink-400 hover:text-red-500 transition shrink-0">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {entry.has_value && !editing && (
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 text-xs bg-ink-50 dark:bg-ink-700 rounded px-2 py-1 truncate text-ink-600 dark:text-ink-300">
+                              {shown || !entry.is_secret ? entry.preview : '••••••••••••'}
+                            </code>
+                            {entry.is_secret && (
+                              <button onClick={() => setShowVal(v => ({ ...v, [id]: !v[id] }))}
+                                className="text-ink-400 hover:text-ink-600 shrink-0">
+                                {shown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                              </button>
+                            )}
+                            <button onClick={() => setEditVal(v => ({ ...v, [id]: '' }))}
+                              className="text-xs text-brand-600 hover:text-brand-700 font-medium shrink-0">
+                              Update
+                            </button>
+                          </div>
+                        )}
+
+                        {(!entry.has_value || editing) && (
+                          <div className="flex gap-2 flex-wrap">
+                            <input type={entry.is_secret ? 'password' : 'text'}
+                              placeholder={`Enter ${entry.label}`}
+                              value={editVal[id] ?? ''}
+                              onChange={e => setEditVal(v => ({ ...v, [id]: e.target.value }))}
+                              className="flex-1 input text-xs py-1.5 min-w-0" autoComplete="off" />
+                            <button onClick={() => saveKey(entry)}
+                              disabled={saving[id] || !editVal[id]?.trim()}
+                              className="btn-primary text-xs px-3 py-1.5 shrink-0">
+                              {saving[id] ? '…' : 'Save'}
+                            </button>
+                            {editing && (
+                              <button onClick={() => setEditVal(v => { const n = { ...v }; delete n[id]; return n; })}
+                                className="text-xs text-ink-400 hover:text-ink-600 shrink-0">Cancel</button>
+                            )}
+                          </div>
+                        )}
+
+                        {entry.updated_at && (
+                          <p className="text-[10px] text-ink-400">Updated {formatDate(entry.updated_at)}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add credentials for a new / future service provider */}
+      <div className="rounded-xl border border-dashed border-ink-300 dark:border-ink-600 p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Plus className="h-4 w-4 text-ink-400" />
+          <span className="font-semibold text-sm dark:text-white">Add new service / future provider</span>
+        </div>
+        <p className="text-xs text-ink-500 leading-relaxed">
+          Add credentials for any new provider you integrate later. The <strong>Service ID</strong> maps to
+          the Laravel config group (e.g. <code className="bg-ink-100 dark:bg-ink-700 px-1 rounded">airalo</code>),
+          and <strong>Key name</strong> to the config key (e.g.{' '}
+          <code className="bg-ink-100 dark:bg-ink-700 px-1 rounded">api_key</code>). Stored encrypted, applied at runtime.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label text-xs">Service ID</label>
+            <input value={customGroup} onChange={e => setCustomGroup(e.target.value)}
+              placeholder="e.g. airalo" className="input text-sm" autoComplete="off" />
+          </div>
+          <div>
+            <label className="label text-xs">Key name</label>
+            <input value={customKey} onChange={e => setCustomKey(e.target.value)}
+              placeholder="e.g. api_key" className="input text-sm" autoComplete="off" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label text-xs">Value</label>
+            <input type="password" value={customValue} onChange={e => setCustomValue(e.target.value)}
+              placeholder="Enter the key value" className="input text-sm" autoComplete="new-password" />
+          </div>
+        </div>
+        <button onClick={saveCustom}
+          disabled={addingCustom || !customGroup.trim() || !customKey.trim() || !customValue.trim()}
+          className="btn-primary text-sm px-4 py-2">
+          {addingCustom ? 'Saving…' : 'Save key'}
+        </button>
+      </div>
     </div>
   );
 }

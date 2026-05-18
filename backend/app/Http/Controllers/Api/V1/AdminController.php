@@ -9,6 +9,7 @@ use App\Http\Resources\ServiceResource;
 use App\Http\Resources\TransactionResource;
 use App\Http\Resources\UserResource;
 use App\Models\AppSetting;
+use App\Models\ServiceConfig;
 use App\Models\Payment;
 use App\Models\Service;
 use App\Models\ServiceOrder;
@@ -543,5 +544,105 @@ class AdminController extends Controller
         Audit::log('admin.settings_updated', $request->user(), $request->only(['logo_url', 'favicon_url', 'app_name', 'support_email']), actorType: 'admin');
 
         return ApiResponse::ok(AppSetting::publicSettings(), 'Settings saved.');
+    }
+
+    // ─── API Key Management ───────────────────────────────────────────────────
+
+    private static array $KEY_SCHEMA = [
+        ['group' => 'fivesim',      'key' => 'api_key',          'label' => '5sim API Key',                    'is_secret' => true],
+        ['group' => 'smsactivate',  'key' => 'api_key',          'label' => 'SMS Activate API Key',            'is_secret' => true],
+        ['group' => 'smsman',       'key' => 'api_key',          'label' => 'SMS Man API Key',                 'is_secret' => true],
+        ['group' => 'smspool',      'key' => 'api_key',          'label' => 'SMSPool API Key',                 'is_secret' => true],
+        ['group' => 'flutterwave',  'key' => 'public_key',       'label' => 'Flutterwave Public Key',          'is_secret' => false],
+        ['group' => 'flutterwave',  'key' => 'secret_key',       'label' => 'Flutterwave Secret Key',          'is_secret' => true],
+        ['group' => 'flutterwave',  'key' => 'encryption_key',   'label' => 'Flutterwave Encryption Key',      'is_secret' => true],
+        ['group' => 'flutterwave',  'key' => 'webhook_secret',   'label' => 'Flutterwave Webhook Secret',      'is_secret' => true],
+        ['group' => 'nowpayments',  'key' => 'api_key',          'label' => 'NOWPayments API Key',             'is_secret' => true],
+        ['group' => 'nowpayments',  'key' => 'ipn_secret',       'label' => 'NOWPayments IPN Secret',          'is_secret' => true],
+        ['group' => 'reloadly',     'key' => 'client_id',        'label' => 'Reloadly Client ID',              'is_secret' => false],
+        ['group' => 'reloadly',     'key' => 'client_secret',    'label' => 'Reloadly Client Secret',          'is_secret' => true],
+        ['group' => 'decodo',       'key' => 'username',         'label' => 'Decodo Username',                 'is_secret' => false],
+        ['group' => 'decodo',       'key' => 'password',         'label' => 'Decodo Password',                 'is_secret' => true],
+    ];
+
+    public function getApiKeys()
+    {
+        $rows = ServiceConfig::all()->keyBy(fn ($r) => $r->group . '.' . $r->key);
+
+        $result = collect(self::$KEY_SCHEMA)->map(function (array $def) use ($rows) {
+            $row = $rows->get($def['group'] . '.' . $def['key']);
+            $hasValue = $row && $row->getDecryptedValue() !== null;
+            $preview  = null;
+
+            if ($hasValue && ! $def['is_secret']) {
+                $preview = $row->getDecryptedValue();
+            } elseif ($hasValue) {
+                $val     = $row->getDecryptedValue() ?? '';
+                $preview = strlen($val) > 4 ? '••••' . substr($val, -4) : '••••';
+            }
+
+            return [
+                'group'      => $def['group'],
+                'key'        => $def['key'],
+                'label'      => $def['label'],
+                'is_secret'  => $def['is_secret'],
+                'has_value'  => $hasValue,
+                'preview'    => $preview,
+                'updated_at' => $row?->updated_at?->toDateTimeString(),
+            ];
+        });
+
+        return ApiResponse::ok($result->values()->toArray());
+    }
+
+    public function updateApiKey(Request $request)
+    {
+        $request->validate([
+            'group' => ['required', 'string', 'max:60'],
+            'key'   => ['required', 'string', 'max:80'],
+            'value' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $group = $request->input('group');
+        $key   = $request->input('key');
+
+        // Only allow defined keys
+        $allowed = collect(self::$KEY_SCHEMA)->first(
+            fn ($d) => $d['group'] === $group && $d['key'] === $key
+        );
+
+        if (! $allowed) {
+            return ApiResponse::fail('Unknown config key.', null, 422);
+        }
+
+        $row = ServiceConfig::firstOrNew(['group' => $group, 'key' => $key]);
+        $row->is_secret  = $allowed['is_secret'];
+        $row->label      = $allowed['label'];
+        $row->updated_by = $request->user()->id;
+        $row->value      = $request->input('value'); // mutator handles encryption
+        $row->save();
+
+        Audit::log('admin.api_key_updated', $request->user(), ['group' => $group, 'key' => $key], actorType: 'admin');
+
+        return ApiResponse::ok(null, 'Key saved.');
+    }
+
+    public function deleteApiKey(Request $request)
+    {
+        $request->validate([
+            'group' => ['required', 'string', 'max:60'],
+            'key'   => ['required', 'string', 'max:80'],
+        ]);
+
+        ServiceConfig::where('group', $request->input('group'))
+            ->where('key', $request->input('key'))
+            ->delete();
+
+        Audit::log('admin.api_key_deleted', $request->user(), [
+            'group' => $request->input('group'),
+            'key'   => $request->input('key'),
+        ], actorType: 'admin');
+
+        return ApiResponse::ok(null, 'Key removed.');
     }
 }

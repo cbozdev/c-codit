@@ -156,6 +156,11 @@ Route::prefix('v1')->group(function () {
             Route::get('/settings',                             [AdminController::class, 'getSettings']);
             Route::post('/settings',                            [AdminController::class, 'updateSettings']);
 
+            // API key management
+            Route::get('/api-keys',                             [AdminController::class, 'getApiKeys']);
+            Route::post('/api-keys',                            [AdminController::class, 'updateApiKey']);
+            Route::delete('/api-keys',                          [AdminController::class, 'deleteApiKey']);
+
             // Proxy admin
             Route::get('/proxy/overview',                       [ProxyAdminController::class, 'overview']);
             Route::get('/proxy/subscriptions',                  [ProxyAdminController::class, 'subscriptions']);
