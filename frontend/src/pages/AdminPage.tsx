@@ -1929,7 +1929,8 @@ const SERVICE_GROUPS = [
   { id: 'flutterwave', label: 'Flutterwave',  icon: '💳', color: 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800' },
   { id: 'nowpayments', label: 'NOWPayments',  icon: '₿',  color: 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800' },
   { id: 'reloadly',    label: 'Reloadly',     icon: '🎁', color: 'bg-pink-50 border-pink-200 dark:bg-pink-900/20 dark:border-pink-800' },
-  { id: 'decodo',      label: 'Decodo Proxy', icon: '🔒', color: 'bg-slate-50 border-slate-200 dark:bg-slate-900/20 dark:border-slate-700' },
+  { id: 'decodo',       label: 'Decodo Proxy',  icon: '🔒', color: 'bg-slate-50 border-slate-200 dark:bg-slate-900/20 dark:border-slate-700' },
+  { id: 'textverified', label: 'TextVerified',  icon: '✅', color: 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' },
 ];
 
 function ApiKeysTab() {

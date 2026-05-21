@@ -576,8 +576,10 @@ class AdminController extends Controller
         ['group' => 'nowpayments',  'key' => 'ipn_secret',       'label' => 'NOWPayments IPN Secret',          'is_secret' => true],
         ['group' => 'reloadly',     'key' => 'client_id',        'label' => 'Reloadly Client ID',              'is_secret' => false],
         ['group' => 'reloadly',     'key' => 'client_secret',    'label' => 'Reloadly Client Secret',          'is_secret' => true],
-        ['group' => 'decodo',       'key' => 'username',         'label' => 'Decodo Username',                 'is_secret' => false],
-        ['group' => 'decodo',       'key' => 'password',         'label' => 'Decodo Password',                 'is_secret' => true],
+        ['group' => 'decodo',        'key' => 'username',         'label' => 'Decodo Username',                 'is_secret' => false],
+        ['group' => 'decodo',        'key' => 'password',         'label' => 'Decodo Password',                 'is_secret' => true],
+        ['group' => 'textverified',  'key' => 'api_key',          'label' => 'TextVerified API Key',            'is_secret' => true],
+        ['group' => 'textverified',  'key' => 'webhook_secret',   'label' => 'TextVerified Webhook Secret',     'is_secret' => true],
     ];
 
     public function getApiKeys()
