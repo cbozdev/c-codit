@@ -9,21 +9,23 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * TextVerified virtual number provider.
+ * TextVerified virtual number provider (API v2).
  *
- * Auth flow: POST /api/Auth with X-SIMPLEAPI-APPLICATION-KEY header
- *            → returns bearer token (cached for 23 h)
- *
- * Docs: https://www.textverified.com/api/reference
+ * Auth:    POST /api/pub/v2/auth  (header: X-SIMPLEAPI-APPLICATION-KEY)
+ *          → returns {"token": "..."}, cached 23 h
+ * Services: GET /api/pub/v2/services  (cached 10 min)
+ * Purchase: POST /api/pub/v2/verifications → 201 with Location header
+ * Fetch:    GET  /api/pub/v2/verifications/{id}
+ * Cancel:   POST /api/pub/v2/verifications/{id}/cancel
  */
 class TextVerifiedService implements SmsNumberProvider
 {
     public function code(): string { return 'textverified'; }
 
-    private const BASE_URL   = 'https://www.textverified.com/api';
-    private const TOKEN_TTL  = 82800; // 23 h in seconds
+    private const BASE_URL  = 'https://www.textverified.com';
+    private const TOKEN_TTL = 82800; // 23 h
 
-    // Map internal service slugs → TextVerified target names
+    // Map internal service slugs → TextVerified service names (case-sensitive as returned by API)
     private const TARGET_MAP = [
         'telegram'   => 'Telegram',
         'whatsapp'   => 'WhatsApp',
@@ -70,18 +72,18 @@ class TextVerifiedService implements SmsNumberProvider
             $res = Http::withHeaders([
                 'X-SIMPLEAPI-APPLICATION-KEY' => $this->apiKey(),
                 'Accept'                      => 'application/json',
-            ])->post(self::BASE_URL . '/Auth');
+            ])->post(self::BASE_URL . '/api/pub/v2/auth');
 
             if (! $res->successful()) {
-                throw new ServiceUnavailableException('TextVerified auth failed: ' . $res->body());
+                throw new \RuntimeException('TextVerified auth failed: ' . $res->body());
             }
 
-            $token = $res->json('token') ?? $res->body();
+            $token = $res->json('token') ?? '';
             if (empty($token)) {
-                throw new ServiceUnavailableException('TextVerified returned empty auth token.');
+                throw new \RuntimeException('TextVerified returned empty auth token.');
             }
 
-            return trim((string) $token, '"');
+            return (string) $token;
         });
     }
 
@@ -95,30 +97,29 @@ class TextVerifiedService implements SmsNumberProvider
 
     private function resolveTarget(string $service): ?string
     {
-        $s = strtolower(trim($service));
-        return self::TARGET_MAP[$s] ?? null;
+        return self::TARGET_MAP[strtolower(trim($service))] ?? null;
     }
 
-    /** Fetch all targets from TextVerified and cache for 10 min. */
-    private function targets(): array
+    /** Fetch available services from TextVerified, cached 10 min. */
+    private function services(): array
     {
-        return Cache::remember('textverified.targets', 600, function () {
+        return Cache::remember('textverified.services', 600, function () {
             try {
-                $res = $this->client()->get('/Targets');
+                $res = $this->client()->get('/api/pub/v2/services');
                 if (! $res->successful()) return [];
                 return $res->json() ?? [];
             } catch (\Throwable $e) {
-                Log::warning('textverified.targets.error', ['error' => $e->getMessage()]);
+                Log::warning('textverified.services.error', ['error' => $e->getMessage()]);
                 return [];
             }
         });
     }
 
-    private function targetInfo(string $targetName): ?array
+    private function serviceInfo(string $serviceName): ?array
     {
-        foreach ($this->targets() as $t) {
-            if (strtolower((string)($t['name'] ?? '')) === strtolower($targetName)) {
-                return $t;
+        foreach ($this->services() as $s) {
+            if (strtolower((string)($s['name'] ?? '')) === strtolower($serviceName)) {
+                return $s;
             }
         }
         return null;
@@ -129,7 +130,7 @@ class TextVerifiedService implements SmsNumberProvider
         $target = $this->resolveTarget($service);
         if (! $target) return null;
 
-        $info = $this->targetInfo($target);
+        $info = $this->serviceInfo($target);
         if (! $info) return null;
 
         $priceUsd = (float) ($info['price'] ?? $info['smsPrice'] ?? 0);
@@ -143,7 +144,7 @@ class TextVerifiedService implements SmsNumberProvider
         $target = $this->resolveTarget($service);
         if (! $target) return false;
 
-        $info = $this->targetInfo($target);
+        $info = $this->serviceInfo($target);
         if (! $info) return false;
 
         $available = (int) ($info['available'] ?? $info['count'] ?? 1);
@@ -154,39 +155,59 @@ class TextVerifiedService implements SmsNumberProvider
     {
         $target = $this->resolveTarget($service);
         if (! $target) {
-            throw new ServiceUnavailableException("Service '{$service}' is not supported on TextVerified.");
+            throw new \RuntimeException("Service '{$service}' is not supported on TextVerified.");
         }
 
         Log::info('textverified.purchase.attempt', ['target' => $target]);
 
-        try {
-            $res = $this->client()->post('/SimpleVerifications', [
-                'targetName'   => $target,
+        $doRequest = fn () => $this->client()
+            ->withOptions(['allow_redirects' => false])
+            ->post('/api/pub/v2/verifications', [
+                'serviceName'  => $target,
                 'capabilities' => 'SMS',
             ]);
+
+        try {
+            $res = $doRequest();
         } catch (\Throwable $e) {
             // Token may have expired — clear cache and retry once
             Cache::forget('textverified.bearer_token');
-            $res = $this->client()->post('/SimpleVerifications', [
-                'targetName'   => $target,
-                'capabilities' => 'SMS',
-            ]);
+            $res = $doRequest();
         }
 
         Log::info('textverified.purchase.response', [
-            'status' => $res->status(),
-            'body'   => substr($res->body(), 0, 400),
+            'status'   => $res->status(),
+            'location' => $res->header('Location'),
+            'body'     => substr($res->body(), 0, 400),
         ]);
 
-        if (! $res->successful()) {
+        // API returns 201 Created with a Location header pointing to the verification
+        if ($res->status() !== 201 && ! $res->successful()) {
             $msg = $res->json('message') ?? $res->body();
-            throw new ServiceUnavailableException('TextVerified error: ' . $msg);
+            throw new \RuntimeException('TextVerified error: ' . $msg);
         }
 
-        $body = $res->json();
+        // Follow the Location header to get full verification details
+        $location = $res->header('Location') ?? '';
+        $body      = $res->json() ?? [];
 
-        $id     = $body['id'] ?? $body['verificationId'] ?? null;
+        // Derive the verification ID from the Location path or body
+        $id = null;
+        if ($location) {
+            $id = basename(parse_url($location, PHP_URL_PATH));
+        }
+        $id     = $id ?: ($body['id'] ?? $body['verificationId'] ?? null);
         $number = $body['number'] ?? $body['phoneNumber'] ?? null;
+
+        // If number not in creation response, fetch the resource
+        if (! $number && $id) {
+            $detail = $this->client()->get("/api/pub/v2/verifications/{$id}");
+            if ($detail->successful()) {
+                $dBody  = $detail->json();
+                $number = $dBody['number'] ?? $dBody['phoneNumber'] ?? null;
+                $body   = $dBody;
+            }
+        }
 
         if (! $id || ! $number) {
             throw new \RuntimeException('TextVerified returned unexpected response: ' . json_encode($body));
@@ -195,7 +216,7 @@ class TextVerifiedService implements SmsNumberProvider
         return [
             'provider_order_id' => (string) $id,
             'phone_number'      => '+' . ltrim((string) $number, '+'),
-            'expires_at'        => isset($body['expiresAt']) ? $body['expiresAt'] : null,
+            'expires_at'        => $body['expiresAt'] ?? null,
             'raw'               => $body,
         ];
     }
@@ -203,7 +224,7 @@ class TextVerifiedService implements SmsNumberProvider
     public function cancel(string $providerOrderId): bool
     {
         try {
-            $res = $this->client()->delete("/SimpleVerifications/{$providerOrderId}");
+            $res = $this->client()->post("/api/pub/v2/verifications/{$providerOrderId}/cancel");
             return $res->successful();
         } catch (\Throwable $e) {
             Log::warning('textverified.cancel.error', ['error' => $e->getMessage()]);
@@ -214,16 +235,14 @@ class TextVerifiedService implements SmsNumberProvider
     public function fetchCode(string $providerOrderId): ?string
     {
         try {
-            $res = $this->client()->get("/SimpleVerifications/{$providerOrderId}");
+            $res = $this->client()->get("/api/pub/v2/verifications/{$providerOrderId}");
             if (! $res->successful()) return null;
 
             $body = $res->json();
 
-            // Direct code field
             if (! empty($body['code'])) return (string) $body['code'];
             if (! empty($body['smsCode'])) return (string) $body['smsCode'];
 
-            // Extract from full SMS text
             $text = $body['sms'] ?? $body['smsText'] ?? $body['message'] ?? '';
             if ($text) {
                 preg_match('/\b(\d{4,8})\b/', (string) $text, $m);
@@ -237,9 +256,9 @@ class TextVerifiedService implements SmsNumberProvider
         }
     }
 
-    /** Return all available targets with prices (used by admin health check). */
+    /** Return all available services with prices (used by admin health check). */
     public function listTargets(): array
     {
-        return $this->targets();
+        return $this->services();
     }
 }
