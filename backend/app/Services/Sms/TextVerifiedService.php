@@ -157,7 +157,10 @@ class TextVerifiedService implements SmsNumberProvider
     public function getPrice(string $service, string $country): ?Money
     {
         $target = $this->resolveTarget($service);
-        if (! $target) return null;
+        if (! $target) {
+            Log::warning('textverified.getPrice.no_target', ['service' => $service]);
+            return null;
+        }
 
         try {
             $res = $this->client()->post('/api/pub/v2/pricing/verifications', [
@@ -167,6 +170,14 @@ class TextVerifiedService implements SmsNumberProvider
                 'areaCode'    => false,
                 'carrier'     => false,
             ]);
+
+            Log::info('textverified.getPrice.response', [
+                'service' => $service,
+                'target'  => $target,
+                'status'  => $res->status(),
+                'body'    => substr($res->body(), 0, 300),
+            ]);
+
             if (! $res->successful()) return null;
 
             $price = (float) ($res->json('price') ?? 0);
@@ -348,7 +359,7 @@ class TextVerifiedService implements SmsNumberProvider
 
         $doRequest = fn () => $this->client()
             ->withOptions(['allow_redirects' => false])
-            ->post('/api/pub/v2/rentals', [
+            ->post('/api/pub/v2/reservations/rental', [
                 'serviceName' => $target,
                 'numberType'  => 'mobile',
                 'capability'  => 'sms',
@@ -376,25 +387,37 @@ class TextVerifiedService implements SmsNumberProvider
         $location = $res->header('Location') ?? '';
         $body     = $res->json() ?? [];
 
-        $id     = $location ? basename(parse_url($location, PHP_URL_PATH)) : null;
-        $id     = $id ?: ($body['id'] ?? null);
-        $number = $body['number'] ?? null;
+        // Location header → /api/pub/v2/sales/{saleId}; fetch it to get reservation details
+        $reservationId = $body['id'] ?? null;
+        $number        = $body['number'] ?? null;
 
-        if (! $number && $id) {
-            $detail = $this->client()->get("/api/pub/v2/rentals/{$id}");
-            if ($detail->successful()) {
-                $dBody  = $detail->json();
-                $number = $dBody['number'] ?? null;
-                $body   = $dBody;
+        if ($location) {
+            $saleId  = basename(parse_url($location, PHP_URL_PATH));
+            $saleRes = $this->client()->get("/api/pub/v2/sales/{$saleId}");
+            if ($saleRes->successful()) {
+                $sale = $saleRes->json();
+                Log::info('textverified.rental.sale', ['saleId' => $saleId, 'sale' => $sale]);
+                $reservationId = $reservationId ?: ($sale['reservationId'] ?? $sale['id'] ?? $saleId);
+                $number        = $number ?: ($sale['number'] ?? null);
             }
         }
 
-        if (! $id || ! $number) {
+        // If still no number, fetch the nonrenewable reservation directly
+        if (! $number && $reservationId) {
+            $rRes = $this->client()->get("/api/pub/v2/reservations/rental/nonrenewable/{$reservationId}");
+            if ($rRes->successful()) {
+                $rBody         = $rRes->json();
+                $number        = $rBody['number'] ?? null;
+                $body          = array_merge($body, $rBody);
+            }
+        }
+
+        if (! $reservationId || ! $number) {
             throw new \RuntimeException('TextVerified rental unexpected response: ' . json_encode($body));
         }
 
         return [
-            'provider_order_id' => (string) $id,
+            'provider_order_id' => (string) $reservationId,
             'phone_number'      => '+' . ltrim((string) $number, '+'),
             'expires_at'        => $body['expiresAt'] ?? null,
             'duration'          => $duration,
@@ -418,7 +441,7 @@ class TextVerifiedService implements SmsNumberProvider
         try {
             $res = $this->client()->get('/api/pub/v2/sms', [
                 'reservationId'   => $rentalId,
-                'reservationType' => 'renewable',
+                'reservationType' => 'nonrenewable',
             ]);
             if (! $res->successful()) return null;
 

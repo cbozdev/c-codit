@@ -784,6 +784,10 @@ class ServiceController extends Controller
                     app(\App\Services\Sms\SmsManService::class)->cancel($order->provider_order_id);
                 } elseif ($provider === 'smspool') {
                     app(\App\Services\Sms\SmsPoolService::class)->cancel($order->provider_order_id);
+                } elseif ($provider === 'textverified') {
+                    app(\App\Services\Sms\TextVerifiedService::class)->cancel($order->provider_order_id);
+                } elseif ($provider === 'textverified_rental') {
+                    app(\App\Services\Sms\TextVerifiedService::class)->cancelRental($order->provider_order_id);
                 }
             }
         } catch (\Throwable $e) {
@@ -910,6 +914,10 @@ class ServiceController extends Controller
                 $code = app(\App\Services\Sms\SmsActivateService::class)->fetchCode($order->provider_order_id);
             } elseif ($provider === 'smspool') {
                 $code = app(\App\Services\Sms\SmsPoolService::class)->fetchCode($order->provider_order_id);
+            } elseif ($provider === 'textverified') {
+                $code = app(\App\Services\Sms\TextVerifiedService::class)->fetchCode($order->provider_order_id);
+            } elseif ($provider === 'textverified_rental') {
+                $code = app(\App\Services\Sms\TextVerifiedService::class)->fetchRentalSms($order->provider_order_id);
             }
         } catch (\Throwable $e) {
             return ApiResponse::fail('Could not check for code: ' . $e->getMessage(), null, 500);
