@@ -24,6 +24,7 @@ use App\Support\Audit;
 use App\Support\Money;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -642,6 +643,11 @@ class AdminController extends Controller
 
         // Clear config cache so new value is picked up on next request
         try { Artisan::call('config:clear'); } catch (\Throwable) {}
+
+        // Clear provider-specific caches so new credentials take effect immediately
+        Cache::forget("{$group}.bearer_token");
+        Cache::forget("{$group}.services");
+        Cache::forget("{$group}.targets");
 
         Audit::log('admin.api_key_updated', $request->user(), ['group' => $group, 'key' => $key], actorType: 'admin');
 
