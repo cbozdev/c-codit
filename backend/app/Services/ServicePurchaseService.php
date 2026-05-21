@@ -72,7 +72,8 @@ class ServicePurchaseService
             'smsactivate' => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsActivate),
             'smsman'      => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsMan),
             'smspool'        => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsPool),
-            'textverified'   => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->textVerified),
+            'textverified'        => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->textVerified),
+            'textverified_rental' => $this->purchaseTextVerifiedRental($user, $service, $request, $idempotencyKey),
             'flutterwave' => $this->purchaseUtilityBill($user, $service, $request, $idempotencyKey),
             'internal', 'reloadly'
                           => $this->purchaseGiftCard($user, $service, $request, $idempotencyKey),
@@ -148,6 +149,77 @@ class ServicePurchaseService
         });
 
         UserNotify::send($user, 'order_completed', 'Order completed', 'Your virtual number is ready.', ['order_id' => $order->public_id]);
+        $this->maybeRewardReferrer($user);
+
+        Audit::log('service.purchased', $order, ['amount_minor' => $finalAmount->amountMinor]);
+        return $order->fresh();
+    }
+
+    // ─── TextVerified Rental ─────────────────────────────────────────────────
+
+    private function purchaseTextVerifiedRental(
+        User $user,
+        Service $service,
+        array $request,
+        string $idempotencyKey,
+    ): ServiceOrder {
+        $svcSlug = (string) $request['service'];
+        $duration = (string) ($request['duration'] ?? 'oneDay');
+
+        $price = $this->textVerified->getRentalPrice($svcSlug, $duration);
+        if (! $price) {
+            throw new ServiceUnavailableException('Rental numbers are not available for this service.');
+        }
+
+        $finalAmount = $this->applyMarkup($price, $service);
+        $wallet = $this->wallets->getOrCreate($user, $finalAmount->currency);
+
+        $order = ServiceOrder::create([
+            'user_id'         => $user->id,
+            'service_id'      => $service->id,
+            'status'          => 'pending',
+            'amount_minor'    => $finalAmount->amountMinor,
+            'cost_minor'      => $price->amountMinor,
+            'currency'        => $finalAmount->currency,
+            'request'         => $request,
+            'idempotency_key' => $idempotencyKey,
+        ]);
+
+        $holdTx = $this->wallets->holdForPurchase(
+            wallet: $wallet,
+            amount: $finalAmount,
+            idempotencyKey: 'svcorder:'.$order->public_id,
+            reference: $order,
+            description: "Purchase: {$service->name}",
+        );
+
+        $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
+
+        try {
+            $result = $this->textVerified->purchaseRental($svcSlug, $duration);
+        } catch (\Throwable $e) {
+            $this->refundOrder($order, $holdTx, $e->getMessage());
+            throw $e;
+        }
+
+        DB::transaction(function () use ($order, $holdTx, $result, $request, $duration) {
+            $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
+            $order->update([
+                'status'            => 'completed',
+                'provider_order_id' => $result['provider_order_id'] ?? null,
+                'provider_response' => $result['raw'] ?? null,
+                'delivery'          => [
+                    'phone_number' => $result['phone_number'] ?? null,
+                    'expires_at'   => $result['expires_at'] ?? null,
+                    'service_name' => ucfirst($request['service'] ?? ''),
+                    'duration'     => TextVerifiedService::RENTAL_DURATIONS[$duration] ?? $duration,
+                    'type'         => 'rental',
+                ],
+                'provisioned_at' => now(),
+            ]);
+        });
+
+        UserNotify::send($user, 'order_completed', 'Order completed', 'Your rental number is ready.', ['order_id' => $order->public_id]);
         $this->maybeRewardReferrer($user);
 
         Audit::log('service.purchased', $order, ['amount_minor' => $finalAmount->amountMinor]);

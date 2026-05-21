@@ -11,12 +11,19 @@ use Illuminate\Support\Facades\Log;
 /**
  * TextVerified virtual number provider (API v2).
  *
- * Auth:    POST /api/pub/v2/auth  (header: X-SIMPLEAPI-APPLICATION-KEY)
- *          → returns {"token": "..."}, cached 23 h
- * Services: GET /api/pub/v2/services  (cached 10 min)
- * Purchase: POST /api/pub/v2/verifications → 201 with Location header
- * Fetch:    GET  /api/pub/v2/verifications/{id}
- * Cancel:   POST /api/pub/v2/verifications/{id}/cancel
+ * Auth:                POST /api/pub/v2/auth (X-SIMPLEAPI-APPLICATION-KEY header)
+ * Service list:        GET  /api/pub/v2/services?numberType=mobile&reservationType=verification
+ * Verification price:  POST /api/pub/v2/pricing/verifications
+ * Verification avail:  POST /api/pub/v2/inventory/verifications
+ * Create verification: POST /api/pub/v2/verifications  → 201 + Location header
+ * Fetch verification:  GET  /api/pub/v2/verifications/{id}
+ * Fetch SMS:           GET  /api/pub/v2/sms?reservationId={id}&reservationType=verification
+ * Cancel:              POST /api/pub/v2/verifications/{id}/cancel
+ *
+ * Rental price:        POST /api/pub/v2/pricing/rentals
+ * Rental avail:        POST /api/pub/v2/inventory/rentals
+ * Create rental:       POST /api/pub/v2/rentals → 201 + Location header
+ * Cancel rental:       POST /api/pub/v2/rentals/{id}/cancel  (non-renewable) or refund
  */
 class TextVerifiedService implements SmsNumberProvider
 {
@@ -25,7 +32,16 @@ class TextVerifiedService implements SmsNumberProvider
     private const BASE_URL  = 'https://www.textverified.com';
     private const TOKEN_TTL = 82800; // 23 h
 
-    // Map internal service slugs → TextVerified service names (case-sensitive as returned by API)
+    // Rental durations offered on the platform
+    public const RENTAL_DURATIONS = [
+        'oneDay'      => '1 Day',
+        'threeDay'    => '3 Days',
+        'sevenDay'    => '7 Days',
+        'fourteenDay' => '14 Days',
+        'thirtyDay'   => '30 Days',
+    ];
+
+    // Map internal service slugs → TextVerified service names
     private const TARGET_MAP = [
         'telegram'   => 'Telegram',
         'whatsapp'   => 'WhatsApp',
@@ -100,12 +116,15 @@ class TextVerifiedService implements SmsNumberProvider
         return self::TARGET_MAP[strtolower(trim($service))] ?? null;
     }
 
-    /** Fetch available services from TextVerified, cached 10 min. */
+    /** Fetch available verification services, cached 10 min. */
     private function services(): array
     {
         return Cache::remember('textverified.services', 600, function () {
             try {
-                $res = $this->client()->get('/api/pub/v2/services');
+                $res = $this->client()->get('/api/pub/v2/services', [
+                    'numberType'      => 'mobile',
+                    'reservationType' => 'verification',
+                ]);
                 if (! $res->successful()) return [];
                 return $res->json() ?? [];
             } catch (\Throwable $e) {
@@ -115,28 +134,49 @@ class TextVerifiedService implements SmsNumberProvider
         });
     }
 
-    private function serviceInfo(string $serviceName): ?array
+    /** Fetch available rental services, cached 10 min. */
+    private function rentalServices(): array
     {
-        foreach ($this->services() as $s) {
-            if (strtolower((string)($s['name'] ?? '')) === strtolower($serviceName)) {
-                return $s;
+        return Cache::remember('textverified.rental_services', 600, function () {
+            try {
+                $res = $this->client()->get('/api/pub/v2/services', [
+                    'numberType'      => 'mobile',
+                    'reservationType' => 'renewable',
+                ]);
+                if (! $res->successful()) return [];
+                return $res->json() ?? [];
+            } catch (\Throwable $e) {
+                Log::warning('textverified.rental_services.error', ['error' => $e->getMessage()]);
+                return [];
             }
-        }
-        return null;
+        });
     }
+
+    // ─── Verification (one-time SMS) ────────────────────────────────────────
 
     public function getPrice(string $service, string $country): ?Money
     {
         $target = $this->resolveTarget($service);
         if (! $target) return null;
 
-        $info = $this->serviceInfo($target);
-        if (! $info) return null;
+        try {
+            $res = $this->client()->post('/api/pub/v2/pricing/verifications', [
+                'serviceName' => $target,
+                'numberType'  => 'mobile',
+                'capability'  => 'sms',
+                'areaCode'    => false,
+                'carrier'     => false,
+            ]);
+            if (! $res->successful()) return null;
 
-        $priceUsd = (float) ($info['price'] ?? $info['smsPrice'] ?? 0);
-        if ($priceUsd <= 0) return null;
+            $price = (float) ($res->json('price') ?? 0);
+            if ($price <= 0) return null;
 
-        return Money::fromDecimal(sprintf('%.4f', $priceUsd), 'USD');
+            return Money::fromDecimal(sprintf('%.4f', $price), 'USD');
+        } catch (\Throwable $e) {
+            Log::warning('textverified.getPrice.error', ['service' => $service, 'error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     public function isAvailable(string $service, string $country): bool
@@ -144,11 +184,17 @@ class TextVerifiedService implements SmsNumberProvider
         $target = $this->resolveTarget($service);
         if (! $target) return false;
 
-        $info = $this->serviceInfo($target);
-        if (! $info) return false;
-
-        $available = (int) ($info['available'] ?? $info['count'] ?? 1);
-        return $available > 0;
+        try {
+            $res = $this->client()->post('/api/pub/v2/inventory/verifications', [
+                'numberType'  => 'mobile',
+                'serviceName' => $target,
+                'capability'  => 'sms',
+            ]);
+            if (! $res->successful()) return false;
+            return (int) ($res->json('availableQuantity') ?? 0) > 0;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     public function purchase(string $service, string $country): array
@@ -163,14 +209,14 @@ class TextVerifiedService implements SmsNumberProvider
         $doRequest = fn () => $this->client()
             ->withOptions(['allow_redirects' => false])
             ->post('/api/pub/v2/verifications', [
-                'serviceName'  => $target,
-                'capabilities' => 'SMS',
+                'serviceName' => $target,
+                'numberType'  => 'mobile',
+                'capability'  => 'sms',
             ]);
 
         try {
             $res = $doRequest();
-        } catch (\Throwable $e) {
-            // Token may have expired — clear cache and retry once
+        } catch (\Throwable) {
             Cache::forget('textverified.bearer_token');
             $res = $doRequest();
         }
@@ -181,36 +227,29 @@ class TextVerifiedService implements SmsNumberProvider
             'body'     => substr($res->body(), 0, 400),
         ]);
 
-        // API returns 201 Created with a Location header pointing to the verification
         if ($res->status() !== 201 && ! $res->successful()) {
-            $msg = $res->json('message') ?? $res->body();
-            throw new \RuntimeException('TextVerified error: ' . $msg);
+            throw new \RuntimeException('TextVerified error: ' . ($res->json('message') ?? $res->body()));
         }
 
-        // Follow the Location header to get full verification details
         $location = $res->header('Location') ?? '';
-        $body      = $res->json() ?? [];
+        $body     = $res->json() ?? [];
 
-        // Derive the verification ID from the Location path or body
-        $id = null;
-        if ($location) {
-            $id = basename(parse_url($location, PHP_URL_PATH));
-        }
-        $id     = $id ?: ($body['id'] ?? $body['verificationId'] ?? null);
-        $number = $body['number'] ?? $body['phoneNumber'] ?? null;
+        $id = $location ? basename(parse_url($location, PHP_URL_PATH)) : null;
+        $id = $id ?: ($body['id'] ?? null);
+        $number = $body['number'] ?? null;
 
-        // If number not in creation response, fetch the resource
+        // Fetch details if number not in creation response
         if (! $number && $id) {
             $detail = $this->client()->get("/api/pub/v2/verifications/{$id}");
             if ($detail->successful()) {
                 $dBody  = $detail->json();
-                $number = $dBody['number'] ?? $dBody['phoneNumber'] ?? null;
+                $number = $dBody['number'] ?? null;
                 $body   = $dBody;
             }
         }
 
         if (! $id || ! $number) {
-            throw new \RuntimeException('TextVerified returned unexpected response: ' . json_encode($body));
+            throw new \RuntimeException('TextVerified unexpected response: ' . json_encode($body));
         }
 
         return [
@@ -235,19 +274,32 @@ class TextVerifiedService implements SmsNumberProvider
     public function fetchCode(string $providerOrderId): ?string
     {
         try {
-            $res = $this->client()->get("/api/pub/v2/verifications/{$providerOrderId}");
-            if (! $res->successful()) return null;
+            // Fetch SMS messages for this verification
+            $res = $this->client()->get('/api/pub/v2/sms', [
+                'reservationId'   => $providerOrderId,
+                'reservationType' => 'verification',
+            ]);
 
-            $body = $res->json();
-
-            if (! empty($body['code'])) return (string) $body['code'];
-            if (! empty($body['smsCode'])) return (string) $body['smsCode'];
-
-            $text = $body['sms'] ?? $body['smsText'] ?? $body['message'] ?? '';
-            if ($text) {
-                preg_match('/\b(\d{4,8})\b/', (string) $text, $m);
-                if (! empty($m[1])) return $m[1];
+            if ($res->successful()) {
+                $messages = $res->json('data') ?? [];
+                foreach ($messages as $msg) {
+                    $text = $msg['message'] ?? $msg['text'] ?? $msg['body'] ?? '';
+                    if (! empty($text)) {
+                        // Try direct code fields
+                        if (! empty($msg['code'])) return (string) $msg['code'];
+                        // Extract from message text
+                        preg_match('/\b(\d{4,8})\b/', (string) $text, $m);
+                        if (! empty($m[1])) return $m[1];
+                    }
+                }
             }
+
+            // Fallback: GET the verification directly
+            $vRes = $this->client()->get("/api/pub/v2/verifications/{$providerOrderId}");
+            if (! $vRes->successful()) return null;
+
+            $body = $vRes->json();
+            if (! empty($body['code'])) return (string) $body['code'];
 
             return null;
         } catch (\Throwable $e) {
@@ -256,7 +308,135 @@ class TextVerifiedService implements SmsNumberProvider
         }
     }
 
-    /** Return all available services with prices (used by admin health check). */
+    // ─── Rental (long-term number) ───────────────────────────────────────────
+
+    public function getRentalPrice(string $service, string $duration = 'oneDay'): ?Money
+    {
+        $target = $this->resolveTarget($service);
+        if (! $target) return null;
+
+        try {
+            $res = $this->client()->post('/api/pub/v2/pricing/rentals', [
+                'serviceName' => $target,
+                'numberType'  => 'mobile',
+                'capability'  => 'sms',
+                'areaCode'    => false,
+                'carrier'     => false,
+                'isRenewable' => false,
+                'duration'    => $duration,
+            ]);
+            if (! $res->successful()) return null;
+
+            $price = (float) ($res->json('price') ?? 0);
+            if ($price <= 0) return null;
+
+            return Money::fromDecimal(sprintf('%.4f', $price), 'USD');
+        } catch (\Throwable $e) {
+            Log::warning('textverified.getRentalPrice.error', ['service' => $service, 'error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    public function purchaseRental(string $service, string $duration = 'oneDay'): array
+    {
+        $target = $this->resolveTarget($service);
+        if (! $target) {
+            throw new \RuntimeException("Service '{$service}' is not supported for TextVerified rentals.");
+        }
+
+        Log::info('textverified.rental.attempt', ['target' => $target, 'duration' => $duration]);
+
+        $doRequest = fn () => $this->client()
+            ->withOptions(['allow_redirects' => false])
+            ->post('/api/pub/v2/rentals', [
+                'serviceName' => $target,
+                'numberType'  => 'mobile',
+                'capability'  => 'sms',
+                'isRenewable' => false,
+                'duration'    => $duration,
+            ]);
+
+        try {
+            $res = $doRequest();
+        } catch (\Throwable) {
+            Cache::forget('textverified.bearer_token');
+            $res = $doRequest();
+        }
+
+        Log::info('textverified.rental.response', [
+            'status'   => $res->status(),
+            'location' => $res->header('Location'),
+            'body'     => substr($res->body(), 0, 400),
+        ]);
+
+        if ($res->status() !== 201 && ! $res->successful()) {
+            throw new \RuntimeException('TextVerified rental error: ' . ($res->json('message') ?? $res->body()));
+        }
+
+        $location = $res->header('Location') ?? '';
+        $body     = $res->json() ?? [];
+
+        $id     = $location ? basename(parse_url($location, PHP_URL_PATH)) : null;
+        $id     = $id ?: ($body['id'] ?? null);
+        $number = $body['number'] ?? null;
+
+        if (! $number && $id) {
+            $detail = $this->client()->get("/api/pub/v2/rentals/{$id}");
+            if ($detail->successful()) {
+                $dBody  = $detail->json();
+                $number = $dBody['number'] ?? null;
+                $body   = $dBody;
+            }
+        }
+
+        if (! $id || ! $number) {
+            throw new \RuntimeException('TextVerified rental unexpected response: ' . json_encode($body));
+        }
+
+        return [
+            'provider_order_id' => (string) $id,
+            'phone_number'      => '+' . ltrim((string) $number, '+'),
+            'expires_at'        => $body['expiresAt'] ?? null,
+            'duration'          => $duration,
+            'raw'               => $body,
+        ];
+    }
+
+    public function cancelRental(string $rentalId): bool
+    {
+        try {
+            $res = $this->client()->post("/api/pub/v2/rentals/{$rentalId}/cancel");
+            return $res->successful();
+        } catch (\Throwable $e) {
+            Log::warning('textverified.cancelRental.error', ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    public function fetchRentalSms(string $rentalId): ?string
+    {
+        try {
+            $res = $this->client()->get('/api/pub/v2/sms', [
+                'reservationId'   => $rentalId,
+                'reservationType' => 'renewable',
+            ]);
+            if (! $res->successful()) return null;
+
+            foreach ($res->json('data') ?? [] as $msg) {
+                $text = $msg['message'] ?? $msg['text'] ?? $msg['body'] ?? '';
+                if (! empty($text)) {
+                    preg_match('/\b(\d{4,8})\b/', (string) $text, $m);
+                    if (! empty($m[1])) return $m[1];
+                }
+            }
+            return null;
+        } catch (\Throwable $e) {
+            Log::warning('textverified.fetchRentalSms.error', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /** List all available verification service names (for admin/health). */
     public function listTargets(): array
     {
         return $this->services();
