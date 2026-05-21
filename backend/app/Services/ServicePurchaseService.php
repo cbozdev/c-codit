@@ -13,6 +13,7 @@ use App\Services\Sms\ServiceUnavailableException;
 use App\Services\Sms\SmsActivateService;
 use App\Services\Sms\SmsManService;
 use App\Services\Sms\SmsPoolService;
+use App\Services\Sms\TextVerifiedService;
 use App\Services\Proxy\ProxyProvisioningService;
 use App\Services\Wallet\WalletService;
 use App\Support\Audit;
@@ -43,6 +44,7 @@ class ServicePurchaseService
         private readonly SmsActivateService $smsActivate,
         private readonly SmsManService $smsMan,
         private readonly SmsPoolService $smsPool,
+        private readonly TextVerifiedService $textVerified,
         private readonly FlutterwaveBillsService $flutterwaveBills,
         private readonly GiftCardService $giftCards,
         private readonly AiraloService $airalo,
@@ -69,7 +71,8 @@ class ServicePurchaseService
             '5sim'        => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->fiveSim),
             'smsactivate' => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsActivate),
             'smsman'      => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsMan),
-            'smspool'     => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsPool),
+            'smspool'        => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->smsPool),
+            'textverified'   => $this->purchaseVirtualNumber($user, $service, $request, $idempotencyKey, $this->textVerified),
             'flutterwave' => $this->purchaseUtilityBill($user, $service, $request, $idempotencyKey),
             'internal', 'reloadly'
                           => $this->purchaseGiftCard($user, $service, $request, $idempotencyKey),

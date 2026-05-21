@@ -25,6 +25,80 @@ class WebhookController extends Controller
     }
 
     /**
+     * TextVerified sends a POST when an SMS code is received.
+     * Payload: id, number, code, sms, status, targetName
+     *
+     * Webhook URL to configure: https://c-codit.com/api/webhooks/textverified
+     */
+    public function textverified(Request $request)
+    {
+        $secret = (string) config('services.textverified.webhook_secret');
+
+        // Verify signature if a secret is configured
+        if ($secret) {
+            $sig = $request->header('X-TEXTVERIFIED-SIGNATURE')
+                ?? $request->header('X-Signature')
+                ?? '';
+            $expected = hash_hmac('sha256', $request->getContent(), $secret);
+            if (! hash_equals($expected, $sig)) {
+                Log::channel('webhooks')->warning('textverified.invalid_signature');
+                return response()->json(['status' => 'invalid_signature'], 200);
+            }
+        }
+
+        $verificationId = $request->input('id');
+        $code           = $request->input('code') ?? $request->input('smsCode');
+        $fullSms        = $request->input('sms') ?? $request->input('smsText') ?? $request->input('message');
+        $status         = $request->input('status', '');
+
+        Log::channel('webhooks')->info('textverified.webhook', [
+            'id'     => $verificationId,
+            'status' => $status,
+            'has_code' => ! empty($code),
+        ]);
+
+        if (! $verificationId) {
+            return response()->json(['status' => 'missing_id'], 200);
+        }
+
+        // Extract code from full SMS text if not provided directly
+        if (empty($code) && $fullSms) {
+            preg_match('/\b(\d{4,8})\b/', (string) $fullSms, $m);
+            $code = $m[1] ?? null;
+        }
+
+        if (! $code) {
+            return response()->json(['status' => 'no_code'], 200);
+        }
+
+        try {
+            $order = ServiceOrder::where('provider_order_id', (string) $verificationId)
+                ->whereIn('status', ['completed', 'pending'])
+                ->first();
+
+            if ($order) {
+                $delivery = array_merge((array) $order->delivery, [
+                    'sms_code' => $code,
+                    'sms_text' => $fullSms,
+                ]);
+                $order->update(['delivery' => $delivery]);
+                Log::channel('webhooks')->info('textverified.code_saved', [
+                    'order' => $order->public_id,
+                    'code'  => $code,
+                ]);
+            } else {
+                Log::channel('webhooks')->warning('textverified.order_not_found', [
+                    'verification_id' => $verificationId,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::channel('webhooks')->error('textverified.webhook_error', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json(['status' => 'ok'], 200);
+    }
+
+    /**
      * SMSPool sends a POST when an SMS code arrives for a rented number.
      * Payload: order_id, sms, full_sms, number
      */

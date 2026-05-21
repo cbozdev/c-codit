@@ -48,6 +48,11 @@ return [
         'api_key' => env('SMSPOOL_API_KEY'),
     ],
 
+    'textverified' => [
+        'api_key'        => env('TEXTVERIFIED_API_KEY'),
+        'webhook_secret' => env('TEXTVERIFIED_WEBHOOK_SECRET'),
+    ],
+
     'google' => [
         'client_id'     => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
