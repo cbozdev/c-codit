@@ -82,13 +82,34 @@ class TextVerifiedService implements SmsNumberProvider
         return (string) config('services.textverified.api_key');
     }
 
+    /** Returns a Decodo HTTP proxy URL if credentials are configured, or null. */
+    private function proxyUrl(): ?string
+    {
+        $user = config('services.decodo.username');
+        $pass = config('services.decodo.password');
+        if (empty($user) || empty($pass)) return null;
+        return "http://{$user}:{$pass}@gate.decodo.com:7777";
+    }
+
+    /** Base HTTP client with optional Decodo proxy to bypass Cloudflare. */
+    private function baseHttp()
+    {
+        $http = Http::timeout(30);
+        $proxy = $this->proxyUrl();
+        if ($proxy) {
+            $http = $http->withOptions(['proxy' => $proxy]);
+        }
+        return $http;
+    }
+
     private function bearerToken(): string
     {
         return Cache::remember('textverified.bearer_token', self::TOKEN_TTL, function () {
-            $res = Http::withHeaders([
-                'X-SIMPLEAPI-APPLICATION-KEY' => $this->apiKey(),
-                'Accept'                      => 'application/json',
-            ])->post(self::BASE_URL . '/api/pub/v2/auth');
+            $res = $this->baseHttp()
+                ->withHeaders([
+                    'X-SIMPLEAPI-APPLICATION-KEY' => $this->apiKey(),
+                    'Accept'                      => 'application/json',
+                ])->post(self::BASE_URL . '/api/pub/v2/auth');
 
             if (! $res->successful()) {
                 throw new \RuntimeException('TextVerified auth failed: ' . $res->body());
@@ -105,10 +126,10 @@ class TextVerifiedService implements SmsNumberProvider
 
     private function client()
     {
-        return Http::withToken($this->bearerToken())
+        return $this->baseHttp()
+            ->withToken($this->bearerToken())
             ->baseUrl(self::BASE_URL)
-            ->acceptJson()
-            ->timeout(30);
+            ->acceptJson();
     }
 
     private function resolveTarget(string $service): ?string
