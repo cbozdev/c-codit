@@ -82,16 +82,41 @@ class TextVerifiedService implements SmsNumberProvider
         return (string) config('services.textverified.api_key');
     }
 
-    /** Base URL — Cloudflare Worker proxy when configured, direct otherwise. */
-    private function baseUrl(): string
+    /**
+     * Returns Decodo HTTP CONNECT proxy URL if credentials are configured.
+     * Decodo residential IPs bypass Cloudflare blocks on textverified.com.
+     */
+    private function decodoProxyUrl(): ?string
     {
-        $proxy = (string) config('services.textverified.proxy_url');
-        return rtrim($proxy ?: self::TV_URL, '/');
+        if (! config('services.decodo.enabled', true)) return null;
+        $user = (string) config('services.decodo.username');
+        $pass = (string) config('services.decodo.password');
+        if (! $user || ! $pass) return null;
+        return "http://{$user}:{$pass}@gate.decodo.com:7777";
     }
 
-    /** Extra headers needed when routing through the Cloudflare Worker proxy. */
+    /** Guzzle proxy options — populated when Decodo is active. */
+    private function proxyOptions(): array
+    {
+        $proxy = $this->decodoProxyUrl();
+        return $proxy ? ['proxy' => $proxy] : [];
+    }
+
+    /**
+     * Base URL: direct to textverified.com when using Decodo (HTTP CONNECT proxy),
+     * otherwise through the Cloudflare Worker URL proxy if configured.
+     */
+    private function baseUrl(): string
+    {
+        if ($this->decodoProxyUrl()) return self::TV_URL;
+        $worker = (string) config('services.textverified.proxy_url');
+        return rtrim($worker ?: self::TV_URL, '/');
+    }
+
+    /** Extra headers for the Cloudflare Worker proxy — not needed when using Decodo. */
     private function proxyHeaders(): array
     {
+        if ($this->decodoProxyUrl()) return [];
         $secret = (string) config('services.textverified.proxy_secret');
         return $secret ? ['X-Proxy-Secret' => $secret] : [];
     }
@@ -103,6 +128,7 @@ class TextVerifiedService implements SmsNumberProvider
                 'X-SIMPLEAPI-APPLICATION-KEY' => $this->apiKey(),
                 'Accept'                      => 'application/json',
             ], $this->proxyHeaders()))
+                ->withOptions($this->proxyOptions())
                 ->timeout(30)
                 ->post($this->baseUrl() . '/api/pub/v2/auth');
 
@@ -123,6 +149,7 @@ class TextVerifiedService implements SmsNumberProvider
     {
         return Http::withToken($this->bearerToken())
             ->withHeaders($this->proxyHeaders())
+            ->withOptions($this->proxyOptions())
             ->baseUrl($this->baseUrl())
             ->acceptJson()
             ->timeout(30);
