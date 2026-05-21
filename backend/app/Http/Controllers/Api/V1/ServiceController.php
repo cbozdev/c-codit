@@ -269,12 +269,36 @@ class ServiceController extends Controller
     public function virtualNumberPrices(Request $request)
     {
         $request->validate([
-            'provider' => ['required', 'in:5sim,smsactivate,smsman,smspool'],
+            'provider' => ['required', 'in:5sim,smsactivate,smsman,smspool,textverified'],
             'service'  => ['required', 'string', 'max:40'],
         ]);
 
         $provider = $request->input('provider');
         $service  = $request->input('service');
+
+        // TextVerified is US-only — return a single country entry priced via the service
+        if ($provider === 'textverified') {
+            try {
+                $tv     = app(\App\Services\Sms\TextVerifiedService::class);
+                $svc    = \App\Models\Service::where('provider', 'textverified')->where('category', 'virtual_number')->first();
+                $markup = $svc ? ((float) ($svc->markup_percent ?? 20)) : 20;
+                $money  = $tv->getPrice($service, 'US');
+                $items  = [];
+                if ($money) {
+                    $baseUsd = (float) $money->toDecimal();
+                    $items[] = [
+                        'country_code'  => 'US',
+                        'country_label' => 'United States',
+                        'flag'          => '🇺🇸',
+                        'count'         => 1,
+                        'price_usd'     => round($baseUsd * (1 + $markup / 100), 4),
+                    ];
+                }
+                return ApiResponse::ok(['items' => $items]);
+            } catch (\Throwable $e) {
+                return ApiResponse::fail('Could not load prices: ' . $e->getMessage(), null, 503);
+            }
+        }
 
         try {
             if ($provider === '5sim') {
