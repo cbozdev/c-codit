@@ -23,6 +23,7 @@ use App\Support\ApiResponse;
 use App\Support\Audit;
 use App\Support\Money;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -638,6 +639,9 @@ class AdminController extends Controller
         $row->updated_by = $request->user()->id;
         $row->value      = $request->input('value'); // mutator handles encryption
         $row->save();
+
+        // Clear config cache so new value is picked up on next request
+        try { Artisan::call('config:clear'); } catch (\Throwable) {}
 
         Audit::log('admin.api_key_updated', $request->user(), ['group' => $group, 'key' => $key], actorType: 'admin');
 
