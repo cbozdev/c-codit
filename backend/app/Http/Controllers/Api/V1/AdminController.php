@@ -582,6 +582,8 @@ class AdminController extends Controller
         ['group' => 'decodo',        'key' => 'password',         'label' => 'Decodo Password',                 'is_secret' => true],
         ['group' => 'textverified',  'key' => 'api_key',          'label' => 'TextVerified API Key',            'is_secret' => true],
         ['group' => 'textverified',  'key' => 'webhook_secret',   'label' => 'TextVerified Webhook Secret',     'is_secret' => true],
+        ['group' => 'textverified',  'key' => 'proxy_url',        'label' => 'TextVerified Proxy URL (CF Worker)', 'is_secret' => false],
+        ['group' => 'textverified',  'key' => 'proxy_secret',     'label' => 'TextVerified Proxy Secret',       'is_secret' => true],
     ];
 
     public function getApiKeys()

@@ -51,6 +51,8 @@ return [
     'textverified' => [
         'api_key'        => env('TEXTVERIFIED_API_KEY'),
         'webhook_secret' => env('TEXTVERIFIED_WEBHOOK_SECRET'),
+        'proxy_url'      => env('TEXTVERIFIED_PROXY_URL'),    // Cloudflare Worker URL
+        'proxy_secret'   => env('TEXTVERIFIED_PROXY_SECRET'), // X-Proxy-Secret value
     ],
 
     'google' => [

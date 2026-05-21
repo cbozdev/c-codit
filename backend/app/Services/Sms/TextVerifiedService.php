@@ -29,7 +29,7 @@ class TextVerifiedService implements SmsNumberProvider
 {
     public function code(): string { return 'textverified'; }
 
-    private const BASE_URL  = 'https://www.textverified.com';
+    private const TV_URL = 'https://www.textverified.com';
     private const TOKEN_TTL = 82800; // 23 h
 
     // Rental durations offered on the platform
@@ -82,34 +82,29 @@ class TextVerifiedService implements SmsNumberProvider
         return (string) config('services.textverified.api_key');
     }
 
-    /** Returns a Decodo HTTP proxy URL if credentials are configured, or null. */
-    private function proxyUrl(): ?string
+    /** Base URL — Cloudflare Worker proxy when configured, direct otherwise. */
+    private function baseUrl(): string
     {
-        $user = config('services.decodo.username');
-        $pass = config('services.decodo.password');
-        if (empty($user) || empty($pass)) return null;
-        return "http://{$user}:{$pass}@gate.decodo.com:7777";
+        $proxy = (string) config('services.textverified.proxy_url');
+        return rtrim($proxy ?: self::TV_URL, '/');
     }
 
-    /** Base HTTP client with optional Decodo proxy to bypass Cloudflare. */
-    private function baseHttp()
+    /** Extra headers needed when routing through the Cloudflare Worker proxy. */
+    private function proxyHeaders(): array
     {
-        $http = Http::timeout(30);
-        $proxy = $this->proxyUrl();
-        if ($proxy) {
-            $http = $http->withOptions(['proxy' => $proxy]);
-        }
-        return $http;
+        $secret = (string) config('services.textverified.proxy_secret');
+        return $secret ? ['X-Proxy-Secret' => $secret] : [];
     }
 
     private function bearerToken(): string
     {
         return Cache::remember('textverified.bearer_token', self::TOKEN_TTL, function () {
-            $res = $this->baseHttp()
-                ->withHeaders([
-                    'X-SIMPLEAPI-APPLICATION-KEY' => $this->apiKey(),
-                    'Accept'                      => 'application/json',
-                ])->post(self::BASE_URL . '/api/pub/v2/auth');
+            $res = Http::withHeaders(array_merge([
+                'X-SIMPLEAPI-APPLICATION-KEY' => $this->apiKey(),
+                'Accept'                      => 'application/json',
+            ], $this->proxyHeaders()))
+                ->timeout(30)
+                ->post($this->baseUrl() . '/api/pub/v2/auth');
 
             if (! $res->successful()) {
                 throw new \RuntimeException('TextVerified auth failed: ' . $res->body());
@@ -126,10 +121,11 @@ class TextVerifiedService implements SmsNumberProvider
 
     private function client()
     {
-        return $this->baseHttp()
-            ->withToken($this->bearerToken())
-            ->baseUrl(self::BASE_URL)
-            ->acceptJson();
+        return Http::withToken($this->bearerToken())
+            ->withHeaders($this->proxyHeaders())
+            ->baseUrl($this->baseUrl())
+            ->acceptJson()
+            ->timeout(30);
     }
 
     private function resolveTarget(string $service): ?string
