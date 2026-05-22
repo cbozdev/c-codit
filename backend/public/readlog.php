@@ -4,18 +4,24 @@ if (($_GET['token'] ?? '') !== 'ccodit_gitfix_2025') {
 }
 header('Content-Type: text/plain; charset=utf-8');
 
-$logFile = dirname(__DIR__) . '/storage/logs/laravel.log';
+$logDir = '/home/ccoditco/c-codit/backend/storage/logs';
+$filter = $_GET['filter'] ?? '';
+$lines  = (int) ($_GET['lines'] ?? 150);
 
-if (! file_exists($logFile)) {
-    die("Log file not found: $logFile\n");
+// Pick the newest log file
+$newest = null; $newestTime = 0;
+foreach (scandir($logDir) as $f) {
+    if (! str_ends_with($f, '.log')) continue;
+    $fp = "$logDir/$f";
+    if (filemtime($fp) > $newestTime) { $newestTime = filemtime($fp); $newest = $fp; }
 }
 
-$lines  = (int) ($_GET['lines'] ?? 100);
-$filter = $_GET['filter'] ?? '';
+if (! $newest) { die("No log files found in $logDir\n"); }
 
-$all = file($logFile, FILE_IGNORE_NEW_LINES);
-$all = array_reverse($all); // newest first
+echo "Reading: $newest\n\n";
 
+$all = file($newest, FILE_IGNORE_NEW_LINES);
+$all = array_reverse($all);
 $out = [];
 foreach ($all as $line) {
     if ($filter === '' || stripos($line, $filter) !== false) {
@@ -23,5 +29,4 @@ foreach ($all as $line) {
         if (count($out) >= $lines) break;
     }
 }
-
 echo implode("\n", array_reverse($out)) . "\n";

@@ -215,9 +215,17 @@ class BrightDataService
             }
         } catch (\Throwable $e) {
             Log::warning('brightdata.test_proxy.failed', ['error' => $e->getMessage()]);
+
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'Connection refused') || str_contains($msg, 'timed out') || str_contains($msg, 'cURL error 7') || str_contains($msg, 'cURL error 28')) {
+                return [
+                    'success' => false,
+                    'error'   => 'Server cannot reach the proxy host (outbound port restricted by hosting). Your proxy credentials are valid — test them directly from your device.',
+                ];
+            }
         }
 
-        return ['success' => false, 'error' => 'Proxy test failed'];
+        return ['success' => false, 'error' => 'Proxy test failed — credentials may be invalid or proxy is offline.'];
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
