@@ -102,28 +102,35 @@ class ServicePurchaseService
         }
 
         $finalAmount = $this->applyMarkup($price, $service);
-        $wallet = $this->wallets->getOrCreate($user, $finalAmount->currency);
+        $wallet      = $this->wallets->getOrCreate($user);
+        $finalAmount = $this->convertCurrency($finalAmount, $wallet->currency);
+        $costAmount  = $this->convertCurrency($price, $wallet->currency);
 
-        $order = ServiceOrder::create([
-            'user_id'         => $user->id,
-            'service_id'      => $service->id,
-            'status'          => 'pending',
-            'amount_minor'    => $finalAmount->amountMinor,
-            'cost_minor'      => $price->amountMinor,
-            'currency'        => $finalAmount->currency,
-            'request'         => $request,
-            'idempotency_key' => $idempotencyKey,
-        ]);
+        [$order, $holdTx] = DB::transaction(function () use (
+            $user, $service, $request, $idempotencyKey, $wallet, $finalAmount, $costAmount
+        ) {
+            $order = ServiceOrder::create([
+                'user_id'         => $user->id,
+                'service_id'      => $service->id,
+                'status'          => 'pending',
+                'amount_minor'    => $finalAmount->amountMinor,
+                'cost_minor'      => $costAmount->amountMinor,
+                'currency'        => $finalAmount->currency,
+                'request'         => $request,
+                'idempotency_key' => $idempotencyKey,
+            ]);
 
-        $holdTx = $this->wallets->holdForPurchase(
-            wallet: $wallet,
-            amount: $finalAmount,
-            idempotencyKey: 'svcorder:'.$order->public_id,
-            reference: $order,
-            description: "Purchase: {$service->name}",
-        );
+            $holdTx = $this->wallets->holdForPurchase(
+                wallet: $wallet,
+                amount: $finalAmount,
+                idempotencyKey: 'svcorder:'.$order->public_id,
+                reference: $order,
+                description: "Purchase: {$service->name}",
+            );
 
-        $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
+            $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
+            return [$order, $holdTx];
+        });
 
         try {
             $result = $provider->purchase((string) $request['service'], (string) $request['country']);
@@ -582,6 +589,31 @@ class ServicePurchaseService
             ? (float) $service->markup_percent
             : (float) config('services.platform.markup_percent', 15);
         return $providerCost->add($providerCost->mulPercent($markup));
+    }
+
+    /**
+     * Convert a Money amount to the target currency using the platform exchange rate.
+     * Only USD↔NGN conversion is supported (other pairs pass through unchanged).
+     */
+    private function convertCurrency(Money $amount, string $targetCurrency): Money
+    {
+        if ($amount->currency === $targetCurrency) {
+            return $amount;
+        }
+
+        $ngnPerUsd = 1.0 / max((float) config('services.platform.ngn_usd_rate', 0.00065), 0.000001);
+
+        if ($amount->currency === 'USD' && $targetCurrency === 'NGN') {
+            $ngnMinor = (int) round($amount->amountMinor * $ngnPerUsd);
+            return Money::minor($ngnMinor, 'NGN');
+        }
+
+        if ($amount->currency === 'NGN' && $targetCurrency === 'USD') {
+            $usdMinor = (int) round($amount->amountMinor / $ngnPerUsd);
+            return Money::minor(max($usdMinor, 1), 'USD');
+        }
+
+        return $amount;
     }
 
     private function maybeRewardReferrer(User $user): void

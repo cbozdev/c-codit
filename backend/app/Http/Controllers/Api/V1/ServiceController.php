@@ -92,6 +92,14 @@ class ServiceController extends Controller
                 'user'      => $request->user()->id,
             ]);
             return ApiResponse::fail('Service is temporarily unavailable. Your wallet has been refunded. Please try again later.', null, 503);
+        } catch (\Exception $e) {
+            \Log::error('service.purchase.unexpected_error', [
+                'service' => $request->input('service_code'),
+                'error'   => $e->getMessage(),
+                'class'   => get_class($e),
+                'user'    => $request->user()->id,
+            ]);
+            return ApiResponse::fail('Service is temporarily unavailable. Please try again.', null, 503);
         }
 
         $order->loadMissing('service');

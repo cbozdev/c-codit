@@ -262,7 +262,7 @@ class WalletService
         });
     }
 
-    public function getOrCreate(User $user, string $currency = 'USD'): Wallet
+    public function getOrCreate(User $user, string $currency = 'NGN'): Wallet
     {
         return Wallet::firstOrCreate(['user_id' => $user->id], ['currency' => $currency]);
     }
