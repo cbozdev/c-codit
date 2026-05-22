@@ -103,18 +103,16 @@ class ServicePurchaseService
 
         $finalAmount = $this->applyMarkup($price, $service);
         $wallet      = $this->wallets->getOrCreate($user);
-        $finalAmount = $this->convertCurrency($finalAmount, $wallet->currency);
-        $costAmount  = $this->convertCurrency($price, $wallet->currency);
 
         [$order, $holdTx] = DB::transaction(function () use (
-            $user, $service, $request, $idempotencyKey, $wallet, $finalAmount, $costAmount
+            $user, $service, $request, $idempotencyKey, $wallet, $finalAmount, $price
         ) {
             $order = ServiceOrder::create([
                 'user_id'         => $user->id,
                 'service_id'      => $service->id,
                 'status'          => 'pending',
                 'amount_minor'    => $finalAmount->amountMinor,
-                'cost_minor'      => $costAmount->amountMinor,
+                'cost_minor'      => $price->amountMinor,
                 'currency'        => $finalAmount->currency,
                 'request'         => $request,
                 'idempotency_key' => $idempotencyKey,
@@ -241,12 +239,10 @@ class ServicePurchaseService
         array $request,
         string $idempotencyKey,
     ): ServiceOrder {
-        $currency = 'NGN';
-        $amountNgn = (float) ($request['amount'] ?? 100);
-        // Convert to minor units (kobo)
+        $amountNgn   = (float) ($request['amount'] ?? 100);
         $amountMinor = (int) round($amountNgn * 100);
 
-        $wallet = $this->wallets->getOrCreate($user, 'USD');
+        $wallet = $this->wallets->getOrCreate($user);
 
         // Convert NGN amount to USD for wallet deduction (using approximate rate)
         // In production, use a real FX rate API

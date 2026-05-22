@@ -124,12 +124,19 @@ class PaymentOrchestrator
 
                     $wallet = $this->wallets->getOrCreate($payment->user);
 
-                    // Ensure we always credit in wallet currency (USD)
-                    // Payment may have been made in NGN but wallet is USD
-                    $creditCurrency = $wallet->currency ?? 'USD';
-                    $creditAmount   = $payment->currency === $creditCurrency
-                        ? $payment->amount_minor
-                        : $payment->amount_minor; // Amount already stored in USD at payment initiation
+                    $creditCurrency = $wallet->currency;
+                    $ngnUsdRate     = (float) config('services.platform.ngn_usd_rate', 0.00065);
+
+                    if ($payment->currency === $creditCurrency) {
+                        $creditAmount = $payment->amount_minor;
+                    } elseif ($payment->currency === 'NGN' && $creditCurrency === 'USD') {
+                        // NGN kobo → USD cents: amount_minor (kobo) × rate = USD cents
+                        $creditAmount = (int) round($payment->amount_minor * $ngnUsdRate);
+                    } elseif ($payment->currency === 'USD' && $creditCurrency === 'NGN') {
+                        $creditAmount = (int) round($payment->amount_minor / max($ngnUsdRate, 0.000001));
+                    } else {
+                        $creditAmount = $payment->amount_minor;
+                    }
 
                     Log::channel('payments')->info('payment.crediting_wallet', [
                         'payment_id'       => $payment->public_id,
@@ -138,7 +145,6 @@ class PaymentOrchestrator
                         'amount_minor'     => $creditAmount,
                     ]);
 
-                    // Credit the wallet with the payment's stored amount (always in USD)
                     $this->wallets->fundFromPayment(
                         wallet: $wallet,
                         amount: Money::minor($creditAmount, $creditCurrency),
