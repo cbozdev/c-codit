@@ -11,6 +11,11 @@ $base   = '/home/ccoditco/c-codit';
 $php    = PHP_BINARY;
 $art    = "$base/backend/artisan";
 
+if (function_exists('opcache_reset')) {
+    opcache_reset();
+    echo "OPcache cleared.\n";
+}
+
 echo "=== Deploy ===\n\n";
 
 echo "1. Git fetch...\n";
