@@ -720,39 +720,52 @@ class AdminController extends Controller
 
     public function serviceHealth()
     {
-        $checks = [];
+        $checkedAt = now()->toISOString();
+        $results   = [];
 
-        // 5sim
-        try {
+        $check = function (string $name, callable $fn) use ($checkedAt, &$results): void {
+            $start = microtime(true);
+            try {
+                $ok  = $fn();
+                $ms  = (int) round((microtime(true) - $start) * 1000);
+                $results[] = [
+                    'provider'    => $name,
+                    'status'      => $ok ? 'up' : 'down',
+                    'response_ms' => $ok ? $ms : null,
+                    'checked_at'  => $checkedAt,
+                ];
+            } catch (\Throwable) {
+                $results[] = ['provider' => $name, 'status' => 'down', 'response_ms' => null, 'checked_at' => $checkedAt];
+            }
+        };
+
+        $check('5sim', function () {
             $r = Http::withHeaders(['Authorization' => 'Bearer ' . config('services.fivesim.api_key')])->timeout(8)->get('https://5sim.net/v1/guest/prices?country=usa&product=google');
-            $checks['5sim'] = ['status' => $r->successful() ? 'ok' : 'degraded', 'code' => $r->status()];
-        } catch (\Throwable) { $checks['5sim'] = ['status' => 'down', 'code' => null]; }
+            return $r->successful();
+        });
 
-        // Flutterwave
-        try {
+        $check('flutterwave', function () {
             $r = Http::withToken(config('services.flutterwave.secret_key'))->timeout(8)->get(config('services.flutterwave.base_url', 'https://api.flutterwave.com/v3') . '/banks/NG');
-            $checks['flutterwave'] = ['status' => $r->successful() ? 'ok' : 'degraded', 'code' => $r->status()];
-        } catch (\Throwable) { $checks['flutterwave'] = ['status' => 'down', 'code' => null]; }
+            return $r->successful();
+        });
 
-        // NOWPayments
-        try {
+        $check('nowpayments', function () {
             $r = Http::withHeaders(['x-api-key' => config('services.nowpayments.api_key')])->timeout(8)->get(config('services.nowpayments.base_url', 'https://api.nowpayments.io/v1') . '/status');
-            $checks['nowpayments'] = ['status' => $r->successful() ? 'ok' : 'degraded', 'code' => $r->status()];
-        } catch (\Throwable) { $checks['nowpayments'] = ['status' => 'down', 'code' => null]; }
+            return $r->successful();
+        });
 
-        // Reloadly
-        try {
+        $check('reloadly', function () {
             $r = Http::timeout(8)->post('https://auth.reloadly.com/oauth/token', [
                 'client_id'     => config('services.reloadly.client_id'),
                 'client_secret' => config('services.reloadly.client_secret'),
                 'grant_type'    => 'client_credentials',
                 'audience'      => 'https://giftcards.reloadly.com',
             ]);
-            $checks['reloadly'] = ['status' => $r->successful() ? 'ok' : 'degraded', 'code' => $r->status()];
-        } catch (\Throwable) { $checks['reloadly'] = ['status' => 'down', 'code' => null]; }
+            return $r->successful();
+        });
 
         // Alert admin if any provider is down
-        $downProviders = collect($checks)->filter(fn ($c) => $c['status'] === 'down')->keys()->values()->toArray();
+        $downProviders = collect($results)->where('status', 'down')->pluck('provider')->values()->toArray();
         if (count($downProviders) > 0) {
             $cacheKey = 'health_alert_sent:' . implode(',', $downProviders);
             if (! \Illuminate\Support\Facades\Cache::has($cacheKey)) {
@@ -767,7 +780,7 @@ class AdminController extends Controller
             }
         }
 
-        return ApiResponse::ok(['providers' => $checks, 'checked_at' => now()->toDateTimeString()]);
+        return ApiResponse::ok($results);
     }
 
     // ─── Referral Stats ───────────────────────────────────────────────────────
