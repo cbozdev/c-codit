@@ -54,6 +54,7 @@ class ChartOfAccounts
     {
         $wallet = $subject instanceof User ? $subject->wallet : $subject;
         $code = "user.wallet.{$wallet->id}";
+        $currency = $wallet->currency ?? $currency;
 
         return LedgerAccount::firstOrCreate(
             ['code' => $code, 'currency' => $currency],
