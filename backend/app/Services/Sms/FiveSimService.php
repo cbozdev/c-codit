@@ -178,12 +178,7 @@ class FiveSimService implements SmsNumberProvider
         ]);
 
         if ($res->status() === 400) {
-            $body = $res->json();
-            $msg  = $body['message'] ?? $res->body();
-            if (str_contains((string) $msg, 'no free phones') || str_contains((string) $msg, 'no free')) {
-                throw new ServiceUnavailableException('No numbers available from Virtual28 for this service/country. Try a different country.');
-            }
-            throw new ServiceUnavailableException('5sim error: ' . $msg);
+            throw new ServiceUnavailableException('No numbers are available for this service in the selected country. Please try a different country.');
         }
 
         if ($res->status() === 401) {

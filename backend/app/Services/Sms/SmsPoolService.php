@@ -238,13 +238,10 @@ class SmsPoolService implements SmsNumberProvider
 
         if (empty($body['success']) || $body['success'] != 1) {
             $msg = strip_tags((string) ($body['message'] ?? $body['error'] ?? 'Unknown error'));
-            if (stripos($msg, 'out of stock') !== false || stripos($msg, 'no number') !== false) {
-                throw new ServiceUnavailableException('No numbers available for this service/country on SMSPool.');
-            }
             if (stripos($msg, 'balance') !== false || stripos($msg, 'insufficient') !== false) {
                 throw new ServiceUnavailableException('This number is temporarily unavailable. Please try again later.');
             }
-            throw new ServiceUnavailableException('SMSPool error: '.$msg);
+            throw new ServiceUnavailableException('No numbers are available for this service in the selected country. Please try a different country.');
         }
 
         $orderId = $body['order_id'] ?? null;
