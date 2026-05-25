@@ -693,8 +693,6 @@ const LTR_DURATIONS: { days: 3 | 7 | 14 | 28 | 30; label: string }[] = [
   { days: 28, label: 'All services – 28 days' },
 ];
 
-type AreaCodeItem = { code: string; city: string; state: string; count: number };
-
 function VirtualNumberForm({
   service, serviceSearch, setServiceSearch, filteredServices,
   providerSvc, setProviderSvc, country, setCountry,
@@ -751,28 +749,6 @@ function VirtualNumberForm({
   // Area codes for PVADeals (STR + LTR, not All-Services)
   const isLtr        = isPvaDeals && pvaMode === 'ltr';
   const isAllSvc     = isLtr && ltrDuration === 28;
-
-  const [areaSearch, setAreaSearch] = useState('');
-  const areaCodesQuery = useQuery({
-    queryKey: ['pvadeals-area-codes', providerSvc, isLtr ? ltrDuration : null],
-    queryFn: () => apiCall<{ area_codes: AreaCodeItem[] }>({
-      url: '/services/pvadeals-area-codes',
-      params: {
-        service_slug: providerSvc,
-        ...(isLtr && !isAllSvc ? { duration: ltrDuration } : {}),
-      },
-    }),
-    staleTime: 3 * 60 * 1000,
-    enabled: isPvaDeals && !!providerSvc && !isAllSvc,
-  });
-  const areaCodes: AreaCodeItem[] = areaCodesQuery.data?.area_codes ?? [];
-  const filteredAreaCodes = areaSearch
-    ? areaCodes.filter((a) =>
-        a.code.includes(areaSearch) ||
-        a.city.toLowerCase().includes(areaSearch.toLowerCase()) ||
-        a.state.toLowerCase().includes(areaSearch.toLowerCase()),
-      )
-    : areaCodes;
 
   function handleAppChange(value: string) {
     setProviderSvc(value);
@@ -1051,69 +1027,21 @@ function VirtualNumberForm({
       </div>
 
       {/* PVADeals — Location (optional) */}
-      {isPvaDeals && !isAllSvc && (selectedPvaItem || pvaMode === 'str') && (
+      {isPvaDeals && !isAllSvc && (
         <div className="mt-4">
           <label className="label">
             Location <span className="text-ink-400 font-normal">(optional)</span>
           </label>
-          <div className="relative mt-1 mb-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
-            <input
-              className="input pl-9"
-              placeholder="Search area code, city, or state…"
-              value={areaSearch}
-              onChange={(e) => setAreaSearch(e.target.value)}
-            />
-          </div>
-          {areaCodesQuery.isLoading ? (
-            <div className="flex items-center justify-center py-4 text-sm text-ink-500">
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-300 border-t-brand-500 mr-2" />
-              Loading locations…
-            </div>
-          ) : areaCodes.length === 0 ? (
-            <div className="text-xs text-ink-400 dark:text-ink-500 py-2">
-              {providerSvc ? 'No locations available — a number will be assigned automatically.' : 'Select a service above to see locations.'}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden max-h-48 overflow-y-auto bg-white dark:bg-ink-900">
-              {/* "Any location" option */}
-              <button
-                type="button"
-                onClick={() => setPvaAreaCode('')}
-                className={clsx(
-                  'w-full flex items-center px-3 py-2 text-sm text-left transition border-b border-ink-100 dark:border-ink-800',
-                  !pvaAreaCode
-                    ? 'bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 font-medium'
-                    : 'hover:bg-ink-50 dark:hover:bg-ink-800 text-ink-500 dark:text-ink-400',
-                )}
-              >
-                Any location (auto-assign)
-              </button>
-              {filteredAreaCodes.map((a) => (
-                <button
-                  key={`${a.code}-${a.city}`}
-                  type="button"
-                  onClick={() => setPvaAreaCode(a.code)}
-                  className={clsx(
-                    'w-full flex items-center justify-between px-3 py-2 text-sm text-left transition',
-                    pvaAreaCode === a.code
-                      ? 'bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 font-medium'
-                      : 'hover:bg-ink-50 dark:hover:bg-ink-800 text-ink-800 dark:text-ink-200',
-                  )}
-                >
-                  <span>
-                    <span className="font-mono text-xs mr-2 text-ink-500 dark:text-ink-400">{a.code}</span>
-                    {a.city}{a.state ? ` | ${a.state}` : ''}
-                  </span>
-                  {a.count > 0 && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-ink-100 dark:bg-ink-700 text-ink-600 dark:text-ink-300 shrink-0">
-                      {a.count}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+          <input
+            className="input mt-1"
+            placeholder="Area code, e.g. 215, 619, 347…"
+            maxLength={6}
+            value={pvaAreaCode}
+            onChange={(e) => setPvaAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
+          />
+          <p className="text-xs text-ink-400 dark:text-ink-500 mt-1">
+            Enter a 3-digit US area code to request a number from a specific region. Leave blank for any location.
+          </p>
         </div>
       )}
 

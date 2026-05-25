@@ -179,45 +179,7 @@ class PvaDealsService implements SmsNumberProvider
         ]];
     }
 
-    /** Look up area codes by slug (used from controller). */
-    public function getAreaCodesBySlug(string $slug, ?int $duration = null): array
-    {
-        $svc = $this->findService($slug);
-        if (! $svc) return [];
-        return $this->getAreaCodes($svc['id'], $duration);
-    }
 
-    /**
-     * Fetch available area codes for a service (optional on purchase).
-     * Returns normalized list: [{code, city, state, count}]
-     */
-    public function getAreaCodes(string $serviceId, ?int $duration = null): array
-    {
-        $params = ['serviceId' => $serviceId];
-        if ($duration) $params['duration'] = $duration;
-
-        try {
-            $res = $this->client()->get('/area-codes', $params);
-            if (! $res->successful()) return [];
-
-            $raw = $res->json('data') ?? $res->json('data.areaCodes') ?? [];
-            if (! is_array($raw)) return [];
-
-            $out = [];
-            foreach ($raw as $item) {
-                $code  = (string) ($item['areaCode'] ?? $item['code'] ?? '');
-                $city  = (string) ($item['city'] ?? $item['location'] ?? '');
-                $state = (string) ($item['state'] ?? '');
-                $count = (int)    ($item['count'] ?? $item['available'] ?? 0);
-                if ($code) {
-                    $out[] = compact('code', 'city', 'state', 'count');
-                }
-            }
-            return $out;
-        } catch (\Throwable) {
-            return [];
-        }
-    }
 
     public function purchase(string $service, string $country, ?string $areaCode = null): array
     {

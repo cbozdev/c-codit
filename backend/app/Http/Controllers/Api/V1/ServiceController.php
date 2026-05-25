@@ -365,29 +365,6 @@ class ServiceController extends Controller
     }
 
     /**
-     * GET /services/pvadeals-area-codes?service_slug={slug}&duration={days}
-     * Returns area codes available for a given PVADeals service + optional duration.
-     */
-    public function pvadealsAreaCodes(\Illuminate\Http\Request $request)
-    {
-        $request->validate([
-            'service_slug' => ['required', 'string', 'max:80'],
-            'duration'     => ['nullable', 'integer', 'in:3,7,14,28,30'],
-        ]);
-
-        try {
-            $pva       = app(\App\Services\Sms\PvaDealsService::class);
-            $slug      = strtolower(trim($request->input('service_slug')));
-            $duration  = $request->input('duration') ? (int) $request->input('duration') : null;
-            $areaCodes = $pva->getAreaCodesBySlug($slug, $duration);
-            return ApiResponse::ok(['area_codes' => $areaCodes]);
-        } catch (\Throwable $e) {
-            \Log::warning('pvadeals.area_codes.error', ['error' => $e->getMessage()]);
-            return ApiResponse::ok(['area_codes' => []]);
-        }
-    }
-
-    /**
      * List available countries + prices for a virtual number provider/service.
      * GET /services/virtual-number-prices?provider=5sim|smsactivate&service=telegram
      */
