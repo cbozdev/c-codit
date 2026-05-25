@@ -134,7 +134,11 @@ class ServicePurchaseService
         });
 
         try {
-            $result = $provider->purchase((string) $request['service'], (string) $request['country']);
+            $result = $provider->purchase(
+                (string) $request['service'],
+                (string) $request['country'],
+                isset($request['area_code']) ? (string) $request['area_code'] : null,
+            );
         } catch (\Throwable $e) {
             $this->refundOrder($order, $holdTx, $e->getMessage());
             throw $e;
@@ -209,7 +213,8 @@ class ServicePurchaseService
         });
 
         try {
-            $result = $this->pvaDeals->purchaseLtr($serviceSlug, $duration);
+            $areaCode = isset($request['area_code']) ? (string) $request['area_code'] : null;
+            $result   = $this->pvaDeals->purchaseLtr($serviceSlug, $duration, $areaCode);
         } catch (\Throwable $e) {
             $this->refundOrder($order, $holdTx, $e->getMessage());
             throw $e;

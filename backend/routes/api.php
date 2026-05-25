@@ -86,6 +86,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/services/giftcard-products/{id}',[ServiceController::class, 'giftCardProduct']);
             Route::get('/services/virtual-number-prices', [ServiceController::class, 'virtualNumberPrices']);
             Route::get('/services/pvadeals-catalog',      [ServiceController::class, 'pvaDealsCatalog']);
+            Route::get('/services/pvadeals-area-codes',   [ServiceController::class, 'pvadealsAreaCodes']);
             Route::get('/services/data-plans',            [ServiceController::class, 'dataPlans']);
             Route::get('/services/smm-catalog',           [ServiceController::class, 'smmCatalog']);
             Route::post('/services/validate-meter',       [ServiceController::class, 'validateMeter']);

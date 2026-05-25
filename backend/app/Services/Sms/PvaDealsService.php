@@ -179,7 +179,47 @@ class PvaDealsService implements SmsNumberProvider
         ]];
     }
 
-    public function purchase(string $service, string $country): array
+    /** Look up area codes by slug (used from controller). */
+    public function getAreaCodesBySlug(string $slug, ?int $duration = null): array
+    {
+        $svc = $this->findService($slug);
+        if (! $svc) return [];
+        return $this->getAreaCodes($svc['id'], $duration);
+    }
+
+    /**
+     * Fetch available area codes for a service (optional on purchase).
+     * Returns normalized list: [{code, city, state, count}]
+     */
+    public function getAreaCodes(string $serviceId, ?int $duration = null): array
+    {
+        $params = ['serviceId' => $serviceId];
+        if ($duration) $params['duration'] = $duration;
+
+        try {
+            $res = $this->client()->get('/area-codes', $params);
+            if (! $res->successful()) return [];
+
+            $raw = $res->json('data') ?? $res->json('data.areaCodes') ?? [];
+            if (! is_array($raw)) return [];
+
+            $out = [];
+            foreach ($raw as $item) {
+                $code  = (string) ($item['areaCode'] ?? $item['code'] ?? '');
+                $city  = (string) ($item['city'] ?? $item['location'] ?? '');
+                $state = (string) ($item['state'] ?? '');
+                $count = (int)    ($item['count'] ?? $item['available'] ?? 0);
+                if ($code) {
+                    $out[] = compact('code', 'city', 'state', 'count');
+                }
+            }
+            return $out;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    public function purchase(string $service, string $country, ?string $areaCode = null): array
     {
         if (! $this->isUsaCountry($country)) {
             throw new ServiceUnavailableException('PVADeals only provides US numbers.');
@@ -192,8 +232,11 @@ class PvaDealsService implements SmsNumberProvider
 
         Log::info('pvadeals.purchase.attempt', ['service' => $svc['name'], 'service_id' => $svc['id']]);
 
+        $serviceEntry = ['serviceId' => $svc['id']];
+        if ($areaCode) $serviceEntry['areaCode'] = $areaCode;
+
         $res = $this->client()->asJson()->post('/purchase', [
-            'services' => [['serviceId' => $svc['id']]],
+            'services' => [$serviceEntry],
         ]);
 
         Log::info('pvadeals.purchase.response', [
@@ -220,7 +263,7 @@ class PvaDealsService implements SmsNumberProvider
         ];
     }
 
-    public function purchaseLtr(string $service, int $duration): array
+    public function purchaseLtr(string $service, int $duration, ?string $areaCode = null): array
     {
         $serviceId = $duration === 28 ? 'ALL_SERVICES' : ($this->findService($service)['id'] ?? null);
 
@@ -230,10 +273,10 @@ class PvaDealsService implements SmsNumberProvider
 
         Log::info('pvadeals.ltr.purchase.attempt', ['service' => $service, 'duration' => $duration]);
 
-        $res = $this->client()->asJson()->post('/purchase-ltr', [
-            'duration'  => $duration,
-            'serviceId' => $serviceId,
-        ]);
+        $payload = ['duration' => $duration, 'serviceId' => $serviceId];
+        if ($areaCode) $payload['areaCode'] = $areaCode;
+
+        $res = $this->client()->asJson()->post('/purchase-ltr', $payload);
 
         Log::info('pvadeals.ltr.purchase.response', [
             'status' => $res->status(),

@@ -210,7 +210,7 @@ class SmsPoolService implements SmsNumberProvider
         });
     }
 
-    public function purchase(string $service, string $country): array
+    public function purchase(string $service, string $country, ?string $areaCode = null): array
     {
         $svc = $this->resolveService($service);
         $cty = $this->resolveCountry($country);

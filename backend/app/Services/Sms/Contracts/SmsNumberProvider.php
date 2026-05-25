@@ -21,7 +21,7 @@ interface SmsNumberProvider
      *     'raw'               => provider response
      *   ]
      */
-    public function purchase(string $service, string $country): array;
+    public function purchase(string $service, string $country, ?string $areaCode = null): array;
 
     /** Cancel / refund an unused order at the provider. */
     public function cancel(string $providerOrderId): bool;

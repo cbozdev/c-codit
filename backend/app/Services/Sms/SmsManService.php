@@ -130,7 +130,7 @@ class SmsManService implements SmsNumberProvider
         return $results;
     }
 
-    public function purchase(string $service, string $country): array
+    public function purchase(string $service, string $country, ?string $areaCode = null): array
     {
         $appId = $this->resolveAppId($service);
         if (!$appId) {

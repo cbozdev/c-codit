@@ -157,7 +157,7 @@ class FiveSimService implements SmsNumberProvider
         return $this->getPrice($service, $country) !== null;
     }
 
-    public function purchase(string $service, string $country): array
+    public function purchase(string $service, string $country, ?string $areaCode = null): array
     {
         $product    = $this->normalizeProduct($service);
         $countryKey = $this->normalizeCountry($country);

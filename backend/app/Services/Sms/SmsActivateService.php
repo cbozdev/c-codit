@@ -147,7 +147,7 @@ class SmsActivateService implements SmsNumberProvider
         return $results;
     }
 
-    public function purchase(string $service, string $country): array
+    public function purchase(string $service, string $country, ?string $areaCode = null): array
     {
         $svc  = $this->normalizeService($service);
         $body = $this->call(['action' => 'getNumber', 'service' => $svc, 'country' => $country]);

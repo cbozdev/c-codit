@@ -45,6 +45,7 @@ class ServiceController extends Controller
             // Virtual number fields
             'service'         => ['nullable', 'string', 'max:40'],
             'country'         => ['nullable', 'string', 'max:20'],
+            'area_code'       => ['nullable', 'string', 'max:10'],
             // Utility bill fields
             'amount'          => ['nullable', 'numeric', 'min:1', 'max:1000000'],
             'network'         => ['nullable', 'string', 'max:30'],
@@ -119,6 +120,7 @@ class ServiceController extends Controller
             'service_code' => ['required', 'string', 'exists:services,code'],
             'service'      => ['required', 'string', 'max:80'],
             'duration'     => ['required', 'integer', 'in:3,7,14,28,30'],
+            'area_code'    => ['nullable', 'string', 'max:10'],
         ]);
 
         $service = Service::where('code', $request->input('service_code'))
@@ -132,7 +134,7 @@ class ServiceController extends Controller
             $order = $this->purchases->purchaseLtrVirtualNumber(
                 user: $request->user(),
                 service: $service,
-                request: $request->only(['service', 'duration']),
+                request: $request->only(['service', 'duration', 'area_code']),
                 idempotencyKey: $idempotencyKey,
             );
         } catch (ServiceUnavailableException $e) {
@@ -359,6 +361,29 @@ class ServiceController extends Controller
             return ApiResponse::ok($catalog);
         } catch (\Throwable $e) {
             return ApiResponse::fail('Could not load SMM catalog: ' . $e->getMessage(), null, 503);
+        }
+    }
+
+    /**
+     * GET /services/pvadeals-area-codes?service_slug={slug}&duration={days}
+     * Returns area codes available for a given PVADeals service + optional duration.
+     */
+    public function pvadealsAreaCodes(\Illuminate\Http\Request $request)
+    {
+        $request->validate([
+            'service_slug' => ['required', 'string', 'max:80'],
+            'duration'     => ['nullable', 'integer', 'in:3,7,14,28,30'],
+        ]);
+
+        try {
+            $pva       = app(\App\Services\Sms\PvaDealsService::class);
+            $slug      = strtolower(trim($request->input('service_slug')));
+            $duration  = $request->input('duration') ? (int) $request->input('duration') : null;
+            $areaCodes = $pva->getAreaCodesBySlug($slug, $duration);
+            return ApiResponse::ok(['area_codes' => $areaCodes]);
+        } catch (\Throwable $e) {
+            \Log::warning('pvadeals.area_codes.error', ['error' => $e->getMessage()]);
+            return ApiResponse::ok(['area_codes' => []]);
         }
     }
 

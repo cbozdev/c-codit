@@ -252,7 +252,7 @@ class TextVerifiedService implements SmsNumberProvider
         }
     }
 
-    public function purchase(string $service, string $country): array
+    public function purchase(string $service, string $country, ?string $areaCode = null): array
     {
         $target = $this->resolveTarget($service);
         if (! $target) {
