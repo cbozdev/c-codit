@@ -651,6 +651,7 @@ class AdminController extends Controller
         Cache::forget("{$group}.bearer_token");
         Cache::forget("{$group}.services");
         Cache::forget("{$group}.targets");
+        Cache::forget("{$group}.catalog");
 
         Audit::log('admin.api_key_updated', $request->user(), ['group' => $group, 'key' => $key], actorType: 'admin');
 
@@ -753,6 +754,12 @@ class AdminController extends Controller
         $check('nowpayments', function () {
             $r = Http::withHeaders(['x-api-key' => config('services.nowpayments.api_key')])->timeout(8)->get(config('services.nowpayments.base_url', 'https://api.nowpayments.io/v1') . '/status');
             return $r->successful();
+        });
+
+        $check('pvadeals', function () {
+            $r = Http::withHeaders(['Authorization' => 'Bearer ' . config('services.pvadeals.api_key'), 'Accept' => 'application/json'])
+                ->timeout(8)->get('https://prod-v3.pvadeals.com/v3/api/balance');
+            return $r->successful() && ! empty($r->json('success'));
         });
 
         $check('reloadly', function () {
