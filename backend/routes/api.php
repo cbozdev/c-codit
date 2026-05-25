@@ -39,6 +39,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/webhooks/nowpayments', [WebhookController::class, 'nowpayments']);
         Route::post('/webhooks/smspool',      [WebhookController::class, 'smspool']);
         Route::post('/webhooks/textverified', [WebhookController::class, 'textverified']);
+        Route::post('/webhooks/pvadeals',     [WebhookController::class, 'pvadeals']);
     });
 
     // Authenticated routes

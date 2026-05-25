@@ -99,6 +99,65 @@ class WebhookController extends Controller
     }
 
     /**
+     * PVADeals sends events: sms_received, number_purchased, number_flagged, etc.
+     * Payload: { event, requestId, number, message, timestamp }
+     * Webhook URL to configure: https://api.c-codit.com/api/v1/webhooks/pvadeals
+     */
+    public function pvadeals(Request $request)
+    {
+        $event     = $request->input('event');
+        $requestId = $request->input('requestId');
+        $message   = $request->input('message', '');
+
+        Log::channel('webhooks')->info('pvadeals.webhook', [
+            'event'      => $event,
+            'request_id' => $requestId,
+            'has_message' => ! empty($message),
+        ]);
+
+        if ($event !== 'sms_received' || ! $requestId) {
+            return response()->json(['status' => 'ok'], 200);
+        }
+
+        // Extract numeric code from full SMS message
+        $code = null;
+        if ($message) {
+            preg_match('/\b(\d{4,8})\b/', (string) $message, $m);
+            $code = $m[1] ?? null;
+        }
+
+        if (! $code) {
+            return response()->json(['status' => 'no_code'], 200);
+        }
+
+        try {
+            $order = ServiceOrder::where('provider_order_id', (string) $requestId)
+                ->whereIn('status', ['completed', 'pending'])
+                ->first();
+
+            if ($order) {
+                $delivery = array_merge((array) $order->delivery, [
+                    'sms_code' => $code,
+                    'sms_text' => $message,
+                ]);
+                $order->update(['delivery' => $delivery]);
+                Log::channel('webhooks')->info('pvadeals.code_saved', [
+                    'order' => $order->public_id,
+                    'code'  => $code,
+                ]);
+            } else {
+                Log::channel('webhooks')->warning('pvadeals.order_not_found', [
+                    'request_id' => $requestId,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::channel('webhooks')->error('pvadeals.webhook_error', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json(['status' => 'ok'], 200);
+    }
+
+    /**
      * SMSPool sends a POST when an SMS code arrives for a rented number.
      * Payload: order_id, sms, full_sms, number
      */

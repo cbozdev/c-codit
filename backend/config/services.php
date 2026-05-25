@@ -48,6 +48,10 @@ return [
         'api_key' => env('SMSPOOL_API_KEY'),
     ],
 
+    'pvadeals' => [
+        'api_key' => env('PVADEALS_API_KEY'),
+    ],
+
     'textverified' => [
         'api_key'        => env('TEXTVERIFIED_API_KEY'),
         'webhook_secret' => env('TEXTVERIFIED_WEBHOOK_SECRET'),

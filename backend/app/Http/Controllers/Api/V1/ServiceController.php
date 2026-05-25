@@ -922,6 +922,8 @@ class ServiceController extends Controller
                 $code = app(\App\Services\Sms\SmsActivateService::class)->fetchCode($order->provider_order_id);
             } elseif ($provider === 'smspool') {
                 $code = app(\App\Services\Sms\SmsPoolService::class)->fetchCode($order->provider_order_id);
+            } elseif ($provider === 'pvadeals') {
+                $code = app(\App\Services\Sms\PvaDealsService::class)->fetchCode($order->provider_order_id);
             } elseif ($provider === 'textverified') {
                 $code = app(\App\Services\Sms\TextVerifiedService::class)->fetchCode($order->provider_order_id);
             } elseif ($provider === 'textverified_rental') {
