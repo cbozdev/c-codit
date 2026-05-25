@@ -59,13 +59,13 @@ export type Service = {
 
 export type ServiceOrder = {
   id: string;
-  service?: { code: string; name: string };
+  service?: { code: string; name: string; provider: string };
   status: 'pending' | 'provisioning' | 'completed' | 'failed' | 'refunded';
   amount_minor: number;
   amount: string;
   currency: string;
   request: Record<string, unknown> | null;
-  delivery: { phone_number?: string | null; expires_at?: string | null } | null;
+  delivery: Record<string, unknown> | null;
   failure_reason: string | null;
   provisioned_at: string | null;
   refunded_at: string | null;

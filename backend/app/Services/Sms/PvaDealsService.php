@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * PVADeals virtual number integration (USA only, STR).
+ * PVADeals virtual number integration (USA only, STR + LTR).
  * Docs: https://docs.pvadeals.com
  *
  * Required env vars:
@@ -38,7 +38,7 @@ class PvaDealsService implements SmsNumberProvider
 
     /**
      * Fetch and cache the full service catalog.
-     * Returns array keyed by lowercase service name → ['id' => ..., 'price' => float]
+     * Returns array keyed by lowercase service name.
      */
     private function getCatalog(): array
     {
@@ -55,9 +55,6 @@ class PvaDealsService implements SmsNumberProvider
             }
 
             $services = $res->json('data.services') ?? [];
-            if (!empty($services[0])) {
-                Log::info('pvadeals.catalog.sample_keys', ['keys' => array_keys($services[0]), 'sample' => $services[0]]);
-            }
             $index = [];
             foreach ($services as $svc) {
                 $name = strtolower(trim((string) ($svc['name'] ?? '')));
@@ -66,7 +63,11 @@ class PvaDealsService implements SmsNumberProvider
                         'id'        => (string) $svc['_id'],
                         'name'      => (string) $svc['name'],
                         'price'     => (float) ($svc['STRprice'] ?? 0),
-                        'image_url' => (string) ($svc['image'] ?? $svc['logo'] ?? $svc['icon'] ?? $svc['img'] ?? $svc['imageUrl'] ?? ''),
+                        'ltr3'      => (float) ($svc['LTR3price'] ?? 0),
+                        'ltr7'      => (float) ($svc['LTR7price'] ?? 0),
+                        'ltr14'     => (float) ($svc['LTR14price'] ?? 0),
+                        'ltr30'     => (float) ($svc['LTR30price'] ?? 0),
+                        'image_url' => (string) ($svc['picture'] ?? ''),
                     ];
                 }
             }
@@ -83,7 +84,7 @@ class PvaDealsService implements SmsNumberProvider
         }
     }
 
-    /** Returns catalog as a flat array for the frontend: [{name, slug, price}] */
+    /** Returns catalog as a flat array for the frontend with STR + LTR prices. */
     public function getPublicCatalog(): array
     {
         $catalog = $this->getCatalog();
@@ -91,15 +92,23 @@ class PvaDealsService implements SmsNumberProvider
 
         $svc = \App\Models\Service::where('provider', 'pvadeals')->where('category', 'virtual_number')->first();
         $markup = $svc ? ((float) ($svc->markup_percent ?? 15)) : 15;
+        $m = 1 + $markup / 100;
 
         $items = [];
         foreach ($catalog as $slug => $info) {
             if ($info['price'] <= 0) continue;
+            $ltrPrices = [];
+            foreach ([3 => 'ltr3', 7 => 'ltr7', 14 => 'ltr14', 30 => 'ltr30'] as $days => $key) {
+                if ($info[$key] > 0) {
+                    $ltrPrices[$days] = round($info[$key] * $m, 4);
+                }
+            }
             $items[] = [
-                'slug'      => $slug,
-                'name'      => $info['name'],
-                'price_usd' => round($info['price'] * (1 + $markup / 100), 4),
-                'image_url' => $info['image_url'] ?? '',
+                'slug'       => $slug,
+                'name'       => $info['name'],
+                'price_usd'  => round($info['price'] * $m, 4),
+                'ltr_prices' => $ltrPrices,
+                'image_url'  => $info['image_url'] ?? '',
             ];
         }
         usort($items, fn($a, $b) => strcmp($a['name'], $b['name']));
@@ -111,10 +120,8 @@ class PvaDealsService implements SmsNumberProvider
         $catalog = $this->getCatalog();
         $key = strtolower(trim($service));
 
-        // Exact match first
         if (isset($catalog[$key])) return $catalog[$key];
 
-        // Partial match (e.g. "airbnb" matches "airbnb (usa)")
         foreach ($catalog as $name => $info) {
             if (str_contains($name, $key) || str_contains($key, $name)) {
                 return $info;
@@ -137,6 +144,22 @@ class PvaDealsService implements SmsNumberProvider
         if (! $svc || $svc['price'] <= 0) return null;
 
         return Money::fromDecimal(sprintf('%.4f', $svc['price']), 'USD');
+    }
+
+    public function getLtrPrice(string $service, int $duration): ?Money
+    {
+        if ($duration === 28) {
+            return Money::fromDecimal('12.99', 'USD'); // All-Services fixed price
+        }
+
+        $svc = $this->findService($service);
+        if (! $svc) return null;
+
+        $key = 'ltr' . $duration;
+        $price = $svc[$key] ?? 0;
+        if ($price <= 0) return null;
+
+        return Money::fromDecimal(sprintf('%.4f', $price), 'USD');
     }
 
     public function isAvailable(string $service, string $country): bool
@@ -178,27 +201,99 @@ class PvaDealsService implements SmsNumberProvider
             'body'   => substr($res->body(), 0, 400),
         ]);
 
-        if (! $res->successful()) {
-            $msg = $res->json('message') ?? $res->body();
+        if (! $res->successful() || empty($res->json('success'))) {
             throw new ServiceUnavailableException('No numbers are available for this service. Please try again later.');
         }
 
-        $body = $res->json();
-
-        if (empty($body['success'])) {
-            throw new ServiceUnavailableException('No numbers are available for this service. Please try again later.');
-        }
-
-        $request = $body['data']['requests'][0] ?? null;
+        $request = $res->json('data.requests.0') ?? null;
         if (! $request || empty($request['_id']) || empty($request['number'])) {
-            throw new \RuntimeException('PVADeals returned unexpected response: ' . json_encode($body));
+            throw new \RuntimeException('PVADeals returned unexpected response: ' . substr($res->body(), 0, 200));
         }
 
         return [
             'provider_order_id' => (string) $request['_id'],
             'phone_number'      => '+' . ltrim((string) $request['number'], '+'),
             'expires_at'        => $request['endTime'] ?? now()->addMinutes(20)->toISOString(),
+            'allow_flag'        => (bool) ($request['allowFlag'] ?? true),
+            'allow_reuse'       => (bool) ($request['allowReuse'] ?? false),
             'raw'               => $request,
+        ];
+    }
+
+    public function purchaseLtr(string $service, int $duration): array
+    {
+        $serviceId = $duration === 28 ? 'ALL_SERVICES' : ($this->findService($service)['id'] ?? null);
+
+        if (! $serviceId) {
+            throw new ServiceUnavailableException('Service not available on PVADeals.');
+        }
+
+        Log::info('pvadeals.ltr.purchase.attempt', ['service' => $service, 'duration' => $duration]);
+
+        $res = $this->client()->asJson()->post('/purchase-ltr', [
+            'duration'  => $duration,
+            'serviceId' => $serviceId,
+        ]);
+
+        Log::info('pvadeals.ltr.purchase.response', [
+            'status' => $res->status(),
+            'body'   => substr($res->body(), 0, 400),
+        ]);
+
+        if (! $res->successful() || empty($res->json('success'))) {
+            throw new ServiceUnavailableException('No LTR numbers available. Please try again later.');
+        }
+
+        $data = $res->json('data') ?? null;
+        if (! $data || empty($data['_id']) || empty($data['number'])) {
+            throw new \RuntimeException('PVADeals LTR unexpected response: ' . substr($res->body(), 0, 200));
+        }
+
+        return [
+            'provider_order_id' => (string) $data['_id'],
+            'phone_number'      => '+' . ltrim((string) $data['number'], '+'),
+            'expires_at'        => $data['endTime'] ?? now()->addDays($duration)->toISOString(),
+            'auto_renew_enable' => (bool) ($data['autoRenewEnable'] ?? false),
+            'allow_flag'        => (bool) ($data['allowFlag'] ?? true),
+            'allow_reuse'       => false,
+            'number_type'       => 'LTR',
+            'duration'          => $duration,
+            'raw'               => $data,
+        ];
+    }
+
+    public function reuse(string $providerOrderId): array
+    {
+        $res  = $this->client()->post("/reuse/{$providerOrderId}");
+        $body = $res->json();
+
+        if (! $res->successful() || empty($body['success'])) {
+            throw new ServiceUnavailableException($body['message'] ?? 'Reuse not available for this number.');
+        }
+
+        $data = $body['data'] ?? [];
+        return [
+            'provider_order_id' => (string) ($data['_id'] ?? $providerOrderId),
+            'phone_number'      => '+' . ltrim((string) ($data['number'] ?? ''), '+'),
+            'expires_at'        => $data['endTime'] ?? null,
+            'allow_reuse'       => (bool) ($data['allowReuse'] ?? false),
+            'reuse_counter'     => (int) ($data['reuseCounter'] ?? 0),
+        ];
+    }
+
+    public function toggleAutoRenew(string $providerOrderId): array
+    {
+        $res  = $this->client()->post("/renew-ltr/{$providerOrderId}");
+        $body = $res->json();
+
+        if (! $res->successful() || empty($body['success'])) {
+            throw new ServiceUnavailableException($body['message'] ?? 'Could not toggle auto-renew.');
+        }
+
+        $data = $body['data'] ?? [];
+        return [
+            'auto_renew_enable' => (bool) ($data['autoRenewEnable'] ?? false),
+            'expires_at'        => $data['endTime'] ?? null,
         ];
     }
 
@@ -221,16 +316,14 @@ class PvaDealsService implements SmsNumberProvider
 
             $data = $res->json('data') ?? [];
 
-            // Try direct message/code fields (provider may include them)
             $message = (string) ($data['message'] ?? $data['sms'] ?? $data['code'] ?? '');
             if ($message) {
                 preg_match('/\b(\d{4,8})\b/', $message, $m);
                 if (! empty($m[1])) return $m[1];
             }
 
-            // Status COMPLETED means SMS arrived (code delivered via webhook)
             if (($data['status'] ?? '') === 'COMPLETED') {
-                return null; // Webhook already stored the code in delivery
+                return null;
             }
 
             return null;

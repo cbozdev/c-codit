@@ -103,7 +103,12 @@ Route::prefix('v1')->group(function () {
         Route::middleware(['throttle:services', 'idempotent'])->group(function () {
             Route::post('/services/purchase', [ServiceController::class, 'purchase']);
             Route::post('/services/virtual-number/purchase', [ServiceController::class, 'purchaseVirtualNumber']);
+            Route::post('/services/virtual-number/purchase-ltr', [ServiceController::class, 'purchaseLtrVirtualNumber']);
         });
+
+        // PVADeals order actions
+        Route::post('/orders/{id}/reuse',              [ServiceController::class, 'reuseNumber']);
+        Route::post('/orders/{id}/toggle-auto-renew',  [ServiceController::class, 'togglePvaAutoRenew']);
 
         // Proxy
         Route::middleware('throttle:api')->prefix('proxy')->group(function () {

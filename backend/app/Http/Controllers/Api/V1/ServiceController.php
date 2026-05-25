@@ -112,6 +112,98 @@ class ServiceController extends Controller
         return $this->purchase($request);
     }
 
+    /** POST /services/virtual-number/purchase-ltr */
+    public function purchaseLtrVirtualNumber(Request $request)
+    {
+        $request->validate([
+            'service_code' => ['required', 'string', 'exists:services,code'],
+            'service'      => ['required', 'string', 'max:80'],
+            'duration'     => ['required', 'integer', 'in:3,7,14,28,30'],
+        ]);
+
+        $service = Service::where('code', $request->input('service_code'))
+            ->where('provider', 'pvadeals')
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        $idempotencyKey = (string) $request->header('Idempotency-Key', \Illuminate\Support\Str::uuid());
+
+        try {
+            $order = $this->purchases->purchaseLtrVirtualNumber(
+                user: $request->user(),
+                service: $service,
+                request: $request->only(['service', 'duration']),
+                idempotencyKey: $idempotencyKey,
+            );
+        } catch (ServiceUnavailableException $e) {
+            return ApiResponse::fail($e->getMessage(), null, 409);
+        } catch (\App\Services\Ledger\InsufficientFundsException $e) {
+            return ApiResponse::fail('Insufficient wallet balance. Please top up first.', null, 402);
+        } catch (\Throwable $e) {
+            \Log::error('ltr.purchase.error', ['error' => $e->getMessage()]);
+            return ApiResponse::fail('Service temporarily unavailable. Your wallet has been refunded.', null, 503);
+        }
+
+        return ApiResponse::ok(new ServiceOrderResource($order), 'LTR number purchased.');
+    }
+
+    /** POST /orders/{id}/reuse */
+    public function reuseNumber(Request $request, string $publicId)
+    {
+        $order = ServiceOrder::where('public_id', $publicId)
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        $delivery = (array) ($order->delivery ?? []);
+
+        if (! ($delivery['allow_reuse'] ?? false)) {
+            return ApiResponse::fail('This number cannot be reused right now.', null, 422);
+        }
+
+        try {
+            $result = app(\App\Services\Sms\PvaDealsService::class)->reuse($order->provider_order_id);
+            $order->update([
+                'delivery' => array_merge($delivery, [
+                    'allow_reuse'   => $result['allow_reuse'],
+                    'reuse_counter' => $result['reuse_counter'],
+                    'expires_at'    => $result['expires_at'] ?? $delivery['expires_at'],
+                    'sms_code'      => null,
+                ]),
+            ]);
+            return ApiResponse::ok(['allow_reuse' => $result['allow_reuse']], 'Number reused — waiting for new SMS.');
+        } catch (\Throwable $e) {
+            return ApiResponse::fail($e->getMessage(), null, 422);
+        }
+    }
+
+    /** POST /orders/{id}/toggle-auto-renew */
+    public function togglePvaAutoRenew(Request $request, string $publicId)
+    {
+        $order = ServiceOrder::where('public_id', $publicId)
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        $delivery = (array) ($order->delivery ?? []);
+
+        if (($delivery['number_type'] ?? '') !== 'LTR') {
+            return ApiResponse::fail('Auto-renew is only for LTR numbers.', null, 422);
+        }
+
+        try {
+            $result = app(\App\Services\Sms\PvaDealsService::class)->toggleAutoRenew($order->provider_order_id);
+            $order->update([
+                'delivery' => array_merge($delivery, [
+                    'auto_renew_enable' => $result['auto_renew_enable'],
+                    'expires_at'        => $result['expires_at'] ?? $delivery['expires_at'],
+                ]),
+            ]);
+            $msg = $result['auto_renew_enable'] ? 'Auto-renew enabled.' : 'Auto-renew disabled.';
+            return ApiResponse::ok(['auto_renew_enable' => $result['auto_renew_enable']], $msg);
+        } catch (\Throwable $e) {
+            return ApiResponse::fail($e->getMessage(), null, 422);
+        }
+    }
+
     /**
      * List Reloadly gift card products.
      * GET /services/giftcard-products?country=US

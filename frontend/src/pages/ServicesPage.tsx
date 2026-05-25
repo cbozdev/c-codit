@@ -321,6 +321,10 @@ export default function ServicesPage() {
   const [smmQuantity, setSmmQuantity]       = useState(100);
   const [ordersExpanded, setOrdersExpanded] = useState(true);
 
+  // PVADeals LTR state
+  const [pvaMode, setPvaMode]           = useState<'str' | 'ltr'>('str');
+  const [ltrDuration, setLtrDuration]   = useState<3 | 7 | 14 | 28 | 30>(30);
+
   // Gift card state
   const [gcCountry, setGcCountry]           = useState('US');
   const [gcProductId, setGcProductId]       = useState<number | null>(null);
@@ -360,7 +364,18 @@ export default function ServicesPage() {
       // Build request payload based on service category
       const baseData: Record<string, unknown> = { service_code: selected.code };
 
-      if (selected.category === 'virtual_number') {
+      if (selected.category === 'virtual_number' && selected.provider === 'pvadeals' && pvaMode === 'ltr') {
+        return apiCall<ServiceOrder>({
+          url: '/services/virtual-number/purchase-ltr',
+          method: 'POST',
+          headers: { 'Idempotency-Key': newIdempotencyKey() },
+          data: {
+            service_code: selected.code,
+            service: ltrDuration === 28 ? 'ALL_SERVICES' : providerSvc,
+            duration: ltrDuration,
+          },
+        });
+      } else if (selected.category === 'virtual_number') {
         baseData.service = providerSvc;
         baseData.country = country;
       } else if (selected.category === 'utility') {
@@ -509,6 +524,10 @@ export default function ServicesPage() {
               setProviderSvc={setProviderSvc}
               country={country}
               setCountry={setCountry}
+              pvaMode={pvaMode}
+              setPvaMode={(m) => { setPvaMode(m); }}
+              ltrDuration={ltrDuration}
+              setLtrDuration={setLtrDuration}
               onPurchase={() => purchase.mutate()}
               isPending={purchase.isPending}
             />
@@ -653,11 +672,27 @@ export default function ServicesPage() {
 
 // ─── Virtual Number Form ──────────────────────────────────────────────────────
 
-type PvaCatalogItem = { slug: string; name: string; price_usd: number; image_url?: string };
+type PvaCatalogItem = {
+  slug: string;
+  name: string;
+  price_usd: number;
+  ltr_prices?: Record<number, number>;
+  image_url?: string;
+};
+
+const LTR_DURATIONS: { days: 3 | 7 | 14 | 28 | 30; label: string }[] = [
+  { days: 3,  label: '3 days' },
+  { days: 7,  label: '7 days' },
+  { days: 14, label: '14 days' },
+  { days: 30, label: '30 days' },
+  { days: 28, label: 'All services – 28 days' },
+];
 
 function VirtualNumberForm({
   service, serviceSearch, setServiceSearch, filteredServices,
-  providerSvc, setProviderSvc, country, setCountry, onPurchase, isPending,
+  providerSvc, setProviderSvc, country, setCountry,
+  pvaMode, setPvaMode, ltrDuration, setLtrDuration,
+  onPurchase, isPending,
 }: {
   service: Service;
   serviceSearch: string;
@@ -667,6 +702,10 @@ function VirtualNumberForm({
   setProviderSvc: (v: string) => void;
   country: string;
   setCountry: (v: string) => void;
+  pvaMode: 'str' | 'ltr';
+  setPvaMode: (v: 'str' | 'ltr') => void;
+  ltrDuration: 3 | 7 | 14 | 28 | 30;
+  setLtrDuration: (v: 3 | 7 | 14 | 28 | 30) => void;
   onPurchase: () => void;
   isPending: boolean;
 }) {
@@ -709,13 +748,58 @@ function VirtualNumberForm({
     setCountry('US');
   }
 
+  const isLtr        = isPvaDeals && pvaMode === 'ltr';
+  const isAllSvc     = isLtr && ltrDuration === 28;
+  const ltrPrice     = isLtr && !isAllSvc ? (selectedPvaItem?.ltr_prices?.[ltrDuration] ?? null) : (isAllSvc ? 12.99 * 1.15 : null);
+
   return (
     <>
       <h3 className="font-semibold flex items-center gap-2 mb-5 dark:text-white">
         <Phone className="h-4 w-4 text-brand-600" /> {service.name}
       </h3>
 
-      {/* App selector */}
+      {/* PVADeals STR / LTR tab */}
+      {isPvaDeals && (
+        <div className="mb-5">
+          <label className="label">Select duration</label>
+          <div className="mt-2 space-y-3">
+            <div>
+              <p className="text-xs text-ink-500 dark:text-ink-400 mb-1.5 font-medium uppercase tracking-wide">Short-term rental (STR)</p>
+              <button
+                onClick={() => setPvaMode('str')}
+                className={clsx(
+                  'px-4 py-2 rounded-full text-sm font-medium border transition',
+                  pvaMode === 'str'
+                    ? 'bg-ink-900 text-white border-ink-900 dark:bg-white dark:text-ink-900'
+                    : 'border-ink-200 text-ink-600 hover:border-ink-400 dark:border-ink-700 dark:text-ink-300',
+                )}>
+                20 minutes
+              </button>
+            </div>
+            <div>
+              <p className="text-xs text-ink-500 dark:text-ink-400 mb-1.5 font-medium uppercase tracking-wide">Long-term rental (LTR)</p>
+              <div className="flex flex-wrap gap-2">
+                {LTR_DURATIONS.map((d) => (
+                  <button
+                    key={d.days}
+                    onClick={() => { setPvaMode('ltr'); setLtrDuration(d.days); }}
+                    className={clsx(
+                      'px-4 py-2 rounded-full text-sm font-medium border transition',
+                      pvaMode === 'ltr' && ltrDuration === d.days
+                        ? 'bg-ink-900 text-white border-ink-900 dark:bg-white dark:text-ink-900'
+                        : 'border-ink-200 text-ink-600 hover:border-ink-400 dark:border-ink-700 dark:text-ink-300',
+                    )}>
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* App selector — hidden for All-Services LTR */}
+      {!isAllSvc && (
       <div>
         <label className="label">Service / App</label>
         <div className="relative">
@@ -766,7 +850,11 @@ function VirtualNumberForm({
                     )}
                     {s.name}
                   </span>
-                  <span className="text-xs text-ink-400 dark:text-ink-500">${s.price_usd.toFixed(2)}</span>
+                  <span className="text-xs text-ink-400 dark:text-ink-500">
+                    {isLtr
+                      ? (s.ltr_prices?.[ltrDuration] != null ? `$${s.ltr_prices[ltrDuration].toFixed(2)}` : '–')
+                      : `$${s.price_usd.toFixed(2)}`}
+                  </span>
                 </button>
               ))
             )
@@ -828,11 +916,38 @@ function VirtualNumberForm({
           )}
         </div>
       </div>
+      )} {/* end !isAllSvc */}
+
+      {/* All-Services banner */}
+      {isAllSvc && (
+        <div className="mt-2 p-4 rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-950/30 text-sm text-brand-700 dark:text-brand-300">
+          <div className="font-semibold mb-1">All Services — 28 days</div>
+          <p className="text-xs text-brand-600 dark:text-brand-400">One number that works across any platform for 28 days. Unlimited verifications.</p>
+          <div className="mt-2 flex items-center gap-2 text-xs text-brand-600 dark:text-brand-400">
+            <span>🇺🇸 United States</span>
+            <span className="ml-auto font-bold text-base text-brand-700 dark:text-brand-200">${(12.99 * 1.15).toFixed(2)}</span>
+          </div>
+        </div>
+      )}
 
       {/* Country price chart */}
       <div className="mt-4">
         <label className="label">{isPvaDeals ? 'Country' : 'Select country'}</label>
         {isPvaDeals ? (
+          isAllSvc ? null :
+          isLtr ? (
+            selectedPvaItem && ltrPrice != null ? (
+              <div className="mt-2 flex items-center gap-3 p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-sm">
+                <span className="text-base">🇺🇸</span>
+                <span className="font-medium">United States · {ltrDuration} days</span>
+                <span className="ml-auto font-semibold">${(ltrPrice as number).toFixed(2)}</span>
+              </div>
+            ) : (
+              <div className="mt-2 text-sm text-ink-500 dark:text-ink-400 p-3 rounded-lg bg-ink-50 dark:bg-ink-800">
+                Select a service above to see price.
+              </div>
+            )
+          ) :
           selectedPvaItem ? (
             <div className="mt-2 flex items-center gap-3 p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-sm">
               <span className="text-base">🇺🇸</span>
@@ -918,7 +1033,7 @@ function VirtualNumberForm({
 
       <button
         onClick={onPurchase}
-        disabled={isPending || !country}
+        disabled={isPending || (!isPvaDeals && !country) || (isAllSvc ? false : isPvaDeals && !selectedPvaItem) || (isLtr && !isAllSvc && ltrPrice == null)}
         className="btn-brand mt-5"
       >
         {isPending ? (
@@ -926,11 +1041,15 @@ function VirtualNumberForm({
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-950/30 border-t-ink-950" />
             Getting your number…
           </span>
-        ) : isPvaDeals
-          ? (selectedPvaItem ? `Buy US number — $${selectedPvaItem.price_usd.toFixed(2)}` : 'Select a service above')
-          : country && selectedRow
-            ? `Buy number in ${selectedRow.country_label}`
-            : 'Select a country above'}
+        ) : isAllSvc
+          ? `Buy All-Services number — $${(12.99 * 1.15).toFixed(2)}`
+          : isLtr
+            ? (selectedPvaItem && ltrPrice != null ? `Buy US number · ${ltrDuration} days — $${(ltrPrice as number).toFixed(2)}` : 'Select a service above')
+            : isPvaDeals
+              ? (selectedPvaItem ? `Buy US number — $${selectedPvaItem.price_usd.toFixed(2)}` : 'Select a service above')
+              : country && selectedRow
+                ? `Buy number in ${selectedRow.country_label}`
+                : 'Select a country above'}
       </button>
     </>
   );
@@ -1909,12 +2028,29 @@ function SmmOrderStatus({ order }: { order: ServiceOrder }) {
 
 function OrderRow({ order }: { order: ServiceOrder }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [copied, setCopied] = useState(false);
   const delivery        = order.delivery as Record<string, unknown> | null;
   const phoneNumber     = delivery?.phone_number as string | null;
   const smsCode         = delivery?.sms_code as string | null;
   const isEsim          = delivery?.type === 'esim';
   const isSmm           = delivery?.type === 'smm';
+  const isPva           = order.service?.provider === 'pvadeals';
+  const isLtrOrder      = delivery?.number_type === 'LTR';
+  const allowReuse      = isPva && !!(delivery?.allow_reuse);
+  const autoRenew       = !!(delivery?.auto_renew_enable);
+
+  const reuseMut = useMutation({
+    mutationFn: () => apiCall({ url: `/orders/${order.id}/reuse`, method: 'POST' }),
+    onSuccess: () => { toast.success('Number reused — waiting for new SMS.'); qc.invalidateQueries({ queryKey: ['orders'] }); },
+    onError: (e) => toast.error((e as Error).message ?? 'Could not reuse number.'),
+  });
+
+  const autoRenewMut = useMutation({
+    mutationFn: () => apiCall<{ auto_renew_enable: boolean }>({ url: `/orders/${order.id}/toggle-auto-renew`, method: 'POST' }),
+    onSuccess: (d) => { toast.success(d.auto_renew_enable ? 'Auto-renew enabled.' : 'Auto-renew disabled.'); qc.invalidateQueries({ queryKey: ['orders'] }); },
+    onError: (e) => toast.error((e as Error).message ?? 'Could not toggle auto-renew.'),
+  });
   const esimCode        = delivery?.activation_code as string | null;
   const esimQrUrl       = delivery?.qrcode_url as string | null;
   const esimInstUrl     = delivery?.instructions_url as string | null;
@@ -1958,6 +2094,51 @@ function OrderRow({ order }: { order: ServiceOrder }) {
             className="mt-2 text-xs text-ink-500 dark:text-ink-400 hover:text-brand-600 flex items-center gap-1">
             <Clock className="h-3 w-3" /> Tap to check for SMS code →
           </button>
+        )}
+
+        {/* LTR: expiry + reuse + auto-renew */}
+        {isPva && (
+          <div className="mt-2 space-y-1.5">
+            {typeof delivery?.expires_at === 'string' && (
+              <div className="text-xs text-ink-500 dark:text-ink-400 flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Expires: {formatDate(delivery.expires_at)}
+                {isLtrOrder && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-700 text-ink-600 dark:text-ink-300">
+                    {delivery.duration as number}d LTR
+                  </span>
+                )}
+              </div>
+            )}
+            {allowReuse && (
+              <button
+                onClick={() => reuseMut.mutate()}
+                disabled={reuseMut.isPending}
+                className="flex items-center gap-1.5 text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                <RefreshCw className={clsx('h-3.5 w-3.5', reuseMut.isPending && 'animate-spin')} />
+                {reuseMut.isPending ? 'Reusing…' : 'Reuse number'}
+              </button>
+            )}
+            {isLtrOrder && (
+              <button
+                onClick={() => autoRenewMut.mutate()}
+                disabled={autoRenewMut.isPending}
+                className="flex items-center gap-1.5 text-xs font-medium text-ink-600 dark:text-ink-400 hover:text-ink-800 dark:hover:text-ink-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                <span className={clsx(
+                  'inline-flex w-7 h-4 rounded-full transition-colors shrink-0',
+                  autoRenew ? 'bg-brand-500' : 'bg-ink-300 dark:bg-ink-600',
+                )}>
+                  <span className={clsx(
+                    'inline-block w-3 h-3 m-0.5 rounded-full bg-white transition-transform',
+                    autoRenew ? 'translate-x-3' : 'translate-x-0',
+                  )} />
+                </span>
+                Auto-renew {autoRenew ? 'on' : 'off'}
+              </button>
+            )}
+          </div>
         )}
 
         {/* eSIM delivery */}

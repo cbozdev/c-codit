@@ -115,6 +115,25 @@ class WebhookController extends Controller
             'has_message' => ! empty($message),
         ]);
 
+        // LTR auto-renew: update provider_order_id to new request ID
+        if ($event === 'number_renewed') {
+            $oldId      = (string) ($request->input('oldRequestId') ?? '');
+            $newId      = (string) ($requestId ?? '');
+            $expiresAt  = $request->input('newExpiresAt');
+            if ($oldId && $newId) {
+                $order = ServiceOrder::where('provider_order_id', $oldId)->first();
+                if ($order) {
+                    $delivery = array_merge((array) $order->delivery, [
+                        'expires_at'        => $expiresAt ?? ($order->delivery['expires_at'] ?? null),
+                        'auto_renew_enable' => true,
+                    ]);
+                    $order->update(['provider_order_id' => $newId, 'delivery' => $delivery]);
+                    Log::channel('webhooks')->info('pvadeals.number_renewed', ['old' => $oldId, 'new' => $newId]);
+                }
+            }
+            return response()->json(['status' => 'ok'], 200);
+        }
+
         if ($event !== 'sms_received' || ! $requestId) {
             return response()->json(['status' => 'ok'], 200);
         }

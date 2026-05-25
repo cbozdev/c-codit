@@ -163,6 +163,85 @@ class ServicePurchaseService
         return $order->fresh();
     }
 
+    // ─── PVADeals LTR ────────────────────────────────────────────────────────
+
+    public function purchaseLtrVirtualNumber(
+        User $user,
+        Service $service,
+        array $request,
+        string $idempotencyKey,
+    ): ServiceOrder {
+        $serviceSlug = (string) $request['service'];
+        $duration    = (int) $request['duration'];
+
+        $price = $this->pvaDeals->getLtrPrice($serviceSlug, $duration);
+        if (! $price) {
+            throw new ServiceUnavailableException('No LTR numbers available for this service/duration.');
+        }
+
+        $finalAmount = $this->applyMarkup($price, $service);
+        $wallet      = $this->wallets->getOrCreate($user);
+
+        [$order, $holdTx] = DB::transaction(function () use (
+            $user, $service, $request, $idempotencyKey, $wallet, $finalAmount, $price
+        ) {
+            $order = ServiceOrder::create([
+                'user_id'         => $user->id,
+                'service_id'      => $service->id,
+                'status'          => 'pending',
+                'amount_minor'    => $finalAmount->amountMinor,
+                'cost_minor'      => $price->amountMinor,
+                'currency'        => $finalAmount->currency,
+                'request'         => $request,
+                'idempotency_key' => $idempotencyKey,
+            ]);
+
+            $holdTx = $this->wallets->holdForPurchase(
+                wallet: $wallet,
+                amount: $finalAmount,
+                idempotencyKey: 'svcorder:'.$order->public_id,
+                reference: $order,
+                description: "LTR: {$service->name}",
+            );
+
+            $order->update(['transaction_id' => $holdTx->id, 'status' => 'provisioning']);
+            return [$order, $holdTx];
+        });
+
+        try {
+            $result = $this->pvaDeals->purchaseLtr($serviceSlug, $duration);
+        } catch (\Throwable $e) {
+            $this->refundOrder($order, $holdTx, $e->getMessage());
+            throw $e;
+        }
+
+        DB::transaction(function () use ($order, $holdTx, $result, $serviceSlug, $duration) {
+            $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
+            $order->update([
+                'status'            => 'completed',
+                'provider_order_id' => $result['provider_order_id'],
+                'provider_response' => $result['raw'] ?? null,
+                'delivery'          => [
+                    'phone_number'      => $result['phone_number'],
+                    'expires_at'        => $result['expires_at'],
+                    'number_type'       => 'LTR',
+                    'duration'          => $duration,
+                    'service_name'      => ucfirst($serviceSlug),
+                    'country'           => 'United States',
+                    'auto_renew_enable' => $result['auto_renew_enable'] ?? false,
+                    'allow_flag'        => $result['allow_flag'] ?? true,
+                    'allow_reuse'       => $result['allow_reuse'] ?? false,
+                ],
+                'provisioned_at' => now(),
+            ]);
+        });
+
+        UserNotify::send($user, 'order_completed', 'LTR number ready', 'Your long-term rental number is ready.', ['order_id' => $order->public_id]);
+        $this->maybeRewardReferrer($user);
+        Audit::log('service.purchased', $order, ['amount_minor' => $finalAmount->amountMinor]);
+        return $order->fresh();
+    }
+
     // ─── TextVerified Rental ─────────────────────────────────────────────────
 
     private function purchaseTextVerifiedRental(
