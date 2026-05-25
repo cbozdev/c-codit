@@ -1926,6 +1926,7 @@ const SERVICE_GROUPS = [
   { id: 'smsactivate', label: 'SMS Activate', icon: '💬', color: 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800' },
   { id: 'smsman',      label: 'SMS Man',      icon: '📨', color: 'bg-cyan-50 border-cyan-200 dark:bg-cyan-900/20 dark:border-cyan-800' },
   { id: 'smspool',     label: 'SMSPool',      icon: '🌊', color: 'bg-teal-50 border-teal-200 dark:bg-teal-900/20 dark:border-teal-800' },
+  { id: 'pvadeals',   label: 'PVADeals',     icon: '🏷️', color: 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' },
   { id: 'flutterwave', label: 'Flutterwave',  icon: '💳', color: 'bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800' },
   { id: 'nowpayments', label: 'NOWPayments',  icon: '₿',  color: 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800' },
   { id: 'reloadly',    label: 'Reloadly',     icon: '🎁', color: 'bg-pink-50 border-pink-200 dark:bg-pink-900/20 dark:border-pink-800' },

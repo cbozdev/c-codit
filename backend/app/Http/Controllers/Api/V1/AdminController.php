@@ -570,6 +570,7 @@ class AdminController extends Controller
         ['group' => 'smsactivate',  'key' => 'api_key',          'label' => 'SMS Activate API Key',            'is_secret' => true],
         ['group' => 'smsman',       'key' => 'api_key',          'label' => 'SMS Man API Key',                 'is_secret' => true],
         ['group' => 'smspool',      'key' => 'api_key',          'label' => 'SMSPool API Key',                 'is_secret' => true],
+        ['group' => 'pvadeals',     'key' => 'api_key',          'label' => 'PVADeals API Key',                'is_secret' => true],
         ['group' => 'flutterwave',  'key' => 'public_key',       'label' => 'Flutterwave Public Key',          'is_secret' => false],
         ['group' => 'flutterwave',  'key' => 'secret_key',       'label' => 'Flutterwave Secret Key',          'is_secret' => true],
         ['group' => 'flutterwave',  'key' => 'encryption_key',   'label' => 'Flutterwave Encryption Key',      'is_secret' => true],
