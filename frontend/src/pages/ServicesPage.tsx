@@ -70,19 +70,36 @@ const SERVICE_LOGO: Record<string, string> = {
   openai:      'openai.com',
 };
 
-function ServiceLogo({ slug, size = 20 }: { slug: string; size?: number }) {
+function ServiceLogo({ slug, size = 20, tryDomain = false }: { slug: string; size?: number; tryDomain?: boolean }) {
   const domain = SERVICE_LOGO[slug];
-  if (!domain) return null;
-  return (
-    <img
-      src={`https://logo.clearbit.com/${domain}`}
-      alt={slug}
-      width={size}
-      height={size}
-      className="rounded-sm object-contain flex-shrink-0"
-      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-    />
-  );
+  if (domain) {
+    return (
+      <img
+        src={`https://logo.clearbit.com/${domain}`}
+        alt={slug}
+        width={size}
+        height={size}
+        className="rounded-sm object-contain flex-shrink-0"
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+      />
+    );
+  }
+  if (tryDomain) {
+    // Strip parenthetical suffixes like "(usa)", collapse whitespace, keep alphanumeric only
+    const clean = slug.replace(/\(.*?\)/g, '').trim().replace(/\s+/g, '').replace(/[^a-z0-9]/gi, '');
+    if (!clean) return null;
+    return (
+      <img
+        src={`https://logo.clearbit.com/${clean}.com`}
+        alt={slug}
+        width={size}
+        height={size}
+        className="rounded-sm object-contain flex-shrink-0"
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+      />
+    );
+  }
+  return null;
 }
 
 // ─── Provider service list (for virtual numbers) ──────────────────────────────
@@ -636,7 +653,7 @@ export default function ServicesPage() {
 
 // ─── Virtual Number Form ──────────────────────────────────────────────────────
 
-type PvaCatalogItem = { slug: string; name: string; price_usd: number };
+type PvaCatalogItem = { slug: string; name: string; price_usd: number; image_url?: string };
 
 function VirtualNumberForm({
   service, serviceSearch, setServiceSearch, filteredServices,
@@ -735,7 +752,18 @@ function VirtualNumberForm({
                   )}
                 >
                   <span className="flex items-center gap-2.5">
-                    <ServiceLogo slug={s.slug} size={18} />
+                    {s.image_url ? (
+                      <img
+                        src={s.image_url}
+                        alt={s.name}
+                        width={18}
+                        height={18}
+                        className="rounded-sm object-contain flex-shrink-0"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    ) : (
+                      <ServiceLogo slug={s.slug} size={18} tryDomain />
+                    )}
                     {s.name}
                   </span>
                   <span className="text-xs text-ink-400 dark:text-ink-500">${s.price_usd.toFixed(2)}</span>

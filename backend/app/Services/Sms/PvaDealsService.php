@@ -60,9 +60,10 @@ class PvaDealsService implements SmsNumberProvider
                 $name = strtolower(trim((string) ($svc['name'] ?? '')));
                 if ($name && isset($svc['_id'])) {
                     $index[$name] = [
-                        'id'    => (string) $svc['_id'],
-                        'name'  => (string) $svc['name'],
-                        'price' => (float) ($svc['STRprice'] ?? 0),
+                        'id'        => (string) $svc['_id'],
+                        'name'      => (string) $svc['name'],
+                        'price'     => (float) ($svc['STRprice'] ?? 0),
+                        'image_url' => (string) ($svc['image'] ?? $svc['logo'] ?? $svc['icon'] ?? $svc['img'] ?? $svc['imageUrl'] ?? ''),
                     ];
                 }
             }
@@ -95,6 +96,7 @@ class PvaDealsService implements SmsNumberProvider
                 'slug'      => $slug,
                 'name'      => $info['name'],
                 'price_usd' => round($info['price'] * (1 + $markup / 100), 4),
+                'image_url' => $info['image_url'] ?? '',
             ];
         }
         usort($items, fn($a, $b) => strcmp($a['name'], $b['name']));
