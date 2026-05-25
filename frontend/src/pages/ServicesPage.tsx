@@ -636,6 +636,8 @@ export default function ServicesPage() {
 
 // ─── Virtual Number Form ──────────────────────────────────────────────────────
 
+type PvaCatalogItem = { slug: string; name: string; price_usd: number };
+
 function VirtualNumberForm({
   service, serviceSearch, setServiceSearch, filteredServices,
   providerSvc, setProviderSvc, country, setCountry, onPurchase, isPending,
@@ -651,6 +653,22 @@ function VirtualNumberForm({
   onPurchase: () => void;
   isPending: boolean;
 }) {
+  const isPvaDeals = service.provider === 'pvadeals';
+
+  const pvaQuery = useQuery({
+    queryKey: ['pvadeals-catalog'],
+    queryFn: () => apiCall<{ services: PvaCatalogItem[] }>({ url: '/services/pvadeals-catalog' }),
+    staleTime: 5 * 60 * 1000,
+    enabled: isPvaDeals,
+  });
+
+  const pvaCatalog: PvaCatalogItem[] = pvaQuery.data?.services ?? [];
+  const filteredPva = serviceSearch
+    ? pvaCatalog.filter((s) => s.name.toLowerCase().includes(serviceSearch.toLowerCase()))
+    : pvaCatalog;
+
+  const selectedPvaItem = pvaCatalog.find((s) => s.slug === providerSvc);
+
   const priceQuery = useQuery({
     queryKey: ['virtual-number-prices', service.provider, providerSvc],
     queryFn: () => apiCall<{ items: VNumberPriceRow[] }>({
@@ -658,7 +676,7 @@ function VirtualNumberForm({
       params: { provider: service.provider, service: providerSvc },
     }),
     staleTime: 5 * 60 * 1000,
-    enabled: providerSvc !== 'any',
+    enabled: !isPvaDeals && providerSvc !== 'any',
   });
 
   const rows = priceQuery.data?.items ?? [];
@@ -667,6 +685,11 @@ function VirtualNumberForm({
   function handleAppChange(value: string) {
     setProviderSvc(value);
     setCountry('');
+  }
+
+  function handlePvaSelect(slug: string) {
+    setProviderSvc(slug);
+    setCountry('US');
   }
 
   return (
@@ -688,7 +711,38 @@ function VirtualNumberForm({
           />
         </div>
         <div className="rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden max-h-52 overflow-y-auto bg-white dark:bg-ink-900">
-          {filteredServices ? (
+          {isPvaDeals ? (
+            pvaQuery.isLoading ? (
+              <div className="flex items-center justify-center py-8 text-sm text-ink-500">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-300 border-t-brand-500 mr-2" />
+                Loading services…
+              </div>
+            ) : filteredPva.length === 0 ? (
+              <div className="py-6 text-center text-sm text-ink-500 dark:text-ink-400">
+                {serviceSearch ? `No services match "${serviceSearch}"` : 'No services available. Check API key in Admin → API Keys.'}
+              </div>
+            ) : (
+              filteredPva.map((s) => (
+                <button
+                  key={s.slug}
+                  type="button"
+                  onClick={() => handlePvaSelect(s.slug)}
+                  className={clsx(
+                    'w-full flex items-center justify-between px-3 py-2 text-sm text-left transition',
+                    providerSvc === s.slug
+                      ? 'bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 font-medium'
+                      : 'hover:bg-ink-50 dark:hover:bg-ink-800 text-ink-800 dark:text-ink-200',
+                  )}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <ServiceLogo slug={s.slug} size={18} />
+                    {s.name}
+                  </span>
+                  <span className="text-xs text-ink-400 dark:text-ink-500">${s.price_usd.toFixed(2)}</span>
+                </button>
+              ))
+            )
+          ) : filteredServices ? (
             filteredServices.map((s) => {
               const unavailable = PROVIDER_UNAVAILABLE[service.provider]?.includes(s.value);
               return (
@@ -749,8 +803,20 @@ function VirtualNumberForm({
 
       {/* Country price chart */}
       <div className="mt-4">
-        <label className="label">Select country</label>
-        {providerSvc === 'any' ? (
+        <label className="label">{isPvaDeals ? 'Country' : 'Select country'}</label>
+        {isPvaDeals ? (
+          selectedPvaItem ? (
+            <div className="mt-2 flex items-center gap-3 p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-sm">
+              <span className="text-base">🇺🇸</span>
+              <span className="font-medium">United States</span>
+              <span className="ml-auto font-semibold">${selectedPvaItem.price_usd.toFixed(2)}</span>
+            </div>
+          ) : (
+            <div className="mt-2 text-sm text-ink-500 dark:text-ink-400 p-3 rounded-lg bg-ink-50 dark:bg-ink-800">
+              Select a service above to continue.
+            </div>
+          )
+        ) : providerSvc === 'any' ? (
           <p className="text-sm text-amber-600 dark:text-amber-400 mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900">
             "Any / Other" is not supported. Please select a specific app above.
           </p>
@@ -808,15 +874,15 @@ function VirtualNumberForm({
         )}
       </div>
 
-      {/* Selection summary */}
-      {selectedRow ? (
+      {/* Selection summary — only for non-pvadeals */}
+      {!isPvaDeals && selectedRow ? (
         <div className="mt-3 flex items-center gap-2 text-sm p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span>
             Selected: <strong>{selectedRow.flag} {selectedRow.country_label}</strong> — ${selectedRow.price_usd.toFixed(4)} per number
           </span>
         </div>
-      ) : rows.length > 0 ? (
+      ) : !isPvaDeals && rows.length > 0 ? (
         <div className="mt-3 text-sm text-ink-500 dark:text-ink-400 p-3 rounded-lg bg-ink-50 dark:bg-ink-800">
           Click a row above to select your country.
         </div>
@@ -832,9 +898,11 @@ function VirtualNumberForm({
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-950/30 border-t-ink-950" />
             Getting your number…
           </span>
-        ) : country && selectedRow
-          ? `Buy number in ${selectedRow.country_label}`
-          : 'Select a country above'}
+        ) : isPvaDeals
+          ? (selectedPvaItem ? `Buy US number — $${selectedPvaItem.price_usd.toFixed(2)}` : 'Select a service above')
+          : country && selectedRow
+            ? `Buy number in ${selectedRow.country_label}`
+            : 'Select a country above'}
       </button>
     </>
   );

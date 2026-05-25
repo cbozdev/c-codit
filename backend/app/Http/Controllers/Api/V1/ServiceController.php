@@ -274,10 +274,22 @@ class ServiceController extends Controller
      * List available countries + prices for a virtual number provider/service.
      * GET /services/virtual-number-prices?provider=5sim|smsactivate&service=telegram
      */
+    public function pvaDealsCatalog()
+    {
+        try {
+            $pva     = app(\App\Services\Sms\PvaDealsService::class);
+            $catalog = $pva->getPublicCatalog();
+            return ApiResponse::ok(['services' => $catalog]);
+        } catch (\Throwable $e) {
+            \Log::warning('pvadeals.catalog.endpoint_error', ['error' => $e->getMessage()]);
+            return ApiResponse::ok(['services' => []]);
+        }
+    }
+
     public function virtualNumberPrices(Request $request)
     {
         $request->validate([
-            'provider' => ['required', 'in:5sim,smsactivate,smsman,smspool,textverified'],
+            'provider' => ['required', 'in:5sim,smsactivate,smsman,smspool,textverified,pvadeals'],
             'service'  => ['required', 'string', 'max:40'],
         ]);
 

@@ -79,6 +79,28 @@ class PvaDealsService implements SmsNumberProvider
         }
     }
 
+    /** Returns catalog as a flat array for the frontend: [{name, slug, price}] */
+    public function getPublicCatalog(): array
+    {
+        $catalog = $this->getCatalog();
+        if (empty($catalog)) return [];
+
+        $svc = \App\Models\Service::where('provider', 'pvadeals')->where('category', 'virtual_number')->first();
+        $markup = $svc ? ((float) ($svc->markup_percent ?? 15)) : 15;
+
+        $items = [];
+        foreach ($catalog as $slug => $info) {
+            if ($info['price'] <= 0) continue;
+            $items[] = [
+                'slug'      => $slug,
+                'name'      => $info['name'],
+                'price_usd' => round($info['price'] * (1 + $markup / 100), 4),
+            ];
+        }
+        usort($items, fn($a, $b) => strcmp($a['name'], $b['name']));
+        return $items;
+    }
+
     private function findService(string $service): ?array
     {
         $catalog = $this->getCatalog();
