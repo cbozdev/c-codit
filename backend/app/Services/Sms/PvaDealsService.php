@@ -42,34 +42,41 @@ class PvaDealsService implements SmsNumberProvider
      */
     private function getCatalog(): array
     {
-        return Cache::remember('pvadeals.catalog', 600, function () {
-            try {
-                $res = $this->client()->get('/services/all');
-                if (! $res->successful()) {
-                    Log::warning('pvadeals.catalog.failed', ['status' => $res->status()]);
-                    return [];
-                }
+        $cached = Cache::get('pvadeals.catalog');
+        if (is_array($cached) && count($cached) > 0) {
+            return $cached;
+        }
 
-                $services = $res->json('data.services') ?? [];
-                $index = [];
-                foreach ($services as $svc) {
-                    $name = strtolower(trim((string) ($svc['name'] ?? '')));
-                    if ($name && isset($svc['_id'])) {
-                        $index[$name] = [
-                            'id'    => (string) $svc['_id'],
-                            'name'  => (string) $svc['name'],
-                            'price' => (float) ($svc['STRprice'] ?? 0),
-                        ];
-                    }
-                }
-
-                Log::info('pvadeals.catalog.loaded', ['count' => count($index)]);
-                return $index;
-            } catch (\Throwable $e) {
-                Log::warning('pvadeals.catalog.exception', ['error' => $e->getMessage()]);
+        try {
+            $res = $this->client()->get('/services/all');
+            if (! $res->successful()) {
+                Log::warning('pvadeals.catalog.failed', ['status' => $res->status(), 'body' => substr($res->body(), 0, 200)]);
                 return [];
             }
-        });
+
+            $services = $res->json('data.services') ?? [];
+            $index = [];
+            foreach ($services as $svc) {
+                $name = strtolower(trim((string) ($svc['name'] ?? '')));
+                if ($name && isset($svc['_id'])) {
+                    $index[$name] = [
+                        'id'    => (string) $svc['_id'],
+                        'name'  => (string) $svc['name'],
+                        'price' => (float) ($svc['STRprice'] ?? 0),
+                    ];
+                }
+            }
+
+            if (count($index) > 0) {
+                Cache::put('pvadeals.catalog', $index, 600);
+                Log::info('pvadeals.catalog.loaded', ['count' => count($index)]);
+            }
+
+            return $index;
+        } catch (\Throwable $e) {
+            Log::warning('pvadeals.catalog.exception', ['error' => $e->getMessage()]);
+            return [];
+        }
     }
 
     private function findService(string $service): ?array
