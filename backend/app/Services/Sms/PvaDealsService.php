@@ -55,6 +55,9 @@ class PvaDealsService implements SmsNumberProvider
             }
 
             $services = $res->json('data.services') ?? [];
+            if (!empty($services[0])) {
+                Log::info('pvadeals.catalog.sample_keys', ['keys' => array_keys($services[0]), 'sample' => $services[0]]);
+            }
             $index = [];
             foreach ($services as $svc) {
                 $name = strtolower(trim((string) ($svc['name'] ?? '')));
