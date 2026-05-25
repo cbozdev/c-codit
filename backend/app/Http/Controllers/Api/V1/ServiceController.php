@@ -318,6 +318,9 @@ class ServiceController extends Controller
             } elseif ($provider === 'smspool') {
                 $raw     = app(\App\Services\Sms\SmsPoolService::class)->getCountryPrices($service);
                 $display = self::smsPoolDisplayMap();
+            } elseif ($provider === 'pvadeals') {
+                $raw     = app(\App\Services\Sms\PvaDealsService::class)->getCountryPrices($service);
+                $display = ['US' => ['label' => 'United States', 'flag' => '🇺🇸']];
             } else {
                 $raw     = app(\App\Services\Sms\SmsActivateService::class)->getCountryPrices($service);
                 $display = self::smsActivateDisplayMap();
