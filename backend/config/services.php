@@ -93,7 +93,7 @@ return [
         'username'         => env('DECODO_USERNAME'),
         'password'         => env('DECODO_PASSWORD'),
         'enabled'          => (bool) env('DECODO_ENABLED', true),
-        'unsupported_types'=> [],
+        'unsupported_types'=> ['isp', 'datacenter', 'mobile'],
     ],
 
     'brightdata' => [

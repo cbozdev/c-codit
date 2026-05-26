@@ -2220,14 +2220,14 @@ function OrderRow({ order }: { order: ServiceOrder }) {
 // ─── Proxy Purchase Form ──────────────────────────────────────────────────────
 
 const PROXY_TYPES = [
-  { value: 'residential_rotating',  label: 'Residential Rotating',  bandwidth: true },
-  { value: 'residential_sticky',    label: 'Residential Sticky',    bandwidth: true },
-  { value: 'residential_static',    label: 'Residential Static',    bandwidth: true },
-  { value: 'datacenter_shared',     label: 'Datacenter Shared',     bandwidth: false },
-  { value: 'datacenter_dedicated',  label: 'Datacenter Dedicated',  bandwidth: false },
-  { value: 'isp_static',            label: 'ISP Static',            bandwidth: false },
-  { value: 'isp_rotating',          label: 'ISP Rotating',          bandwidth: false },
-  { value: 'mobile_rotating',       label: 'Mobile Rotating',       bandwidth: true },
+  { value: 'residential_rotating',  label: 'Residential Rotating',  bandwidth: true,  available: true },
+  { value: 'residential_sticky',    label: 'Residential Sticky',    bandwidth: true,  available: true },
+  { value: 'residential_static',    label: 'Residential Static',    bandwidth: true,  available: true },
+  { value: 'datacenter_shared',     label: 'Datacenter Shared',     bandwidth: false, available: false },
+  { value: 'datacenter_dedicated',  label: 'Datacenter Dedicated',  bandwidth: false, available: false },
+  { value: 'isp_static',            label: 'ISP Static',            bandwidth: false, available: false },
+  { value: 'isp_rotating',          label: 'ISP Rotating',          bandwidth: false, available: false },
+  { value: 'mobile_rotating',       label: 'Mobile Rotating',       bandwidth: true,  available: false },
 ];
 
 const PROXY_COUNTRIES = [
@@ -2288,9 +2288,11 @@ function ProxyPurchaseForm({
         {/* Proxy Type */}
         <div>
           <label className="label">Proxy Type</label>
-          <select className="input" value={proxyType} onChange={(e) => setProxyType(e.target.value)}>
+          <select className="input" value={proxyType} onChange={(e) => { if (PROXY_TYPES.find(t => t.value === e.target.value)?.available !== false) setProxyType(e.target.value); }}>
             {PROXY_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
+              <option key={t.value} value={t.value} disabled={!t.available}>
+                {t.label}{!t.available ? ' (Coming Soon)' : ''}
+              </option>
             ))}
           </select>
         </div>
