@@ -667,6 +667,7 @@ class AdminController extends Controller
         ['group' => 'reloadly',     'key' => 'client_secret',    'label' => 'Reloadly Client Secret',          'is_secret' => true],
         ['group' => 'decodo',        'key' => 'username',         'label' => 'Decodo Username',                 'is_secret' => false],
         ['group' => 'decodo',        'key' => 'password',         'label' => 'Decodo Password',                 'is_secret' => true],
+        ['group' => 'decodo',        'key' => 'api_key',          'label' => 'Decodo API Key',                  'is_secret' => true],
         ['group' => 'textverified',  'key' => 'api_key',          'label' => 'TextVerified API Key',            'is_secret' => true],
         ['group' => 'textverified',  'key' => 'webhook_secret',   'label' => 'TextVerified Webhook Secret',     'is_secret' => true],
         ['group' => 'textverified',  'key' => 'proxy_url',        'label' => 'TextVerified Proxy URL (CF Worker)', 'is_secret' => false],
