@@ -8,8 +8,9 @@ import { StatusBadge } from '@/components/StatusBadge';
 import {
   ArrowDownToLine, ArrowUpRight, Wallet as WalletIcon,
   Smartphone, Gift, Zap, TrendingUp, ShoppingBag,
-  RefreshCw, Globe,
+  RefreshCw, Globe, MapPin,
 } from 'lucide-react';
+import { startTour } from '@/lib/tour';
 
 const TX_ICON: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; bg: string }> = {
   wallet_funding:   { icon: ArrowDownToLine, color: 'text-brand-600',   bg: 'bg-brand-50 dark:bg-brand-900/30' },
@@ -70,15 +71,23 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-900 dark:text-white">
-          Welcome back, <span className="text-brand-600">{user?.name?.split(' ')[0] ?? 'there'}</span>.
-        </h1>
-        <p className="text-sm text-ink-500 dark:text-ink-400 mt-1">Here's what's happening with your account.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-900 dark:text-white">
+            Welcome back, <span className="text-brand-600">{user?.name?.split(' ')[0] ?? 'there'}</span>.
+          </h1>
+          <p className="text-sm text-ink-500 dark:text-ink-400 mt-1">Here's what's happening with your account.</p>
+        </div>
+        <button
+          onClick={startTour}
+          className="shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl border border-ink-200 dark:border-ink-700 text-sm font-medium text-ink-600 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-ink-800 transition"
+        >
+          <MapPin className="h-4 w-4" /> Take a tour
+        </button>
       </div>
 
       {/* Wallet card */}
-      <div className="relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-ink-950 via-ink-900 to-brand-950 text-white border border-ink-800 shadow-lg">
+      <div data-tour="wallet-card" className="relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-ink-950 via-ink-900 to-brand-950 text-white border border-ink-800 shadow-lg">
         {/* Decorative circle */}
         <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-brand-500/10 blur-2xl pointer-events-none" />
         <div className="absolute right-16 bottom-0 h-24 w-24 rounded-full bg-violet-500/10 blur-xl pointer-events-none" />
@@ -106,7 +115,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div>
+      <div data-tour="quick-actions">
         <h2 className="text-sm font-semibold text-ink-500 dark:text-ink-400 uppercase tracking-wide mb-3">Quick actions</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {QUICK_ACTIONS.map(({ to, icon: Icon, title, desc, iconColor, iconBg, border }) => (

@@ -11,13 +11,13 @@ import {
 import { clsx } from 'clsx';
 
 const NAV = [
-  { to: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
-  { to: '/wallet',       label: 'Wallet',       icon: Wallet },
-  { to: '/transactions', label: 'Transactions', icon: ListOrdered },
-  { to: '/services',     label: 'Services',     icon: Layers },
-  { to: '/ltr-numbers',  label: 'LTR Numbers',  icon: Phone },
-  { to: '/proxy',        label: 'Proxies',      icon: Globe },
-  { to: '/profile',      label: 'Profile',      icon: UserIcon },
+  { to: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, tourId: 'nav-dashboard' },
+  { to: '/wallet',       label: 'Wallet',       icon: Wallet,          tourId: 'nav-wallet' },
+  { to: '/transactions', label: 'Transactions', icon: ListOrdered,     tourId: 'nav-transactions' },
+  { to: '/services',     label: 'Services',     icon: Layers,          tourId: 'nav-services' },
+  { to: '/ltr-numbers',  label: 'LTR Numbers',  icon: Phone,           tourId: 'nav-ltr' },
+  { to: '/proxy',        label: 'Proxies',      icon: Globe,           tourId: 'nav-proxy' },
+  { to: '/profile',      label: 'Profile',      icon: UserIcon,        tourId: undefined },
 ];
 
 function Avatar({ name }: { name?: string }) {
@@ -34,12 +34,12 @@ function Avatar({ name }: { name?: string }) {
   );
 }
 
-function NavItem({ to, label, icon: Icon, onClick }: {
+function NavItem({ to, label, icon: Icon, onClick, tourId }: {
   to: string; label: string;
-  icon: React.ComponentType<{ className?: string }>; onClick?: () => void;
+  icon: React.ComponentType<{ className?: string }>; onClick?: () => void; tourId?: string;
 }) {
   return (
-    <NavLink to={to} onClick={onClick}
+    <NavLink to={to} onClick={onClick} data-tour={tourId}
       className={({ isActive }) => clsx(
         'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
         isActive
@@ -73,7 +73,7 @@ export default function AppShell() {
   const SidebarContent = ({ onNav }: { onNav?: () => void }) => (
     <>
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {NAV.map((item) => <NavItem key={item.to} {...item} onClick={onNav} />)}
+        {NAV.map((item) => <NavItem key={item.to} {...item} onClick={onNav} tourId={item.tourId} />)}
         {isAdmin && (
           <NavLink to="/admin" onClick={onNav}
             className={({ isActive }) => clsx(
