@@ -21,6 +21,7 @@ const AdminPage          = lazy(() => import('@/pages/AdminPage'));
 const LegalPage          = lazy(() => import('@/pages/LegalPage'));
 const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'));
 const MyProxiesPage      = lazy(() => import('@/pages/MyProxiesPage'));
+const LtrNumbersPage     = lazy(() => import('@/pages/LtrNumbersPage'));
 const TwoFactorPage      = lazy(() => import('@/pages/TwoFactorPage'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="/services"         element={<ServicesPage />} />
           <Route path="/orders/:id"       element={<OrderDetailPage />} />
           <Route path="/proxy"            element={<MyProxiesPage />} />
+          <Route path="/ltr-numbers"      element={<LtrNumbersPage />} />
           <Route path="/profile"          element={<ProfilePage />} />
           <Route path="/admin"
             element={<RequireRole role="admin"><AdminPage /></RequireRole>}

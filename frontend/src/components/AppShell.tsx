@@ -6,7 +6,7 @@ import { Logo } from './Logo';
 import NotificationBell from './NotificationBell';
 import {
   LayoutDashboard, Wallet, ListOrdered, Layers,
-  User as UserIcon, LogOut, Shield, Sun, Moon, Menu, X, Globe,
+  User as UserIcon, LogOut, Shield, Sun, Moon, Menu, X, Globe, Phone,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -15,6 +15,7 @@ const NAV = [
   { to: '/wallet',       label: 'Wallet',       icon: Wallet },
   { to: '/transactions', label: 'Transactions', icon: ListOrdered },
   { to: '/services',     label: 'Services',     icon: Layers },
+  { to: '/ltr-numbers',  label: 'LTR Numbers',  icon: Phone },
   { to: '/proxy',        label: 'Proxies',      icon: Globe },
   { to: '/profile',      label: 'Profile',      icon: UserIcon },
 ];
