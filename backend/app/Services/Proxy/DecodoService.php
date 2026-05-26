@@ -62,16 +62,22 @@ class DecodoService
         $subPassword = $this->generateSecurePassword();
         $sessionId   = Str::random(16);
 
-        $res = Http::withHeaders($this->apiHeaders())
-            ->post(self::API_BASE . '/v2/sub-users', [
-                'username'     => $subUsername,
-                'password'     => $subPassword,
-                'service_type' => 'residential_proxies',
-            ]);
+        try {
+            $res = Http::withHeaders($this->apiHeaders())
+                ->timeout(10)
+                ->post(self::API_BASE . '/v2/sub-users', [
+                    'username'     => $subUsername,
+                    'password'     => $subPassword,
+                    'service_type' => 'residential_proxies',
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('decodo.sub_user_create_exception', ['error' => $e->getMessage()]);
+            return $this->createViaGateway($proxyType, $country, $sessionType, $protocol, $duration, $options);
+        }
 
         if (! $res->successful()) {
-            Log::error('decodo.sub_user_create_failed', ['status' => $res->status(), 'body' => $res->body()]);
-            throw new RuntimeException('Decodo sub-user creation failed: ' . $res->body());
+            Log::warning('decodo.sub_user_create_failed', ['status' => $res->status(), 'body' => $res->body()]);
+            return $this->createViaGateway($proxyType, $country, $sessionType, $protocol, $duration, $options);
         }
 
         // Decodo returns the sub-user ID; fall back to username if not present
