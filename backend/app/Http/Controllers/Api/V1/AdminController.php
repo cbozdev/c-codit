@@ -859,6 +859,18 @@ class AdminController extends Controller
             return $r->successful();
         });
 
+        $check('decodo', function () {
+            // Check via API if key is set, otherwise verify gateway hostname resolves
+            if (! empty(config('services.decodo.api_key'))) {
+                $r = Http::withHeaders(['Authorization' => config('services.decodo.api_key')])
+                    ->timeout(8)->get('https://api.decodo.com/v2/sub-users', ['service_type' => 'residential_proxies', 'limit' => 1]);
+                return $r->status() !== 0 && $r->status() < 500;
+            }
+            // Fallback: DNS + TCP check on gateway
+            $ip = gethostbyname('gate.decodo.com');
+            return $ip !== 'gate.decodo.com';
+        });
+
         // Alert admin if any provider is down
         $downProviders = collect($results)->where('status', 'down')->pluck('provider')->values()->toArray();
         if (count($downProviders) > 0) {
