@@ -166,9 +166,9 @@ class DecodoService
 
     private function buildUsername(string $baseUser, string $country, string $sessionType, string $sessionId): string
     {
-        // Decodo format: user.{account}.country-{cc}[.session-{id}]
-        // Dots separate the segments; hyphens are used within each qualifier
-        $parts = ["user.{$baseUser}"];
+        // Decodo gateway format: user-{account}-country-{cc}[-session-{id}]
+        // All parts joined with hyphens — NOT dots.
+        $parts = ["user-{$baseUser}"];
 
         if ($country && $country !== 'all') {
             $parts[] = "country-{$country}";
@@ -178,7 +178,7 @@ class DecodoService
             $parts[] = "session-{$sessionId}";
         }
 
-        return implode('.', $parts);
+        return implode('-', $parts);
     }
 
     private function resolveHost(string $proxyType, string $protocol): string
@@ -195,8 +195,7 @@ class DecodoService
     {
         return match ($protocol) {
             'socks5' => 7000,
-            'https'  => 8443,
-            default  => 7777,
+            default  => 10000,
         };
     }
 
