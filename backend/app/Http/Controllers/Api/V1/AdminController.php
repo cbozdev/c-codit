@@ -386,6 +386,92 @@ class AdminController extends Controller
         ]);
     }
 
+    // ─── Revenue Stats ────────────────────────────────────────────────────────
+
+    public function revenueStats()
+    {
+        $calcOrders = function ($from) {
+            $row = DB::table('service_orders')
+                ->where('status', 'completed')
+                ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+                ->selectRaw('
+                    COUNT(*) as orders,
+                    COALESCE(SUM(amount_minor), 0) as revenue_minor,
+                    COALESCE(SUM(CASE WHEN cost_minor IS NOT NULL THEN amount_minor - cost_minor ELSE 0 END), 0) as profit_minor
+                ')
+                ->first();
+            return [
+                'orders'        => (int) ($row->orders ?? 0),
+                'revenue_minor' => (int) ($row->revenue_minor ?? 0),
+                'profit_minor'  => (int) ($row->profit_minor ?? 0),
+            ];
+        };
+
+        $calcFunding = fn ($from) => (int) Transaction::where('type', TransactionType::WALLET_FUNDING->value)
+            ->where('status', TransactionStatus::SUCCESS->value)
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->sum('amount_minor');
+
+        $periods = [
+            'weekly'   => now()->startOfWeek(),
+            'monthly'  => now()->startOfMonth(),
+            'yearly'   => now()->startOfYear(),
+            'all_time' => null,
+        ];
+
+        $result = [];
+        foreach ($periods as $key => $from) {
+            $result[$key] = array_merge($calcOrders($from), [
+                'funding_minor' => $calcFunding($from),
+            ]);
+        }
+
+        return ApiResponse::ok($result);
+    }
+
+    // ─── Top Spenders ─────────────────────────────────────────────────────────
+
+    public function topSpenders(Request $request)
+    {
+        $request->validate([
+            'period' => ['nullable', 'in:week,month,year,all'],
+            'limit'  => ['nullable', 'integer', 'min:5', 'max:50'],
+        ]);
+
+        $limit  = min((int) ($request->input('limit') ?? 10), 50);
+        $period = $request->input('period', 'all');
+
+        $from = match ($period) {
+            'week'  => now()->startOfWeek(),
+            'month' => now()->startOfMonth(),
+            'year'  => now()->startOfYear(),
+            default => null,
+        };
+
+        $rows = DB::table('service_orders')
+            ->join('users', 'service_orders.user_id', '=', 'users.id')
+            ->where('service_orders.status', 'completed')
+            ->when($from, fn ($q) => $q->where('service_orders.created_at', '>=', $from))
+            ->selectRaw('
+                users.name,
+                users.email,
+                COUNT(*) as orders,
+                COALESCE(SUM(service_orders.amount_minor), 0) as total_spent_minor
+            ')
+            ->groupByRaw('users.id, users.name, users.email')
+            ->orderByDesc('total_spent_minor')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($row) => [
+                'name'              => $row->name,
+                'email'             => $row->email,
+                'orders'            => (int) $row->orders,
+                'total_spent_minor' => (int) $row->total_spent_minor,
+            ]);
+
+        return ApiResponse::ok($rows->values()->toArray());
+    }
+
     // ─── Messaging ────────────────────────────────────────────────────────────
 
     /**

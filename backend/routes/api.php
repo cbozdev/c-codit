@@ -150,9 +150,11 @@ Route::prefix('v1')->group(function () {
 
         // Admin
         Route::middleware('role:admin')->prefix('admin')->group(function () {
-            // Metrics & Profit
-            Route::get('/metrics', [AdminController::class, 'metrics']);
-            Route::get('/profit',  [AdminController::class, 'profit']);
+            // Metrics & Profit & Analytics
+            Route::get('/metrics',       [AdminController::class, 'metrics']);
+            Route::get('/profit',        [AdminController::class, 'profit']);
+            Route::get('/revenue-stats', [AdminController::class, 'revenueStats']);
+            Route::get('/top-spenders',  [AdminController::class, 'topSpenders']);
 
             // Users
             Route::get('/users',                                [AdminController::class, 'users']);

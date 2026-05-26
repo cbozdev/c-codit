@@ -12,7 +12,7 @@ import {
   Plus, Minus, RefreshCw, Eye, ImagePlus, Settings2,
   DollarSign, TrendingDown, BarChart3, RotateCcw,
   Globe, Server, Key, EyeOff, Trash2, CheckCircle2,
-  Gift,
+  Gift, Crown, Calendar,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -41,10 +41,10 @@ type AdminService = {
   markup_percent: number;
 };
 
-type Tab = 'metrics' | 'profit' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings' | 'proxy' | 'apikeys' | 'auditlog' | 'health' | 'referrals';
+type Tab = 'metrics' | 'analytics' | 'profit' | 'users' | 'transactions' | 'services' | 'messages' | 'livechat' | 'settings' | 'proxy' | 'apikeys' | 'auditlog' | 'health' | 'referrals';
 
 const TAB_LABELS: Record<Tab, string> = {
-  metrics: 'Metrics', profit: 'Profit', users: 'Users',
+  metrics: 'Metrics', analytics: 'Analytics', profit: 'Profit', users: 'Users',
   transactions: 'Transactions', services: 'Services', proxy: 'Proxy',
   messages: 'Messages', livechat: 'Live chat', settings: 'Settings',
   apikeys: 'API Keys', auditlog: 'Audit log', health: 'Health', referrals: 'Referrals',
@@ -75,7 +75,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ink-200 overflow-x-auto">
-        {(['metrics', 'profit', 'users', 'transactions', 'services', 'proxy', 'messages', 'livechat', 'settings', 'apikeys', 'auditlog', 'health', 'referrals'] as Tab[]).map((t) => (
+        {(['metrics', 'analytics', 'profit', 'users', 'transactions', 'services', 'proxy', 'messages', 'livechat', 'settings', 'apikeys', 'auditlog', 'health', 'referrals'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition -mb-px ${
               tab === t
@@ -88,6 +88,7 @@ export default function AdminPage() {
       </div>
 
       {tab === 'metrics'      && <MetricsTab />}
+      {tab === 'analytics'    && <AnalyticsTab />}
       {tab === 'profit'       && <ProfitTab />}
       {tab === 'users'        && <UsersTab />}
       {tab === 'transactions' && <TransactionsTab />}
@@ -1565,6 +1566,135 @@ function ReferralsTab() {
           </table>
         </div>
         <p className="text-xs text-ink-400 mt-2">Commission = $1.00 × number of referred users who completed their first order.</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Analytics Tab ────────────────────────────────────────────────────────────
+
+type PeriodStats = { orders: number; revenue_minor: number; profit_minor: number; funding_minor: number };
+type RevenueStats = { weekly: PeriodStats; monthly: PeriodStats; yearly: PeriodStats; all_time: PeriodStats };
+type TopSpender   = { name: string; email: string; orders: number; total_spent_minor: number };
+
+function AnalyticsTab() {
+  const [spenderPeriod, setSpenderPeriod] = useState<'week' | 'month' | 'year' | 'all'>('month');
+
+  const revenue = useQuery({
+    queryKey: ['admin', 'revenue-stats'],
+    queryFn:  () => apiCall<RevenueStats>({ url: '/admin/revenue-stats' }),
+  });
+
+  const spenders = useQuery({
+    queryKey: ['admin', 'top-spenders', spenderPeriod],
+    queryFn:  () => apiCall<TopSpender[]>({ url: '/admin/top-spenders', params: { period: spenderPeriod, limit: 10 } }),
+  });
+
+  const r = revenue.data;
+
+  function revCard(label: string, icon: React.ComponentType<{ className?: string }>, stats?: PeriodStats) {
+    const Icon = icon;
+    return (
+      <div className="card-pad space-y-3">
+        <div className="flex items-center gap-2 text-ink-500 text-xs uppercase tracking-wide">
+          <Icon className="h-3.5 w-3.5" /> {label}
+        </div>
+        {stats ? (
+          <div className="space-y-2">
+            <div>
+              <div className="text-xs text-ink-400 mb-0.5">Revenue (GMV)</div>
+              <div className="text-xl font-semibold text-ink-900 dark:text-white">{formatMoney(stats.revenue_minor)}</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
+              <div>
+                <div className="text-xs text-ink-400">Profit</div>
+                <div className="text-sm font-semibold text-brand-700 dark:text-brand-400">{formatMoney(stats.profit_minor)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-ink-400">Deposits</div>
+                <div className="text-sm font-semibold text-ink-700 dark:text-ink-300">{formatMoney(stats.funding_minor)}</div>
+              </div>
+            </div>
+            <div className="text-xs text-ink-400">{stats.orders} completed orders</div>
+          </div>
+        ) : (
+          <div className="animate-pulse space-y-2">
+            <div className="h-6 bg-ink-100 dark:bg-ink-800 rounded w-1/2" />
+            <div className="h-4 bg-ink-100 dark:bg-ink-800 rounded w-1/3" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const PERIOD_LABELS = { week: 'This week', month: 'This month', year: 'This year', all: 'All time' };
+
+  return (
+    <div className="space-y-8">
+      {/* Revenue overview */}
+      <div>
+        <h2 className="text-sm font-semibold text-ink-700 dark:text-ink-300 uppercase tracking-wide mb-4 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-brand-600" /> Revenue overview
+        </h2>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {revCard('This week',  Calendar,   r?.weekly)}
+          {revCard('This month', Calendar,   r?.monthly)}
+          {revCard('This year',  TrendingUp, r?.yearly)}
+          {revCard('All time',   BarChart3,  r?.all_time)}
+        </div>
+      </div>
+
+      {/* Top spenders */}
+      <div>
+        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+          <h2 className="text-sm font-semibold text-ink-700 dark:text-ink-300 uppercase tracking-wide flex items-center gap-2">
+            <Crown className="h-4 w-4 text-amber-500" /> Top spenders
+          </h2>
+          <div className="flex gap-1">
+            {(['week', 'month', 'year', 'all'] as const).map((p) => (
+              <button key={p} onClick={() => setSpenderPeriod(p)}
+                className={`px-3 py-1 text-xs rounded-lg border transition ${
+                  spenderPeriod === p
+                    ? 'bg-ink-900 text-white border-ink-900 dark:bg-ink-100 dark:text-ink-900'
+                    : 'border-ink-200 text-ink-600 hover:border-ink-400 dark:border-ink-700 dark:text-ink-400'
+                }`}>
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="card overflow-hidden">
+          <table className="min-w-full text-sm">
+            <thead className="bg-ink-50 dark:bg-ink-800 border-b border-ink-100 dark:border-ink-700">
+              <tr>
+                {['#', 'User', 'Email', 'Orders', 'Total spent'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-ink-500 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
+              {spenders.isLoading ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-500">Loading…</td></tr>
+              ) : (spenders.data ?? []).length === 0 ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-500">No completed orders in this period.</td></tr>
+              ) : (spenders.data ?? []).map((s, i) => (
+                <tr key={s.email} className="hover:bg-ink-50/50 dark:hover:bg-ink-800/50">
+                  <td className="px-4 py-3 text-ink-400 font-mono text-sm w-10">
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="ml-1">{i + 1}</span>}
+                  </td>
+                  <td className="px-4 py-3 font-medium">{s.name}</td>
+                  <td className="px-4 py-3 text-ink-500 text-xs">{s.email}</td>
+                  <td className="px-4 py-3 text-ink-700 dark:text-ink-300">{s.orders}</td>
+                  <td className="px-4 py-3 font-mono font-semibold text-brand-700 dark:text-brand-400">
+                    {formatMoney(s.total_spent_minor)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-ink-400 mt-2">Only completed service orders are counted. Wallet top-ups are not included.</p>
       </div>
     </div>
   );
