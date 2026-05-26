@@ -10,12 +10,20 @@ use RuntimeException;
 /**
  * Decodo (formerly Smartproxy) proxy integration.
  *
- * Provisioning uses gateway credentials (no management API needed).
- * Username format: user.{account}.country-{cc}[.session-{id}]
- * Gateway: gate.decodo.com:7777 (HTTP), gate.decodo.com:7000 (SOCKS5)
+ * Residential with API key: creates actual sub-users via the management API,
+ * tracks real usage, and deletes sub-users on cancel.
+ *
+ * Datacenter / ISP / Mobile (no API support): gateway credentials only.
+ *
+ * API base:       https://api.decodo.com
+ * Auth header:    Authorization: {api_key}  (no Bearer prefix)
+ * Gateway HTTP:   gate.decodo.com:10000
+ * Gateway SOCKS5: gate.decodo.com:7000
  */
 class DecodoService
 {
+    private const API_BASE = 'https://api.decodo.com';
+
     public function isEnabled(): bool
     {
         return (bool) config('services.decodo.enabled', false)
@@ -23,16 +31,74 @@ class DecodoService
             && ! empty(config('services.decodo.password'));
     }
 
-    // ─── Locations (static fallback — no API needed) ──────────────────────────
+    // ─── Locations ────────────────────────────────────────────────────────────
 
     public function getLocations(string $proxyType = 'residential'): array
     {
         return $this->staticLocations();
     }
 
-    // ─── Create subscription (credential-based, no API call) ─────────────────
+    // ─── Create subscription ──────────────────────────────────────────────────
 
     public function createSubscription(array $options): array
+    {
+        $proxyType   = $options['proxy_type'];
+        $country     = strtolower($options['country_code'] ?? 'us');
+        $sessionType = $options['session_type'] ?? 'rotating';
+        $protocol    = $options['protocol'] ?? 'http';
+        $duration    = (int) ($options['duration_days'] ?? 30);
+
+        if ($this->hasApiKey() && $this->isResidential($proxyType)) {
+            return $this->createViaApi($proxyType, $country, $sessionType, $protocol, $duration, $options);
+        }
+
+        return $this->createViaGateway($proxyType, $country, $sessionType, $protocol, $duration, $options);
+    }
+
+    private function createViaApi(string $proxyType, string $country, string $sessionType, string $protocol, int $duration, array $options): array
+    {
+        // Sub-user username: 6–64 chars, alphanumeric + underscore only
+        $subUsername = 'u' . strtolower(Str::random(11));
+        $subPassword = $this->generateSecurePassword();
+        $sessionId   = Str::random(16);
+
+        $res = Http::withHeaders($this->apiHeaders())
+            ->post(self::API_BASE . '/v2/sub-users', [
+                'username'     => $subUsername,
+                'password'     => $subPassword,
+                'service_type' => 'residential_proxies',
+            ]);
+
+        if (! $res->successful()) {
+            Log::error('decodo.sub_user_create_failed', ['status' => $res->status(), 'body' => $res->body()]);
+            throw new RuntimeException('Decodo sub-user creation failed: ' . $res->body());
+        }
+
+        // Decodo returns the sub-user ID; fall back to username if not present
+        $subUserId = $res->json('id') ?? $res->json('sub_user_id') ?? $subUsername;
+
+        [$host, $port] = $this->resolveEndpoint('residential', $protocol);
+
+        Log::info('decodo.sub_user_provisioned', [
+            'sub_user_id' => $subUserId,
+            'proxy_type'  => $proxyType,
+            'country'     => $country,
+            'host'        => $host,
+            'port'        => $port,
+        ]);
+
+        return [
+            'provider_subscription_id' => (string) $subUserId,
+            'host'                     => $host,
+            'port'                     => $port,
+            'username'                 => $this->buildGatewayUsername($subUsername, $country, $sessionType, $sessionId),
+            'password'                 => $subPassword,
+            'bandwidth_gb_total'       => (float) ($options['bandwidth_gb'] ?? 0),
+            'expires_at'               => now()->addDays($duration)->toISOString(),
+        ];
+    }
+
+    private function createViaGateway(string $proxyType, string $country, string $sessionType, string $protocol, int $duration, array $options): array
     {
         $username = config('services.decodo.username');
         $password = config('services.decodo.password');
@@ -41,94 +107,166 @@ class DecodoService
             throw new RuntimeException('Decodo gateway credentials not configured (DECODO_USERNAME / DECODO_PASSWORD).');
         }
 
-        $proxyType   = $options['proxy_type'];
-        $country     = strtolower($options['country_code'] ?? 'us');
-        $sessionType = $options['session_type'] ?? 'rotating';
-        $protocol    = $options['protocol'] ?? 'http';
-        $duration    = (int) ($options['duration_days'] ?? 30);
-        $sessionId   = Str::random(16);
+        $sessionId = Str::random(16);
+        [$host, $port] = $this->resolveEndpoint($proxyType, $protocol);
 
-        $proxyUsername = $this->buildUsername($username, $country, $sessionType, $sessionId);
-        $hostname      = $this->resolveHost($proxyType, $protocol);
-        $port          = $this->resolvePort($proxyType, $protocol);
-
-        // Resolve hostname to an IP so users see a real IP in their credentials
-        $host = gethostbyname($hostname);
-        if ($host === $hostname) {
-            // DNS failed — fall back to the hostname itself
-            $host = $hostname;
-        }
-
-        Log::info('decodo.credential_provisioned', [
-            'proxy_type'  => $proxyType,
-            'country'     => $country,
-            'session_type'=> $sessionType,
-            'host'        => $host,
-            'port'        => $port,
+        Log::info('decodo.gateway_credential_provisioned', [
+            'proxy_type' => $proxyType,
+            'country'    => $country,
+            'host'       => $host,
+            'port'       => $port,
         ]);
 
         return [
             'provider_subscription_id' => $sessionId,
             'host'                     => $host,
             'port'                     => $port,
-            'username'                 => $proxyUsername,
+            'username'                 => $this->buildGatewayUsername($username, $country, $sessionType, $sessionId),
             'password'                 => $password,
             'bandwidth_gb_total'       => (float) ($options['bandwidth_gb'] ?? 0),
             'expires_at'               => now()->addDays($duration)->toISOString(),
         ];
     }
 
-    // ─── Get credentials (returns stored values — no API) ────────────────────
+    // ─── Get credentials (stored in DB; no-op) ────────────────────────────────
 
     public function getCredentials(string $subscriptionId): array
     {
-        // Credentials are stored encrypted in our DB; this is a no-op for Decodo
         return [];
     }
 
-    // ─── Usage (graceful degradation — no API) ────────────────────────────────
+    // ─── Usage ────────────────────────────────────────────────────────────────
 
     public function getUsage(string $subscriptionId): array
     {
-        // Usage tracking via Decodo dashboard; return 0 to avoid blocking
+        // Only API sub-users (numeric IDs) have trackable usage
+        if (! $this->hasApiKey() || ! is_numeric($subscriptionId)) {
+            return ['bandwidth_gb_used' => 0, 'bandwidth_gb_total' => 0];
+        }
+
+        try {
+            $res = Http::withHeaders($this->apiHeaders())
+                ->get(self::API_BASE . "/v2/sub-users/{$subscriptionId}/traffic", [
+                    'type'         => 'month',
+                    'service_type' => 'residential_proxies',
+                ]);
+
+            if ($res->successful()) {
+                $bytes = (float) ($res->json('traffic') ?? 0);
+                return [
+                    'bandwidth_gb_used'  => round($bytes / 1_073_741_824, 4),
+                    'bandwidth_gb_total' => 0,
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('decodo.usage_fetch_failed', ['error' => $e->getMessage()]);
+        }
+
         return ['bandwidth_gb_used' => 0, 'bandwidth_gb_total' => 0];
     }
 
-    // ─── Renew (extend expiry + new session ID) ───────────────────────────────
+    // ─── Renew ────────────────────────────────────────────────────────────────
 
     public function renewSubscription(string $subscriptionId, int $days = 30, string $country = 'us', string $sessionType = 'rotating'): array
     {
-        $username   = config('services.decodo.username');
-        $password   = config('services.decodo.password');
-        $newSession = Str::random(16);
+        // For API sub-users: Decodo has no expiry concept — just extend our local expiry.
+        // For gateway subs: keep the same master credentials.
+        $password = is_numeric($subscriptionId)
+            ? null   // returned by caller from DB
+            : config('services.decodo.password');
 
-        return [
+        $result = [
             'expires_at'               => now()->addDays($days)->toISOString(),
-            'provider_subscription_id' => $newSession,
-            'username'                 => $this->buildUsername($username, $country, $sessionType, $newSession),
-            'password'                 => $password,
+            'provider_subscription_id' => $subscriptionId,
         ];
+
+        if ($password) {
+            $username = config('services.decodo.username');
+            $newSession = Str::random(16);
+            $result['username'] = $this->buildGatewayUsername($username, $country, $sessionType, $newSession);
+            $result['password'] = $password;
+        }
+
+        return $result;
     }
 
-    // ─── Cancel (local only) ──────────────────────────────────────────────────
+    // ─── Cancel ───────────────────────────────────────────────────────────────
 
     public function cancelSubscription(string $subscriptionId): void
     {
-        // Nothing to call on Decodo's side for gateway-credential proxies
+        if (! $this->hasApiKey() || ! is_numeric($subscriptionId)) {
+            return;
+        }
+
+        try {
+            $res = Http::withHeaders($this->apiHeaders())
+                ->delete(self::API_BASE . "/v2/sub-users/{$subscriptionId}");
+
+            if (! $res->successful()) {
+                Log::warning('decodo.sub_user_delete_failed', [
+                    'sub_user_id' => $subscriptionId,
+                    'status'      => $res->status(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('decodo.cancel_exception', ['error' => $e->getMessage()]);
+        }
     }
 
     // ─── Rotate session ───────────────────────────────────────────────────────
 
     public function rotateSession(string $subscriptionId, string $country = 'us', string $sessionType = 'rotating'): array
     {
+        // For API sub-users: rotate by generating a new password via PUT /v2/sub-users/{id}
+        if ($this->hasApiKey() && is_numeric($subscriptionId)) {
+            return $this->rotateApiSubUser($subscriptionId, $country, $sessionType);
+        }
+
+        // Gateway creds: new session ID in username (rotating sessions change automatically anyway)
         $username   = config('services.decodo.username');
         $password   = config('services.decodo.password');
         $newSession = Str::random(16);
 
         return [
-            'username' => $this->buildUsername($username, $country, $sessionType, $newSession),
+            'username' => $this->buildGatewayUsername($username, $country, $sessionType, $newSession),
             'password' => $password,
         ];
+    }
+
+    private function rotateApiSubUser(string $subUserId, string $country, string $sessionType): array
+    {
+        $newPassword = $this->generateSecurePassword();
+        $newSession  = Str::random(16);
+
+        try {
+            $res = Http::withHeaders($this->apiHeaders())
+                ->put(self::API_BASE . "/v2/sub-users/{$subUserId}", [
+                    'password' => $newPassword,
+                ]);
+
+            if (! $res->successful()) {
+                Log::warning('decodo.sub_user_rotate_failed', ['id' => $subUserId, 'status' => $res->status()]);
+                return [];
+            }
+
+            // Reconstruct gateway username from the sub-user ID
+            // The sub-user's base username is stored in our DB; we rebuild from the ID
+            // by fetching the sub-user details
+            $detail = Http::withHeaders($this->apiHeaders())
+                ->get(self::API_BASE . "/v2/sub-users/{$subUserId}");
+
+            $subUsername = $detail->successful()
+                ? ($detail->json('username') ?? $subUserId)
+                : $subUserId;
+
+            return [
+                'username' => $this->buildGatewayUsername($subUsername, $country, $sessionType, $newSession),
+                'password' => $newPassword,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('decodo.rotate_exception', ['error' => $e->getMessage()]);
+            return [];
+        }
     }
 
     // ─── Test connectivity ────────────────────────────────────────────────────
@@ -171,10 +309,45 @@ class DecodoService
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    private function buildUsername(string $baseUser, string $country, string $sessionType, string $sessionId): string
+    private function hasApiKey(): bool
     {
-        // Decodo gateway format: user-{account}-country-{cc}[-session-{id}]
-        // All parts joined with hyphens — NOT dots.
+        return ! empty(config('services.decodo.api_key'));
+    }
+
+    private function isResidential(string $proxyType): bool
+    {
+        return str_starts_with($proxyType, 'residential');
+    }
+
+    private function apiHeaders(): array
+    {
+        return ['Authorization' => config('services.decodo.api_key')];
+    }
+
+    private function resolveEndpoint(string $proxyType, string $protocol): array
+    {
+        $hostname = match (true) {
+            str_starts_with($proxyType, 'datacenter') => 'dc.decodo.com',
+            str_starts_with($proxyType, 'isp')        => 'isp.decodo.com',
+            str_starts_with($proxyType, 'mobile')     => 'mobile.decodo.com',
+            default                                    => 'gate.decodo.com',
+        };
+
+        $port = match ($protocol) {
+            'socks5' => 7000,
+            default  => 10000,
+        };
+
+        $host = gethostbyname($hostname);
+        if ($host === $hostname) {
+            $host = $hostname;
+        }
+
+        return [$host, $port];
+    }
+
+    private function buildGatewayUsername(string $baseUser, string $country, string $sessionType, string $sessionId): string
+    {
         $parts = ["user-{$baseUser}"];
 
         if ($country && $country !== 'all') {
@@ -188,22 +361,16 @@ class DecodoService
         return implode('-', $parts);
     }
 
-    private function resolveHost(string $proxyType, string $protocol): string
+    private function generateSecurePassword(): string
     {
-        return match (true) {
-            str_starts_with($proxyType, 'datacenter') => 'dc.decodo.com',
-            str_starts_with($proxyType, 'isp')        => 'isp.decodo.com',
-            str_starts_with($proxyType, 'mobile')     => 'mobile.decodo.com',
-            default                                    => 'gate.decodo.com',
-        };
-    }
+        // Decodo requires 12+ chars with upper, lower, digit, and one of _ ~ + =
+        $upper   = substr(str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 0, 3);
+        $lower   = substr(str_shuffle('abcdefghijklmnopqrstuvwxyz'), 0, 3);
+        $digits  = substr(str_shuffle('0123456789'), 0, 3);
+        $special = ['_', '~', '+', '='][random_int(0, 3)];
+        $rest    = Str::random(5);
 
-    private function resolvePort(string $proxyType, string $protocol): int
-    {
-        return match ($protocol) {
-            'socks5' => 7000,
-            default  => 10000,
-        };
+        return str_shuffle($upper . $lower . $digits . $special . $rest);
     }
 
     private function staticLocations(): array
