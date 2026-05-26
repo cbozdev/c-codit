@@ -49,8 +49,15 @@ class DecodoService
         $sessionId   = Str::random(16);
 
         $proxyUsername = $this->buildUsername($username, $country, $sessionType, $sessionId);
-        $host          = $this->resolveHost($proxyType, $protocol);
+        $hostname      = $this->resolveHost($proxyType, $protocol);
         $port          = $this->resolvePort($proxyType, $protocol);
+
+        // Resolve hostname to an IP so users see a real IP in their credentials
+        $host = gethostbyname($hostname);
+        if ($host === $hostname) {
+            // DNS failed — fall back to the hostname itself
+            $host = $hostname;
+        }
 
         Log::info('decodo.credential_provisioned', [
             'proxy_type'  => $proxyType,
