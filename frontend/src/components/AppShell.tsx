@@ -169,8 +169,8 @@ export default function AppShell() {
 
         {/* Mobile bottom nav */}
         <nav className="lg:hidden flex items-center justify-around border-t border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 py-1 sticky bottom-0 z-30">
-          {NAV.slice(0, isAdmin ? 4 : 5).map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to}
+          {NAV.slice(0, isAdmin ? 4 : 5).map(({ to, label, icon: Icon, tourId }) => (
+            <NavLink key={to} to={to} data-tour-mobile={tourId}
               className={({ isActive }) => clsx(
                 'flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px] font-medium rounded-lg transition',
                 isActive ? 'text-brand-600 dark:text-brand-400' : 'text-ink-400 dark:text-ink-500',
