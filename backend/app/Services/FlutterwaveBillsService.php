@@ -87,7 +87,12 @@ class FlutterwaveBillsService
 
     /**
      * Buy airtime.
-     * Flutterwave biller codes: MTN=BIL099, Airtel=BIL102, Glo=BIL103, 9mobile=BIL104
+     *
+     * Flutterwave Nigeria airtime biller codes (from bill-categories catalog):
+     *   MTN=BIL099, Airtel=BIL102, Glo=BIL103, 9mobile=BIL104
+     *
+     * Phone number: local (08012345678) or international (+2348012345678) both accepted.
+     * Minimum: ₦50 (enforced upstream in ServicePurchaseService).
      */
     public function buyAirtime(string $phone, string $network, float $amount, string $txRef): array
     {
@@ -98,30 +103,37 @@ class FlutterwaveBillsService
             '9mobile' => 'BIL104',
         ];
 
+        // Normalise phone to Nigerian local format (08xxxxxxxxx)
+        $phone = $this->normaliseNigerianPhone($phone);
+
         return $this->post('/bills', [
-            'country'   => 'NG',
-            'customer'  => $phone,
-            'amount'    => (int) $amount,
-            'type'      => 'AIRTIME',
-            'reference' => $txRef,
+            'country'     => 'NG',
+            'customer'    => $phone,
+            'amount'      => (int) $amount,
+            'recurrence'  => 'ONCE',
+            'type'        => 'AIRTIME',
+            'reference'   => $txRef,
             'biller_code' => $billerCodes[$network] ?? 'BIL099',
         ]);
     }
 
     /**
      * Fetch available data bundle plans for a network from Flutterwave's catalog.
-     * Returns array of {item_code, name, amount} sorted by amount.
+     * Returns array of {item_code, biller_code, name, amount} sorted by amount.
+     *
+     * 9mobile was formerly "Etisalat" — Flutterwave's catalog still uses both names,
+     * so we match on either keyword.
      */
     public function getDataPlans(string $network): array
     {
-        // Search keyword per network — matched against item name/biller_name from catalog
+        // Primary search keyword per network (matched against item short_name/name)
         $keywords = [
-            'MTN'     => 'mtn',
-            'Airtel'  => 'airtel',
-            'Glo'     => 'glo',
-            '9mobile' => '9mobile',
+            'MTN'     => ['mtn'],
+            'Airtel'  => ['airtel'],
+            'Glo'     => ['glo'],
+            '9mobile' => ['9mobile', 'etisalat'],   // legacy brand still in catalog
         ];
-        $keyword = $keywords[$network] ?? strtolower($network);
+        $keywords = $keywords[$network] ?? [strtolower($network)];
 
         try {
             $res = Http::withToken($this->secretKey)
@@ -133,7 +145,7 @@ class FlutterwaveBillsService
 
             Log::channel('payments')->info('flutterwave_bills.data_plans_raw', [
                 'network'      => $network,
-                'keyword'      => $keyword,
+                'keywords'     => $keywords,
                 'status'       => $res->status(),
                 'sample_items' => array_slice($res->json('data') ?? [], 0, 5),
                 'total_items'  => count($res->json('data') ?? []),
@@ -146,9 +158,12 @@ class FlutterwaveBillsService
             foreach ($items as $item) {
                 if (empty($item['item_code'])) continue;
                 $name = strtolower($item['short_name'] ?? $item['name'] ?? '');
-                if (! str_contains($name, $keyword)) {
-                    continue;
+                $matched = false;
+                foreach ($keywords as $kw) {
+                    if (str_contains($name, $kw)) { $matched = true; break; }
                 }
+                if (! $matched) continue;
+
                 $plans[] = [
                     'item_code'   => $item['item_code'],
                     'biller_code' => $item['biller_code'] ?? '',
@@ -166,13 +181,21 @@ class FlutterwaveBillsService
 
     /**
      * Buy data bundle using item_code + biller_code from getDataPlans().
+     * Both item_code and biller_code must come from the fetched plan list.
      */
     public function buyData(string $phone, string $network, string $itemCode, string $billerCode, float $amount, string $txRef): array
     {
+        if (empty($itemCode) || empty($billerCode)) {
+            throw new \RuntimeException('Data purchase requires a plan selection. Please pick a plan and try again.');
+        }
+
+        $phone = $this->normaliseNigerianPhone($phone);
+
         return $this->post('/bills', [
             'country'     => 'NG',
             'customer'    => $phone,
             'amount'      => (int) $amount,
+            'recurrence'  => 'ONCE',
             'type'        => 'DATA_BUNDLE',
             'reference'   => $txRef,
             'biller_code' => $billerCode,
@@ -214,6 +237,7 @@ class FlutterwaveBillsService
             'country'     => 'NG',
             'customer'    => $meterNumber,
             'amount'      => (int) $amount,
+            'recurrence'  => 'ONCE',
             'type'        => 'POWER',
             'reference'   => $txRef,
             'biller_code' => $billerCode,
@@ -241,24 +265,108 @@ class FlutterwaveBillsService
     }
 
     /**
-     * Pay TV subscription.
+     * Fetch available TV subscription plans for a provider from Flutterwave's catalog.
+     * Returns array of {item_code, biller_code, name, amount} sorted by amount.
      */
-    public function payTV(string $smartcardNumber, string $provider, string $txRef): array
+    public function getTVPlans(string $provider): array
     {
-        $billerCodes = [
-            'DSTV'      => 'BIL119',
-            'GOtv'      => 'BIL120',
-            'Showmax'   => 'BIL121',
-            'StarTimes' => 'BIL122',
+        $keywords = [
+            'DSTV'      => 'dstv',
+            'GOtv'      => 'gotv',
+            'Showmax'   => 'showmax',
+            'StarTimes' => 'startimes',
         ];
+        $keyword = $keywords[$provider] ?? strtolower($provider);
+
+        try {
+            $res = Http::withToken($this->secretKey)
+                ->acceptJson()
+                ->get($this->baseUrl . '/bill-categories', [
+                    'country' => 'NG',
+                    'type'    => 'cable_tv',
+                ]);
+
+            Log::channel('payments')->info('flutterwave_bills.tv_plans_raw', [
+                'provider'     => $provider,
+                'keyword'      => $keyword,
+                'status'       => $res->status(),
+                'sample_items' => array_slice($res->json('data') ?? [], 0, 5),
+                'total_items'  => count($res->json('data') ?? []),
+            ]);
+
+            if ($res->failed()) return [];
+
+            $items = $res->json('data') ?? [];
+            $plans = [];
+            foreach ($items as $item) {
+                if (empty($item['item_code'])) continue;
+                $name = strtolower($item['short_name'] ?? $item['name'] ?? '');
+                if (! str_contains($name, $keyword)) {
+                    continue;
+                }
+                $plans[] = [
+                    'item_code'   => $item['item_code'],
+                    'biller_code' => $item['biller_code'] ?? '',
+                    'name'        => $item['short_name'] ?? $item['name'] ?? $item['item_code'],
+                    'amount'      => (int) ($item['amount'] ?? 0),
+                ];
+            }
+            usort($plans, fn ($a, $b) => $a['amount'] <=> $b['amount']);
+            return $plans;
+        } catch (\Throwable $e) {
+            Log::channel('payments')->error('flutterwave_bills.tv_plans_exception', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Validate a TV smartcard number for the given plan's biller.
+     * Returns customer name / account details.
+     */
+    public function validateSmartcard(string $smartcardNumber, string $itemCode): array
+    {
+        return $this->validateCustomer($itemCode, $smartcardNumber);
+    }
+
+    /**
+     * Pay TV subscription.
+     * Requires a plan selected via getTVPlans() — item_code, biller_code, and amount
+     * must all come from the fetched plan so the right subscription is purchased.
+     */
+    public function payTV(string $smartcardNumber, string $provider, string $itemCode, string $billerCode, float $amount, string $txRef): array
+    {
+        if (empty($billerCode) || empty($itemCode)) {
+            throw new \RuntimeException('TV subscription requires a plan selection. Please pick a plan and try again.');
+        }
 
         return $this->post('/bills', [
             'country'     => 'NG',
             'customer'    => $smartcardNumber,
-            'amount'      => 0,
+            'amount'      => (int) $amount,
+            'recurrence'  => 'ONCE',
             'type'        => 'CABLE',
             'reference'   => $txRef,
-            'biller_code' => $billerCodes[$provider] ?? 'BIL119',
+            'biller_code' => $billerCode,
+            'item_code'   => $itemCode,
         ]);
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Normalise a Nigerian phone number to local 11-digit format (0XXXXXXXXXX).
+     * Accepts: 08012345678 · 8012345678 · +2348012345678 · 2348012345678
+     */
+    private function normaliseNigerianPhone(string $phone): string
+    {
+        $phone = preg_replace('/\D/', '', $phone); // strip non-digits
+
+        if (str_starts_with($phone, '234') && strlen($phone) === 13) {
+            return '0' . substr($phone, 3); // +234XXXXXXXXXX → 0XXXXXXXXXX
+        }
+        if (strlen($phone) === 10 && ! str_starts_with($phone, '0')) {
+            return '0' . $phone;            // 8012345678 → 08012345678
+        }
+        return $phone; // already 0XXXXXXXXXX or unrecognised — pass through
     }
 }

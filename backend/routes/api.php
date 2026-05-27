@@ -87,8 +87,10 @@ Route::prefix('v1')->group(function () {
             Route::get('/services/virtual-number-prices', [ServiceController::class, 'virtualNumberPrices']);
             Route::get('/services/pvadeals-catalog',      [ServiceController::class, 'pvaDealsCatalog']);
             Route::get('/services/data-plans',            [ServiceController::class, 'dataPlans']);
+            Route::get('/services/tv-plans',              [ServiceController::class, 'tvPlans']);
             Route::get('/services/smm-catalog',           [ServiceController::class, 'smmCatalog']);
             Route::post('/services/validate-meter',       [ServiceController::class, 'validateMeter']);
+            Route::post('/services/validate-smartcard',   [ServiceController::class, 'validateSmartcard']);
             Route::get('/services/{code}',                [ServiceController::class, 'show']);
             Route::get('/orders',                         [ServiceController::class, 'orders']);
             Route::get('/orders/{id}',                    [ServiceController::class, 'order']);

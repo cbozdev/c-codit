@@ -326,16 +326,22 @@ class ServicePurchaseService
         array $request,
         string $idempotencyKey,
     ): ServiceOrder {
-        $amountNgn   = (float) ($request['amount'] ?? 100);
+        $amountNgn = (float) ($request['amount'] ?? 100);
+
+        if ($amountNgn < 50) {
+            throw new \InvalidArgumentException('Minimum bill amount is ₦50.');
+        }
+
         $amountMinor = (int) round($amountNgn * 100);
 
         $wallet = $this->wallets->getOrCreate($user);
 
-        // Convert NGN amount to USD for wallet deduction (using approximate rate)
-        // In production, use a real FX rate API
-        $ngnUsdRate = (float) config('services.platform.ngn_usd_rate', 0.00065);
-        $usdMinor = (int) round($amountMinor * $ngnUsdRate);
-        $finalAmount = Money::minor(max($usdMinor, 100), 'USD'); // minimum $1
+        // Convert NGN amount to USD for wallet deduction.
+        // No artificial USD floor — the NGN amount the user entered is what they pay.
+        // Minimum is enforced in NGN above (≥ ₦50) which is always > platform dust.
+        $ngnUsdRate  = (float) config('services.platform.ngn_usd_rate', 0.00065);
+        $usdMinor    = max(1, (int) round($amountMinor * $ngnUsdRate)); // 1 = $0.01 dust guard
+        $finalAmount = Money::minor($usdMinor, 'USD');
 
         $order = ServiceOrder::create([
             'user_id'         => $user->id,
@@ -384,8 +390,11 @@ class ServicePurchaseService
                 ),
                 'utility_dstv', 'utility_startimes' => $this->flutterwaveBills->payTV(
                     smartcardNumber: (string) $request['smartcard_number'],
-                    provider: (string) $request['network'],
-                    txRef: $txRef,
+                    provider:        (string) $request['network'],
+                    itemCode:        (string) ($request['plan_code']   ?? ''),
+                    billerCode:      (string) ($request['biller_code'] ?? ''),
+                    amount:          $amountNgn,
+                    txRef:           $txRef,
                 ),
                 default => throw new RuntimeException("Unknown utility service: {$service->code}"),
             };
@@ -426,9 +435,9 @@ class ServicePurchaseService
         $productId       = (int) ($request['reloadly_product_id'] ?? 0);
         $recipientEmail  = $request['recipient_email'] ?? null;
 
-        // Price = denomination amount (Reloadly charges sender == recipient for USD cards)
+        // Price = denomination + markup (Reloadly charges face value; we add margin)
         $priceMinor  = $this->giftCards->getPrice($service->code, $denomination);
-        $finalAmount = Money::minor($priceMinor, 'USD');
+        $finalAmount = $this->applyMarkup(Money::minor($priceMinor, 'USD'), $service);
         $wallet      = $this->wallets->getOrCreate($user, 'USD');
 
         $order = ServiceOrder::create([

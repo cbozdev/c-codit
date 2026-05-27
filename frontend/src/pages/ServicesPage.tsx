@@ -314,6 +314,8 @@ export default function ServicesPage() {
   const [billAmount, setBillAmount]       = useState('500');
   const [dataPlan, setDataPlan]           = useState('');
   const [dataBillerCode, setDataBillerCode] = useState('');
+  const [tvPlan, setTvPlan]               = useState('');
+  const [tvBillerCode, setTvBillerCode]   = useState('');
   const [meterType, setMeterType]         = useState<'prepaid'|'postpaid'>('prepaid');
   const [esimPackageId, setEsimPackageId]   = useState('');
   const [smmServiceId, setSmmServiceId]     = useState<number | null>(null);
@@ -389,6 +391,7 @@ export default function ServicesPage() {
         if (smartcardNumber) baseData.smartcard_number = smartcardNumber;
         if (dataPlan) baseData.plan_code = dataPlan;
         if (dataBillerCode) baseData.biller_code = dataBillerCode;
+        if (tvPlan) { baseData.plan_code = tvPlan; baseData.biller_code = tvBillerCode; }
         if (selected.code === 'utility_electricity') baseData.meter_type = meterType;
       } else if (selected.category === 'giftcard') {
         baseData.denomination = denomination;
@@ -564,7 +567,7 @@ export default function ServicesPage() {
               billAmount={billAmount}
               setBillAmount={setBillAmount}
               network={network}
-              setNetwork={(n) => { setNetwork(n); setDataPlan(''); setDataBillerCode(''); }}
+              setNetwork={(n) => { setNetwork(n); setDataPlan(''); setDataBillerCode(''); setTvPlan(''); setTvBillerCode(''); }}
               phoneNumber={phoneNumber}
               setPhoneNumber={setPhoneNumber}
               meterNumber={meterNumber}
@@ -574,6 +577,9 @@ export default function ServicesPage() {
               dataPlan={dataPlan}
               setDataPlan={setDataPlan}
               setDataBillerCode={setDataBillerCode}
+              tvPlan={tvPlan}
+              setTvPlan={setTvPlan}
+              setTvBillerCode={setTvBillerCode}
               meterType={meterType}
               setMeterType={setMeterType}
               onPurchase={() => purchase.mutate()}
@@ -1264,7 +1270,7 @@ function GiftCardForm({ country, setCountry, setProductId, product, setProduct, 
 
 // ─── Utility Bill Form ────────────────────────────────────────────────────────
 
-function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, phoneNumber, setPhoneNumber, meterNumber, setMeterNumber, smartcardNumber, setSmartcardNumber, dataPlan, setDataPlan, setDataBillerCode, meterType, setMeterType, onPurchase, isPending }: {
+function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, phoneNumber, setPhoneNumber, meterNumber, setMeterNumber, smartcardNumber, setSmartcardNumber, dataPlan, setDataPlan, setDataBillerCode, tvPlan, setTvPlan, setTvBillerCode, meterType, setMeterType, onPurchase, isPending }: {
   service: Service;
   billAmount: string; setBillAmount: (v: string) => void;
   network: string; setNetwork: (v: string) => void;
@@ -1273,11 +1279,15 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
   smartcardNumber: string; setSmartcardNumber: (v: string) => void;
   dataPlan: string; setDataPlan: (v: string) => void;
   setDataBillerCode: (v: string) => void;
+  tvPlan: string; setTvPlan: (v: string) => void;
+  setTvBillerCode: (v: string) => void;
   meterType: 'prepaid'|'postpaid'; setMeterType: (v: 'prepaid'|'postpaid') => void;
   onPurchase: () => void; isPending: boolean;
 }) {
-  const [meterCustomer, setMeterCustomer] = useState<string | null>(null);
+  const [meterCustomer, setMeterCustomer]     = useState<string | null>(null);
   const [validatingMeter, setValidatingMeter] = useState(false);
+  const [smartcardCustomer, setSmartcardCustomer] = useState<string | null>(null);
+  const [validatingSmartcard, setValidatingSmartcard] = useState(false);
 
   const networks      = UTILITY_NETWORKS[service.code] ?? [];
   const isElectricity = service.code === 'utility_electricity';
@@ -1293,6 +1303,14 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
     staleTime: 10 * 60 * 1000,
   });
   const plans = plansQuery.data ?? [];
+
+  const tvPlansQuery = useQuery({
+    queryKey: ['tv-plans', network],
+    queryFn:  () => apiCall<DataPlan[]>({ url: '/services/tv-plans', params: { provider: network } }),
+    enabled:  isTV && !!network,
+    staleTime: 10 * 60 * 1000,
+  });
+  const tvPlans = tvPlansQuery.data ?? [];
 
   async function validateMeter() {
     if (!meterNumber || !network) return;
@@ -1317,14 +1335,45 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
     }
   }
 
+  async function validateSmartcard(itemCode: string) {
+    if (!smartcardNumber || !itemCode) return;
+    setValidatingSmartcard(true);
+    setSmartcardCustomer(null);
+    try {
+      const res = await apiCall<{ customer_name: string | null }>({
+        method: 'POST',
+        url: '/services/validate-smartcard',
+        data: { smartcard_number: smartcardNumber, item_code: itemCode },
+      });
+      if (res.customer_name) {
+        setSmartcardCustomer(res.customer_name);
+        toast.success('Smartcard validated: ' + res.customer_name);
+      } else {
+        toast.error('Could not find account for this smartcard number.');
+      }
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Smartcard validation failed');
+    } finally {
+      setValidatingSmartcard(false);
+    }
+  }
+
   function selectPlan(plan: DataPlan) {
     setDataPlan(plan.item_code);
     setDataBillerCode(plan.biller_code);
     setBillAmount(String(plan.amount));
   }
 
+  function selectTVPlan(plan: DataPlan) {
+    setTvPlan(plan.item_code);
+    setTvBillerCode(plan.biller_code);
+    setBillAmount(String(plan.amount));
+    setSmartcardCustomer(null);
+    if (smartcardNumber) validateSmartcard(plan.item_code);
+  }
+
   const canSubmit = !isPending &&
-    (isData ? !!dataPlan : Number(billAmount) >= 50) &&
+    (isData ? !!dataPlan : isTV ? !!tvPlan : Number(billAmount) >= 50) &&
     (isAirtime ? !!phoneNumber : true) &&
     (isData    ? !!phoneNumber : true) &&
     (isElectricity ? !!meterNumber : true) &&
@@ -1468,12 +1517,51 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
           </div>
         )}
 
-        {/* TV smartcard */}
+        {/* TV — smartcard number */}
         {isTV && (
           <div>
             <label className="label">Smartcard / IUC number</label>
             <input className="input" placeholder="Enter your smartcard number"
-              value={smartcardNumber} onChange={(e) => setSmartcardNumber(e.target.value)} />
+              value={smartcardNumber}
+              onChange={(e) => { setSmartcardNumber(e.target.value); setSmartcardCustomer(null); }} />
+          </div>
+        )}
+
+        {/* TV — plan selector */}
+        {isTV && network && (
+          <div>
+            <label className="label">Select subscription plan</label>
+            {tvPlansQuery.isLoading ? (
+              <p className="text-sm text-ink-500">Loading plans…</p>
+            ) : tvPlans.length === 0 ? (
+              <p className="text-sm text-ink-500">No plans found for {network} right now.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {tvPlans.map((p) => (
+                  <button key={p.item_code} onClick={() => selectTVPlan(p)}
+                    className={clsx(
+                      'p-3 rounded-lg border text-left transition',
+                      tvPlan === p.item_code
+                        ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30'
+                        : 'border-ink-200 hover:border-ink-400 dark:border-ink-700',
+                    )}>
+                    <div className="font-medium text-sm dark:text-white">{p.name}</div>
+                    <div className="text-xs text-ink-500 dark:text-ink-400">₦{p.amount.toLocaleString()}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {smartcardCustomer && (
+              <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-brand-50 dark:bg-brand-950/30 rounded-lg border border-brand-200 dark:border-brand-800 text-sm">
+                <CheckCircle2 className="h-4 w-4 text-brand-600 shrink-0" />
+                <span className="text-brand-800 dark:text-brand-300 font-medium">{smartcardCustomer}</span>
+              </div>
+            )}
+            {validatingSmartcard && (
+              <p className="text-xs text-ink-500 mt-1 flex items-center gap-1">
+                <RefreshCw className="h-3 w-3 animate-spin" /> Verifying smartcard…
+              </p>
+            )}
           </div>
         )}
 
@@ -1482,8 +1570,11 @@ function UtilityForm({ service, billAmount, setBillAmount, network, setNetwork, 
         </div>
 
         <button onClick={onPurchase} disabled={!canSubmit} className="btn-brand">
-          {isPending ? 'Processing…' : isData && dataPlan
-            ? `Buy ${plans.find(p => p.item_code === dataPlan)?.name ?? 'data'}`
+          {isPending ? 'Processing…'
+            : isData && dataPlan
+              ? `Buy ${plans.find(p => p.item_code === dataPlan)?.name ?? 'data'}`
+            : isTV && tvPlan
+              ? `Subscribe — ₦${Number(billAmount || 0).toLocaleString()}`
             : `Pay ₦${Number(billAmount || 0).toLocaleString()}`}
         </button>
       </div>

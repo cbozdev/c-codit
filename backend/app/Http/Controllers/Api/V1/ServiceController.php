@@ -54,6 +54,7 @@ class ServiceController extends Controller
             'smartcard_number'=> ['nullable', 'string', 'max:30'],
             'plan'            => ['nullable', 'string', 'max:50'],
             'plan_code'       => ['nullable', 'string', 'max:20'],
+            'biller_code'     => ['nullable', 'string', 'max:20'],
             // Gift card fields
             'denomination'         => ['nullable', 'numeric', 'min:1', 'max:500'],
             'reloadly_product_id'  => ['nullable', 'integer', 'min:1'],
@@ -868,6 +869,35 @@ class ServiceController extends Controller
             ]);
         } catch (\Throwable $e) {
             return ApiResponse::fail('Could not validate meter: ' . $e->getMessage(), null, 422);
+        }
+    }
+
+    public function tvPlans(Request $request)
+    {
+        $request->validate(['provider' => ['required', 'string', 'in:DSTV,GOtv,Showmax,StarTimes']]);
+        $plans = app(\App\Services\FlutterwaveBillsService::class)
+            ->getTVPlans($request->input('provider'));
+        return ApiResponse::ok($plans);
+    }
+
+    public function validateSmartcard(Request $request)
+    {
+        $request->validate([
+            'smartcard_number' => ['required', 'string'],
+            'item_code'        => ['required', 'string'],
+        ]);
+
+        try {
+            $result = app(\App\Services\FlutterwaveBillsService::class)->validateSmartcard(
+                smartcardNumber: $request->input('smartcard_number'),
+                itemCode:        $request->input('item_code'),
+            );
+            return ApiResponse::ok([
+                'customer_name'    => $result['name'] ?? $result['customer_name'] ?? null,
+                'smartcard_number' => $request->input('smartcard_number'),
+            ]);
+        } catch (\Throwable $e) {
+            return ApiResponse::fail('Could not validate smartcard: ' . $e->getMessage(), null, 422);
         }
     }
 
