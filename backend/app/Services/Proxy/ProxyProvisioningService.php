@@ -656,12 +656,16 @@ class ProxyProvisioningService
     ): int {
         $markupPct = $service?->markup_percent ?? 25;
 
+        // Prices in USD cents (minor units).
+        // Bandwidth-based types (residential, mobile): flat per-GB — duration is
+        // just the credential expiry window, NOT a cost multiplier.
+        // IP-based types (datacenter, ISP): per-IP per-month, prorated by duration.
         $baseMinor = match (true) {
-            str_starts_with($proxyType, 'residential') => (int) (($bandwidthGb ?? 1) * 350 * ($durationDays / 30)),
-            str_starts_with($proxyType, 'datacenter') && str_ends_with($proxyType, 'dedicated') => $ipCount * 200,
-            str_starts_with($proxyType, 'datacenter')  => $ipCount * 80,
-            str_starts_with($proxyType, 'isp')         => $ipCount * 250,
-            str_starts_with($proxyType, 'mobile')      => (int) (($bandwidthGb ?? 1) * 1200 * ($durationDays / 30)),
+            str_starts_with($proxyType, 'residential') => (int) (($bandwidthGb ?? 1) * 500),           // $5.00 / GB
+            str_starts_with($proxyType, 'mobile')      => (int) (($bandwidthGb ?? 1) * 400),           // $4.00 / GB
+            str_starts_with($proxyType, 'datacenter') && str_ends_with($proxyType, 'dedicated') => (int) ($ipCount * 150 * ($durationDays / 30)), // $1.50 / IP / month
+            str_starts_with($proxyType, 'datacenter')  => (int) ($ipCount * 10  * ($durationDays / 30)), // $0.10 / IP / month
+            str_starts_with($proxyType, 'isp')         => (int) ($ipCount * 200 * ($durationDays / 30)), // $2.00 / IP / month
             default                                     => 1000,
         };
 
