@@ -82,17 +82,27 @@ class ServiceController extends Controller
             );
         } catch (ServiceUnavailableException $e) {
             return ApiResponse::fail($e->getMessage(), null, 409);
+        } catch (\InvalidArgumentException $e) {
+            return ApiResponse::fail($e->getMessage(), null, 422);
         } catch (\App\Services\Ledger\InsufficientFundsException $e) {
             return ApiResponse::fail('Insufficient wallet balance. Please top up first.', null, 402);
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
             return ApiResponse::fail('Provider is temporarily unreachable. Please try again in a moment.', null, 503);
         } catch (\RuntimeException $e) {
-            // Log the real provider error; show a generic message to users
             \Log::error('service.purchase.runtime_error', [
                 'service'   => $request->input('service_code'),
                 'error'     => $e->getMessage(),
                 'user'      => $request->user()->id,
             ]);
+            // For Flutterwave bill errors the message is directly from their API
+            // and is always user-readable (e.g. "This item is not available",
+            // "Invalid customer", "Please select a plan first").
+            // Surface it instead of the generic fallback.
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'Flutterwave Bills')) {
+                $userMsg = preg_replace('/^Flutterwave Bills (API error|failed): /i', '', $msg);
+                return ApiResponse::fail($userMsg, null, 422);
+            }
             return ApiResponse::fail('Service is temporarily unavailable. Your wallet has been refunded. Please try again later.', null, 503);
         } catch (\Exception $e) {
             \Log::error('service.purchase.unexpected_error', [
