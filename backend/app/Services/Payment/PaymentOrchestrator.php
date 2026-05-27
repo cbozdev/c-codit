@@ -125,15 +125,18 @@ class PaymentOrchestrator
                     $wallet = $this->wallets->getOrCreate($payment->user);
 
                     $creditCurrency = $wallet->currency;
-                    $ngnUsdRate     = (float) config('services.platform.ngn_usd_rate', 0.00065);
+                    // Rate = "NGN per 1 USD" (e.g., 1600 means 1 USD = ₦1,600).
+                    // NGN kobo ÷ rate = USD cents  |  USD cents × rate = NGN kobo
+                    $usdNgnRate = max(1.0, (float) config('services.platform.ngn_usd_rate', 1600));
 
                     if ($payment->currency === $creditCurrency) {
                         $creditAmount = $payment->amount_minor;
                     } elseif ($payment->currency === 'NGN' && $creditCurrency === 'USD') {
-                        // NGN kobo → USD cents: amount_minor (kobo) × rate = USD cents
-                        $creditAmount = (int) round($payment->amount_minor * $ngnUsdRate);
+                        // NGN kobo → USD cents
+                        $creditAmount = max(1, (int) round($payment->amount_minor / $usdNgnRate));
                     } elseif ($payment->currency === 'USD' && $creditCurrency === 'NGN') {
-                        $creditAmount = (int) round($payment->amount_minor / max($ngnUsdRate, 0.000001));
+                        // USD cents → NGN kobo
+                        $creditAmount = (int) round($payment->amount_minor * $usdNgnRate);
                     } else {
                         $creditAmount = $payment->amount_minor;
                     }

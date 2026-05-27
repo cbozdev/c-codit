@@ -337,10 +337,10 @@ class ServicePurchaseService
         $wallet = $this->wallets->getOrCreate($user);
 
         // Convert NGN amount to USD for wallet deduction.
-        // No artificial USD floor — the NGN amount the user entered is what they pay.
-        // Minimum is enforced in NGN above (≥ ₦50) which is always > platform dust.
-        $ngnUsdRate  = (float) config('services.platform.ngn_usd_rate', 0.00065);
-        $usdMinor    = max(1, (int) round($amountMinor * $ngnUsdRate)); // 1 = $0.01 dust guard
+        // Rate = "NGN per 1 USD" (e.g., 1600 means 1 USD = ₦1,600).
+        // NGN kobo ÷ rate = USD cents  (e.g., 10,000 kobo ÷ 1600 = 6.25 cents ≈ $0.06 for ₦100)
+        $usdNgnRate  = max(1.0, (float) config('services.platform.ngn_usd_rate', 1600));
+        $usdMinor    = max(1, (int) round($amountMinor / $usdNgnRate));
         $finalAmount = Money::minor($usdMinor, 'USD');
 
         $order = ServiceOrder::create([
@@ -693,15 +693,17 @@ class ServicePurchaseService
             return $amount;
         }
 
-        $ngnPerUsd = 1.0 / max((float) config('services.platform.ngn_usd_rate', 0.00065), 0.000001);
+        // Rate = "NGN per 1 USD" (e.g., 1600).
+        // USD cents × rate = NGN kobo   |   NGN kobo ÷ rate = USD cents
+        $usdNgnRate = max(1.0, (float) config('services.platform.ngn_usd_rate', 1600));
 
         if ($amount->currency === 'USD' && $targetCurrency === 'NGN') {
-            $ngnMinor = (int) round($amount->amountMinor * $ngnPerUsd);
+            $ngnMinor = (int) round($amount->amountMinor * $usdNgnRate);
             return Money::minor($ngnMinor, 'NGN');
         }
 
         if ($amount->currency === 'NGN' && $targetCurrency === 'USD') {
-            $usdMinor = (int) round($amount->amountMinor / $ngnPerUsd);
+            $usdMinor = (int) round($amount->amountMinor / $usdNgnRate);
             return Money::minor(max($usdMinor, 1), 'USD');
         }
 

@@ -130,6 +130,8 @@ return [
         'wallet_max_balance' => (int) env('WALLET_MAX_BALANCE', 1_000_000),
         'daily_debit_limit'  => (int) env('WALLET_DAILY_DEBIT_LIMIT', 50_000),
         'rub_usd_rate'       => (float) env('PLATFORM_RUB_USD_RATE', 0.011),
-        'ngn_usd_rate'       => (float) env('PLATFORM_NGN_USD_RATE', 0.00065),
+        // "NGN per 1 USD"  e.g. 1600 means 1 USD = ₦1,600.
+        // Formula: NGN_kobo ÷ rate = USD_cents  |  USD_cents × rate = NGN_kobo
+        'ngn_usd_rate'       => (float) env('PLATFORM_NGN_USD_RATE', 1600),
     ],
 ];
