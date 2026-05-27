@@ -344,12 +344,9 @@ class DecodoService
             default  => 10000,
         };
 
-        $host = gethostbyname($hostname);
-        if ($host === $hostname) {
-            $host = $hostname;
-        }
-
-        return [$host, $port];
+        // Always store the hostname — Decodo rotates gateway IPs so a
+        // DNS-resolved IP becomes stale within hours.
+        return [$hostname, $port];
     }
 
     private function buildGatewayUsername(string $baseUser, string $country, string $sessionType, string $sessionId): string
