@@ -382,6 +382,12 @@ class AuthController extends Controller
             }
         }
 
+        // Generate a code on-demand for users created before the referral system existed
+        if (! $user->referral_code) {
+            $user->referral_code = User::generateReferralCode();
+            $user->save();
+        }
+
         $link = rtrim((string) config('app.frontend_url'), '/') . '/register?ref=' . $user->referral_code;
 
         return ApiResponse::ok([
