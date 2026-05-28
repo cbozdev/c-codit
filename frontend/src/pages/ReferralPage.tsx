@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Copy, Share2, Users, Wallet, Link2, CreditCard, Gift, CheckCircle2, Clock, XCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 import { apiCall } from '@/lib/api';
 

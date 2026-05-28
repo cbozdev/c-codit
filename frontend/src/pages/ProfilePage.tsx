@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/auth';
 import { apiCall } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Mail, ShieldCheck, LogOut, Lock, User, Eye, EyeOff,
   CheckCircle2, XCircle, Bell, Edit2, Save, X, Phone, Globe,
-  Users, AlertTriangle, Smartphone,
+  Users, AlertTriangle, Smartphone, Copy,
 } from 'lucide-react';
 
 export default function ProfilePage() {
