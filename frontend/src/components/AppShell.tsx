@@ -6,7 +6,7 @@ import { Logo } from './Logo';
 import NotificationBell from './NotificationBell';
 import {
   LayoutDashboard, Wallet, ListOrdered, Layers,
-  User as UserIcon, LogOut, Shield, Sun, Moon, Menu, X, Globe, Phone,
+  User as UserIcon, LogOut, Shield, Sun, Moon, Menu, X, Globe, Phone, Users,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -17,6 +17,7 @@ const NAV = [
   { to: '/services',     label: 'Services',     icon: Layers,          tourId: 'nav-services' },
   { to: '/ltr-numbers',  label: 'LTR Numbers',  icon: Phone,           tourId: 'nav-ltr' },
   { to: '/proxy',        label: 'Proxies',      icon: Globe,           tourId: 'nav-proxy' },
+  { to: '/referral',     label: 'Referral',     icon: Users,           tourId: undefined },
   { to: '/profile',      label: 'Profile',      icon: UserIcon,        tourId: undefined },
 ];
 

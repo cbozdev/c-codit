@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/auth';
 import { apiCall } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Mail, ShieldCheck, LogOut, Lock, User, Eye, EyeOff,
   CheckCircle2, XCircle, Bell, Edit2, Save, X, Phone, Globe,
-  Copy, Users, AlertTriangle, Smartphone,
+  Users, AlertTriangle, Smartphone,
 } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -31,8 +31,7 @@ export default function ProfilePage() {
   const [disablePw, setDisablePw]         = useState('');
   const [showDisable2fa, setShowDisable2fa] = useState(false);
 
-  // Referral state
-  const [showReferral, setShowReferral] = useState(false);
+  // (Referral moved to /referral page)
 
   // Delete account state
   const [showDelete, setShowDelete]   = useState(false);
@@ -109,13 +108,6 @@ export default function ProfilePage() {
     mutationFn: () => apiCall({ method: 'DELETE', url: '/profile/2fa', data: { password: disablePw } }),
     onSuccess: () => { toast.success('2FA disabled.'); setShowDisable2fa(false); setDisablePw(''); window.location.reload(); },
     onError: (e) => toast.error((e as Error).message),
-  });
-
-  // Referral
-  const { data: referralInfo } = useQuery<{ code: string; referrals: number; link: string }>({
-    queryKey: ['referral-info'],
-    queryFn: () => apiCall({ method: 'GET', url: '/auth/referral' }),
-    enabled: showReferral,
   });
 
   // Account deletion
@@ -388,37 +380,20 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* Referral */}
-      <div className="card-pad space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="font-semibold dark:text-white flex items-center gap-2">
-            <Users className="h-4 w-4 text-brand-600" /> Referral program
-          </h2>
-          <button onClick={() => setShowReferral(r => !r)} className="text-sm text-brand-600 hover:text-brand-700 font-medium">
-            {showReferral ? 'Hide' : 'Show my code'}
-          </button>
-        </div>
-        <p className="text-sm text-ink-500 dark:text-ink-400">
-          Share your referral code. When someone signs up and completes their first order, you earn <strong>$1.00</strong> wallet credit.
-        </p>
-        {showReferral && referralInfo && (
-          <div className="space-y-3 p-4 bg-ink-50 dark:bg-ink-800 rounded-xl">
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-lg font-mono font-bold text-ink-900 dark:text-white tracking-widest text-center py-2 bg-white dark:bg-ink-700 rounded-lg">
-                {referralInfo.code}
-              </code>
-              <button onClick={() => { navigator.clipboard.writeText(referralInfo.link); toast.success('Link copied!'); }}
-                className="flex items-center gap-1.5 btn-primary text-sm px-3 py-2 shrink-0">
-                <Copy className="h-4 w-4" /> Copy link
-              </button>
-            </div>
-            <p className="text-xs text-ink-500 break-all">{referralInfo.link}</p>
-            <div className="flex items-center gap-2 text-sm text-ink-600 dark:text-ink-300">
-              <Users className="h-4 w-4 text-brand-500" />
-              <span><strong>{referralInfo.referrals}</strong> {referralInfo.referrals === 1 ? 'person' : 'people'} referred so far</span>
-            </div>
+      {/* Referral — link to dedicated page */}
+      <div className="card-pad">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-brand-600" />
+            <h2 className="font-semibold dark:text-white">Referral program</h2>
           </div>
-        )}
+          <a href="/referral" className="text-sm text-brand-600 hover:text-brand-700 font-medium">
+            View →
+          </a>
+        </div>
+        <p className="mt-2 text-sm text-ink-500 dark:text-ink-400">
+          Earn <strong>$1.00</strong> wallet credit for every friend who signs up and completes their first order.
+        </p>
       </div>
 
       {/* Danger zone */}

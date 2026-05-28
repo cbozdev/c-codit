@@ -2,6 +2,7 @@ import { useEffect, lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/auth';
 import AppShell from '@/components/AppShell';
+import CookieConsent from '@/components/CookieConsent';
 
 // Lazy load all pages for better performance
 const LandingPage        = lazy(() => import('@/pages/LandingPage'));
@@ -17,6 +18,7 @@ const TransactionsPage   = lazy(() => import('@/pages/TransactionsPage'));
 const ServicesPage       = lazy(() => import('@/pages/ServicesPage'));
 const OrderDetailPage    = lazy(() => import('@/pages/OrderDetailPage'));
 const ProfilePage        = lazy(() => import('@/pages/ProfilePage'));
+const ReferralPage       = lazy(() => import('@/pages/ReferralPage'));
 const AdminPage          = lazy(() => import('@/pages/AdminPage'));
 const LegalPage          = lazy(() => import('@/pages/LegalPage'));
 const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'));
@@ -55,6 +57,7 @@ export default function App() {
 
   return (
     <Suspense fallback={<PageSpinner />}>
+      <CookieConsent />
       <Routes>
         {/* Public */}
         <Route path="/"                   element={<LandingPage />} />
@@ -77,6 +80,7 @@ export default function App() {
           <Route path="/orders/:id"       element={<OrderDetailPage />} />
           <Route path="/proxy"            element={<MyProxiesPage />} />
           <Route path="/ltr-numbers"      element={<LtrNumbersPage />} />
+          <Route path="/referral"         element={<ReferralPage />} />
           <Route path="/profile"          element={<ProfilePage />} />
           <Route path="/admin"
             element={<RequireRole role="admin"><AdminPage /></RequireRole>}

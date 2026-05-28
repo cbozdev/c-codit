@@ -337,12 +337,63 @@ class AuthController extends Controller
 
     public function referralInfo(Request $request)
     {
-        $user = $request->user();
-        $referrals = User::where('referred_by', $user->id)->count();
+        $user   = $request->user();
+        $wallet = $user->wallet;
+
+        // ── Total earned from referral bonuses ─────────────────────────────────
+        $totalEarnedMinor = $wallet
+            ? \App\Models\Transaction::where('wallet_id', $wallet->id)
+                ->where('idempotency_key', 'LIKE', 'referral:%')
+                ->where('status', 'success')
+                ->sum('amount_minor')
+            : 0;
+
+        // ── Categorise referred users ──────────────────────────────────────────
+        $referredUsers = User::where('referred_by', $user->id)
+            ->select('id', 'name', 'created_at')
+            ->orderByDesc('created_at')
+            ->get();
+
+        $pending   = [];
+        $completed = [];
+        $cancelled = [];
+        $cutoff    = now()->subDays(45);   // no activity after 45 days → cancelled
+
+        foreach ($referredUsers as $ref) {
+            $hasOrder = \App\Models\ServiceOrder::where('user_id', $ref->id)
+                ->where('status', 'completed')
+                ->exists();
+
+            // Privacy: show first name + masked last initial only
+            $parts  = explode(' ', trim($ref->name));
+            $masked = $parts[0] . (isset($parts[1]) ? ' ' . strtoupper(mb_substr($parts[1], 0, 1)) . '.' : '');
+
+            $row = [
+                'name'      => $masked,
+                'joined_at' => $ref->created_at->diffForHumans(),
+            ];
+
+            if ($hasOrder) {
+                $completed[] = $row;
+            } elseif ($ref->created_at->lt($cutoff)) {
+                $cancelled[] = $row;
+            } else {
+                $pending[] = $row;
+            }
+        }
+
+        $link = rtrim((string) config('app.frontend_url'), '/') . '/register?ref=' . $user->referral_code;
+
         return ApiResponse::ok([
-            'code'      => $user->referral_code,
-            'referrals' => $referrals,
-            'link'      => rtrim((string) config('app.frontend_url'), '/') . '/register?ref=' . $user->referral_code,
+            'code'             => $user->referral_code,
+            'link'             => $link,
+            'reward_amount'    => '1.00',
+            'min_fund_amount'  => '1.00',
+            'total_earned'     => number_format($totalEarnedMinor / 100, 2, '.', ''),
+            'total_invitees'   => count($referredUsers),
+            'pending'          => $pending,
+            'completed'        => $completed,
+            'cancelled'        => $cancelled,
         ]);
     }
 }
