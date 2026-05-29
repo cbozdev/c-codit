@@ -137,7 +137,7 @@ class SocialAuthController extends Controller
                     'terms_version'     => '1.0',
                 ]);
                 $u->assignRole('user');
-                $this->wallets->getOrCreate($u, config('services.platform.base_currency'));
+                $this->wallets->getOrCreate($u, 'USD');
                 return $u;
             });
 

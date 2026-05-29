@@ -48,7 +48,7 @@ class AuthController extends Controller
                 'referred_by'       => $referrer?->id,
             ]);
             $u->assignRole('user');
-            $this->wallets->getOrCreate($u, config('services.platform.base_currency'));
+            $this->wallets->getOrCreate($u, 'USD');
             return $u;
         });
 
