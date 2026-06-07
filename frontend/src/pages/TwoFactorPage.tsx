@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { Shield, ArrowLeft } from 'lucide-react';
-import { apiCall } from '@/lib/api';
+import { apiCall, setToken as persistToken } from '@/lib/api';
 import { useAuth } from '@/context/auth';
 import toast from 'react-hot-toast';
 import type { User } from '@/types/api';
@@ -11,8 +11,8 @@ import { Logo } from '@/components/Logo';
 export default function TwoFactorPage() {
   const location   = useLocation();
   const navigate   = useNavigate();
-  const { setUser, setToken } = useAuth() as any;
   const challenge  = (location.state as any)?.challenge as string | undefined;
+  const rememberMe = (location.state as any)?.rememberMe as boolean ?? true;
 
   const [code, setCode] = useState('');
 
@@ -23,8 +23,8 @@ export default function TwoFactorPage() {
       data: { challenge, code },
     }),
     onSuccess: (data) => {
-      setToken(data.token);
-      setUser(data.user);
+      persistToken(data.token, rememberMe);
+      useAuth.setState({ user: data.user, token: data.token });
       navigate('/dashboard', { replace: true });
     },
     onError: (e) => toast.error((e as Error).message),

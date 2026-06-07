@@ -8,7 +8,7 @@ type AuthState = {
   loading: boolean;
   initialized: boolean;
   initialize: () => Promise<void>;
-  login: (email: string, password: string) => Promise<{ requires_2fa: boolean; challenge?: string } | void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<{ requires_2fa: boolean; challenge?: string; rememberMe?: boolean } | void>;
   register: (input: {
     name: string;
     email: string;
@@ -45,7 +45,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
 
-  async login(email, password) {
+  async login(email, password, rememberMe = true) {
     set({ loading: true });
     try {
       const data = await apiCall<{ user?: User; token?: string; requires_2fa?: boolean; challenge?: string }>({
@@ -54,9 +54,9 @@ export const useAuth = create<AuthState>((set, get) => ({
         data: { email, password },
       });
       if (data.requires_2fa) {
-        return { requires_2fa: true, challenge: data.challenge };
+        return { requires_2fa: true, challenge: data.challenge, rememberMe };
       }
-      setToken(data.token!);
+      setToken(data.token!, rememberMe);
       set({ user: data.user!, token: data.token! });
     } finally {
       set({ loading: false });
