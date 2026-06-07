@@ -76,7 +76,8 @@ export default function App() {
           <Route path="/wallet"           element={<WalletPage />} />
           <Route path="/wallet/confirm"   element={<WalletConfirmPage />} />
           <Route path="/transactions"     element={<TransactionsPage />} />
-          <Route path="/services"         element={<ServicesPage />} />
+          <Route path="/services"           element={<ServicesPage />} />
+          <Route path="/services/:category" element={<ServicesPage />} />
           <Route path="/orders/:id"       element={<OrderDetailPage />} />
           <Route path="/proxy"            element={<MyProxiesPage />} />
           <Route path="/ltr-numbers"      element={<LtrNumbersPage />} />

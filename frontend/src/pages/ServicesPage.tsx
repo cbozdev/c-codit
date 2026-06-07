@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { apiCall, newIdempotencyKey } from '@/lib/api';
@@ -8,7 +8,7 @@ import {
   Smartphone, Globe, CreditCard, Receipt, Phone,
   RefreshCw, Copy, Search, ChevronDown, ChevronUp,
   CheckCircle2, Clock, XCircle, Gift, Wifi, QrCode, ExternalLink,
-  TrendingUp, Users, Server, ArrowRight,
+  TrendingUp, Users, Server, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -260,6 +260,30 @@ const CAT_LABELS: Record<string, string> = {
   proxy:          'Proxy Services',
 };
 
+const CAT_DESCRIPTIONS: Record<string, string> = {
+  virtual_number: 'Receive SMS verification codes from 50+ services worldwide',
+  esim:           'Instant digital SIM for travel — delivered as a QR code',
+  giftcard:       'Brand gift cards from 60+ global retailers across 14 countries',
+  utility:        'Airtime, data, electricity and TV bills paid in seconds',
+  smm:            'Grow followers, likes and views on Instagram, YouTube, TikTok and more',
+  smm_accounts:   'Buy verified pre-made social media accounts with credentials',
+  proxy:          'Residential, datacenter and mobile proxies for 15+ countries',
+};
+
+const CATEGORY_SLUG: Record<string, string> = {
+  virtual_number: 'virtual-numbers',
+  esim:           'esim',
+  giftcard:       'gift-cards',
+  utility:        'utility',
+  smm:            'smm',
+  smm_accounts:   'smm-accounts',
+  proxy:          'proxy',
+};
+
+const SLUG_TO_CATEGORY: Record<string, string> = Object.fromEntries(
+  Object.entries(CATEGORY_SLUG).map(([k, v]) => [v, k])
+);
+
 // SMM types
 type SmmService = {
   service_id:   number;
@@ -301,6 +325,10 @@ const SMM_PLATFORMS_ACCOUNTS = [
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ServicesPage() {
+  const navigate = useNavigate();
+  const { category: categorySlug } = useParams<{ category?: string }>();
+  const activeCategory = categorySlug ? (SLUG_TO_CATEGORY[categorySlug] ?? null) : null;
+
   const qc = useQueryClient();
   const [selected, setSelected]           = useState<Service | null>(null);
   const [serviceSearch, setServiceSearch] = useState('');
@@ -359,6 +387,28 @@ export default function ServicesPage() {
     acc[s.category].push(s);
     return acc;
   }, {});
+
+  // Auto-select: reset when navigating to a different category
+  const autoSelectedCat = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeCategory !== autoSelectedCat.current) {
+      autoSelectedCat.current = null;
+      setSelected(null);
+    }
+  }, [activeCategory]);
+
+  // Auto-select first service once data is loaded (single-option categories get instant form)
+  useEffect(() => {
+    if (!activeCategory || !services.data || autoSelectedCat.current === activeCategory) return;
+    const catServices = services.data.filter((s) => s.category === activeCategory && s.is_active);
+    if (catServices.length > 0) {
+      autoSelectedCat.current = activeCategory;
+      const svc = catServices[0];
+      setSelected(svc);
+      if (svc.category === 'giftcard') setDenomination(25);
+      if (UTILITY_NETWORKS[svc.code]) setNetwork(UTILITY_NETWORKS[svc.code][0]);
+    }
+  }, [activeCategory, services.data]);
 
   const purchase = useMutation({
     mutationFn: () => {
@@ -454,7 +504,6 @@ export default function ServicesPage() {
 
   function selectService(svc: Service) {
     setSelected(svc === selected ? null : svc);
-    // Set defaults based on category
     if (svc.category === 'giftcard') setDenomination(25);
     if (UTILITY_NETWORKS[svc.code]) setNetwork(UTILITY_NETWORKS[svc.code][0]);
   }
@@ -463,220 +512,267 @@ export default function ServicesPage() {
     ? ALL_PROVIDER_SERVICES.filter((s) => s.label.toLowerCase().includes(serviceSearch.toLowerCase()))
     : null;
 
+  const ordersSection = (
+    <div className="card-pad dark:bg-ink-900">
+      <button
+        onClick={() => setOrdersExpanded((v) => !v)}
+        className="w-full flex items-center justify-between mb-4"
+      >
+        <h2 className="font-semibold dark:text-white">Recent orders</h2>
+        <div className="flex items-center gap-2">
+          <button onClick={(e) => { e.stopPropagation(); orders.refetch(); }} className="btn-ghost text-xs p-1.5">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+          {ordersExpanded ? <ChevronUp className="h-4 w-4 text-ink-500" /> : <ChevronDown className="h-4 w-4 text-ink-500" />}
+        </div>
+      </button>
+      {ordersExpanded && (
+        <>
+          {orders.isLoading ? (
+            <div className="text-sm text-ink-500 py-4 text-center">Loading…</div>
+          ) : (orders.data?.items ?? []).length === 0 ? (
+            <div className="text-sm text-ink-500 dark:text-ink-400 py-6 text-center">
+              No orders yet. Buy a service above to get started.
+            </div>
+          ) : (
+            <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+              {orders.data!.items.map((o) => (
+                <OrderRow key={o.id} order={o} />
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  const purchaseForm = selected ? (
+    <div className="card-pad dark:bg-ink-900">
+      {selected.category === 'virtual_number' && (
+        <VirtualNumberForm
+          service={selected}
+          serviceSearch={serviceSearch}
+          setServiceSearch={setServiceSearch}
+          filteredServices={filteredServices}
+          providerSvc={providerSvc}
+          setProviderSvc={(v) => { setProviderSvc(v); setPvaAreaCode(''); }}
+          country={country}
+          setCountry={setCountry}
+          pvaMode={pvaMode}
+          setPvaMode={(m) => { setPvaMode(m); setPvaAreaCode(''); }}
+          ltrDuration={ltrDuration}
+          setLtrDuration={(d) => { setLtrDuration(d); setPvaAreaCode(''); }}
+          pvaAreaCode={pvaAreaCode}
+          setPvaAreaCode={setPvaAreaCode}
+          onPurchase={() => purchase.mutate()}
+          isPending={purchase.isPending}
+        />
+      )}
+      {selected.category === 'giftcard' && (
+        <GiftCardForm
+          service={selected}
+          country={gcCountry}
+          setCountry={setGcCountry}
+          productId={gcProductId}
+          setProductId={setGcProductId}
+          product={gcProduct}
+          setProduct={setGcProduct}
+          denomination={denomination}
+          setDenomination={setDenomination}
+          recipientEmail={gcRecipientEmail}
+          setRecipientEmail={setGcRecipientEmail}
+          onPurchase={() => purchase.mutate()}
+          isPending={purchase.isPending}
+        />
+      )}
+      {selected.category === 'utility' && (
+        <UtilityForm
+          service={selected}
+          billAmount={billAmount}
+          setBillAmount={setBillAmount}
+          network={network}
+          setNetwork={(n) => { setNetwork(n); setDataPlan(''); setDataBillerCode(''); setTvPlan(''); setTvBillerCode(''); }}
+          phoneNumber={phoneNumber}
+          setPhoneNumber={setPhoneNumber}
+          meterNumber={meterNumber}
+          setMeterNumber={setMeterNumber}
+          smartcardNumber={smartcardNumber}
+          setSmartcardNumber={setSmartcardNumber}
+          dataPlan={dataPlan}
+          setDataPlan={setDataPlan}
+          setDataBillerCode={setDataBillerCode}
+          tvPlan={tvPlan}
+          setTvPlan={setTvPlan}
+          setTvBillerCode={setTvBillerCode}
+          meterType={meterType}
+          setMeterType={setMeterType}
+          onPurchase={() => purchase.mutate()}
+          isPending={purchase.isPending}
+        />
+      )}
+      {selected.category === 'esim' && (
+        <EsimForm
+          service={selected}
+          packageId={esimPackageId}
+          setPackageId={setEsimPackageId}
+          onPurchase={() => purchase.mutate()}
+          isPending={purchase.isPending}
+        />
+      )}
+      {selected.category === 'smm' && (
+        <SmmBoostForm
+          service={selected}
+          smmServiceId={smmServiceId}
+          setSmmServiceId={setSmmServiceId}
+          link={smmLink}
+          setLink={setSmmLink}
+          quantity={smmQuantity}
+          setQuantity={setSmmQuantity}
+          onPurchase={() => purchase.mutate()}
+          isPending={purchase.isPending}
+        />
+      )}
+      {selected.category === 'smm_accounts' && (
+        <SmmAccountsForm
+          service={selected}
+          smmServiceId={smmServiceId}
+          setSmmServiceId={setSmmServiceId}
+          quantity={smmQuantity}
+          setQuantity={setSmmQuantity}
+          onPurchase={() => purchase.mutate()}
+          isPending={purchase.isPending}
+        />
+      )}
+      {selected.category === 'proxy' && (
+        <ProxyPurchaseForm
+          service={selected}
+          proxyType={proxyType}           setProxyType={setProxyType}
+          protocol={proxyProtocol}        setProtocol={setProxyProtocol}
+          countryCode={proxyCountry}      setCountryCode={setProxyCountry}
+          bandwidthGb={proxyBandwidth}    setBandwidthGb={setProxyBandwidth}
+          ipCount={proxyIpCount}          setIpCount={setProxyIpCount}
+          durationDays={proxyDuration}    setDurationDays={setProxyDuration}
+          sessionType={proxySession}      setSessionType={setProxySession}
+          onPurchase={() => purchase.mutate()}
+          isPending={purchase.isPending}
+        />
+      )}
+    </div>
+  ) : null;
+
+  // Redirect unknown slugs
+  if (categorySlug && !activeCategory) return <Navigate to="/services" replace />;
+
+  // ── Hub view: no category selected ───────────────────────────────────────────
+  if (!activeCategory) {
+    return (
+      <div className="space-y-8 max-w-5xl">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight dark:text-white">Services</h1>
+          <p className="text-sm text-ink-600 dark:text-ink-400 mt-1">
+            Pick a service to get started — all paid from your wallet.
+          </p>
+        </div>
+
+        {services.isLoading ? (
+          <div className="text-sm text-ink-500 py-8 text-center">Loading services…</div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.entries(grouped).map(([category, items]) => {
+              const Icon = CAT_ICONS[category] ?? CreditCard;
+              const slug = CATEGORY_SLUG[category];
+              const activeCount = items.filter((s) => s.is_active).length;
+              if (!slug) return null;
+              return (
+                <button
+                  key={category}
+                  onClick={() => navigate(`/services/${slug}`)}
+                  className="card-pad text-left border-2 border-ink-100 dark:border-ink-700 hover:border-brand-400 dark:hover:border-brand-500 transition-colors group"
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="p-2.5 bg-brand-50 dark:bg-brand-900/30 rounded-xl flex-shrink-0 group-hover:bg-brand-100 dark:group-hover:bg-brand-900/50 transition-colors">
+                      <Icon className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+                    </div>
+                    <div className="font-semibold dark:text-white pt-1.5">{CAT_LABELS[category] ?? category}</div>
+                  </div>
+                  <p className="text-sm text-ink-600 dark:text-ink-400 leading-relaxed">
+                    {CAT_DESCRIPTIONS[category]}
+                  </p>
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-xs text-brand-600 dark:text-brand-400 font-medium">
+                      {activeCount} available
+                    </span>
+                    <ArrowRight className="h-4 w-4 text-ink-400 group-hover:text-brand-500 transition-colors" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {ordersSection}
+      </div>
+    );
+  }
+
+  // ── Category view: show that category's services + form ───────────────────────
+  const CategoryIcon = CAT_ICONS[activeCategory] ?? CreditCard;
+  const catItems     = grouped[activeCategory] ?? [];
+  const catActive    = catItems.filter((s) => s.is_active);
+  const catSoon      = catItems.filter((s) => !s.is_active);
+
   return (
-    <div className="space-y-8 max-w-5xl">
+    <div className="space-y-6 max-w-5xl">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight dark:text-white">Services</h1>
+        <button
+          onClick={() => navigate('/services')}
+          className="flex items-center gap-1.5 text-sm text-ink-500 dark:text-ink-400 hover:text-brand-600 dark:hover:text-brand-400 mb-4 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" /> All services
+        </button>
+        <h1 className="text-2xl font-semibold tracking-tight dark:text-white flex items-center gap-2">
+          <CategoryIcon className="h-6 w-6 text-brand-600" />
+          {CAT_LABELS[activeCategory] ?? activeCategory}
+        </h1>
         <p className="text-sm text-ink-600 dark:text-ink-400 mt-1">
-          Virtual numbers, eSIM, gift cards and utility bills — all from your wallet.
+          {CAT_DESCRIPTIONS[activeCategory]}
         </p>
       </div>
 
-      {/* Service categories */}
-      {Object.entries(grouped).map(([category, items]) => {
-        const Icon = CAT_ICONS[category] ?? CreditCard;
-        const label = CAT_LABELS[category] ?? category;
-        const activeItems = items.filter((s) => s.is_active);
-        const comingSoon  = items.filter((s) => !s.is_active);
-
-        return (
-          <section key={category}>
-            <h2 className="font-semibold text-ink-800 dark:text-ink-200 mb-3 flex items-center gap-2">
-              <Icon className="h-4 w-4 text-brand-600" /> {label}
-            </h2>
-
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activeItems.map((svc) => (
-                <button key={svc.code} onClick={() => selectService(svc)}
-                  className={clsx(
-                    'card-pad text-left transition border-2',
-                    selected?.code === svc.code
-                      ? 'border-brand-500 shadow-glow'
-                      : 'border-ink-100 hover:border-brand-300 dark:border-ink-700 dark:hover:border-brand-600',
-                  )}>
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold dark:text-white">{svc.name}</div>
-                    <span className="badge-success">Active</span>
-                  </div>
-                  <p className="text-xs text-ink-600 dark:text-ink-400 mt-1.5">{svc.description}</p>
-                </button>
-              ))}
-              {comingSoon.map((svc) => (
-                <div key={svc.code}
-                  className="card-pad opacity-60 border-2 border-dashed border-ink-200 dark:border-ink-700">
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold dark:text-white">{svc.name}</div>
-                    <span className="badge-muted">Coming soon</span>
-                  </div>
-                  <p className="text-xs text-ink-500 dark:text-ink-500 mt-1.5">{svc.description}</p>
-                </div>
-              ))}
+      {services.isLoading ? (
+        <div className="text-sm text-ink-500 py-4 text-center">Loading…</div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {catActive.map((svc) => (
+            <button key={svc.code} onClick={() => selectService(svc)}
+              className={clsx(
+                'card-pad text-left transition border-2',
+                selected?.code === svc.code
+                  ? 'border-brand-500 shadow-glow'
+                  : 'border-ink-100 hover:border-brand-300 dark:border-ink-700 dark:hover:border-brand-600',
+              )}>
+              <div className="flex items-center justify-between">
+                <div className="font-semibold dark:text-white">{svc.name}</div>
+                <span className="badge-success">Active</span>
+              </div>
+              <p className="text-xs text-ink-600 dark:text-ink-400 mt-1.5">{svc.description}</p>
+            </button>
+          ))}
+          {catSoon.map((svc) => (
+            <div key={svc.code}
+              className="card-pad opacity-60 border-2 border-dashed border-ink-200 dark:border-ink-700">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold dark:text-white">{svc.name}</div>
+                <span className="badge-muted">Coming soon</span>
+              </div>
+              <p className="text-xs text-ink-500 dark:text-ink-500 mt-1.5">{svc.description}</p>
             </div>
-          </section>
-        );
-      })}
-
-      {/* Purchase form — rendered based on selected service category */}
-      {selected && (
-        <div className="card-pad dark:bg-ink-900">
-          {/* Virtual Numbers */}
-          {selected.category === 'virtual_number' && (
-            <VirtualNumberForm
-              service={selected}
-              serviceSearch={serviceSearch}
-              setServiceSearch={setServiceSearch}
-              filteredServices={filteredServices}
-              providerSvc={providerSvc}
-              setProviderSvc={(v) => { setProviderSvc(v); setPvaAreaCode(''); }}
-              country={country}
-              setCountry={setCountry}
-              pvaMode={pvaMode}
-              setPvaMode={(m) => { setPvaMode(m); setPvaAreaCode(''); }}
-              ltrDuration={ltrDuration}
-              setLtrDuration={(d) => { setLtrDuration(d); setPvaAreaCode(''); }}
-              pvaAreaCode={pvaAreaCode}
-              setPvaAreaCode={setPvaAreaCode}
-              onPurchase={() => purchase.mutate()}
-              isPending={purchase.isPending}
-            />
-          )}
-
-          {/* Gift Cards */}
-          {selected.category === 'giftcard' && (
-            <GiftCardForm
-              service={selected}
-              country={gcCountry}
-              setCountry={setGcCountry}
-              productId={gcProductId}
-              setProductId={setGcProductId}
-              product={gcProduct}
-              setProduct={setGcProduct}
-              denomination={denomination}
-              setDenomination={setDenomination}
-              recipientEmail={gcRecipientEmail}
-              setRecipientEmail={setGcRecipientEmail}
-              onPurchase={() => purchase.mutate()}
-              isPending={purchase.isPending}
-            />
-          )}
-
-          {/* Utility Bills */}
-          {selected.category === 'utility' && (
-            <UtilityForm
-              service={selected}
-              billAmount={billAmount}
-              setBillAmount={setBillAmount}
-              network={network}
-              setNetwork={(n) => { setNetwork(n); setDataPlan(''); setDataBillerCode(''); setTvPlan(''); setTvBillerCode(''); }}
-              phoneNumber={phoneNumber}
-              setPhoneNumber={setPhoneNumber}
-              meterNumber={meterNumber}
-              setMeterNumber={setMeterNumber}
-              smartcardNumber={smartcardNumber}
-              setSmartcardNumber={setSmartcardNumber}
-              dataPlan={dataPlan}
-              setDataPlan={setDataPlan}
-              setDataBillerCode={setDataBillerCode}
-              tvPlan={tvPlan}
-              setTvPlan={setTvPlan}
-              setTvBillerCode={setTvBillerCode}
-              meterType={meterType}
-              setMeterType={setMeterType}
-              onPurchase={() => purchase.mutate()}
-              isPending={purchase.isPending}
-            />
-          )}
-
-          {/* eSIM */}
-          {selected.category === 'esim' && (
-            <EsimForm
-              service={selected}
-              packageId={esimPackageId}
-              setPackageId={setEsimPackageId}
-              onPurchase={() => purchase.mutate()}
-              isPending={purchase.isPending}
-            />
-          )}
-
-          {/* SMM Boost */}
-          {selected.category === 'smm' && (
-            <SmmBoostForm
-              service={selected}
-              smmServiceId={smmServiceId}
-              setSmmServiceId={setSmmServiceId}
-              link={smmLink}
-              setLink={setSmmLink}
-              quantity={smmQuantity}
-              setQuantity={setSmmQuantity}
-              onPurchase={() => purchase.mutate()}
-              isPending={purchase.isPending}
-            />
-          )}
-
-          {/* SMM Accounts */}
-          {selected.category === 'smm_accounts' && (
-            <SmmAccountsForm
-              service={selected}
-              smmServiceId={smmServiceId}
-              setSmmServiceId={setSmmServiceId}
-              quantity={smmQuantity}
-              setQuantity={setSmmQuantity}
-              onPurchase={() => purchase.mutate()}
-              isPending={purchase.isPending}
-            />
-          )}
-
-          {/* Proxy */}
-          {selected.category === 'proxy' && (
-            <ProxyPurchaseForm
-              service={selected}
-              proxyType={proxyType}           setProxyType={setProxyType}
-              protocol={proxyProtocol}        setProtocol={setProxyProtocol}
-              countryCode={proxyCountry}      setCountryCode={setProxyCountry}
-              bandwidthGb={proxyBandwidth}    setBandwidthGb={setProxyBandwidth}
-              ipCount={proxyIpCount}          setIpCount={setProxyIpCount}
-              durationDays={proxyDuration}    setDurationDays={setProxyDuration}
-              sessionType={proxySession}      setSessionType={setProxySession}
-              onPurchase={() => purchase.mutate()}
-              isPending={purchase.isPending}
-            />
-          )}
+          ))}
         </div>
       )}
 
-      {/* Recent orders */}
-      <div className="card-pad dark:bg-ink-900">
-        <button
-          onClick={() => setOrdersExpanded((v) => !v)}
-          className="w-full flex items-center justify-between mb-4"
-        >
-          <h2 className="font-semibold dark:text-white">Recent orders</h2>
-          <div className="flex items-center gap-2">
-            <button onClick={(e) => { e.stopPropagation(); orders.refetch(); }} className="btn-ghost text-xs p-1.5">
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
-            {ordersExpanded ? <ChevronUp className="h-4 w-4 text-ink-500" /> : <ChevronDown className="h-4 w-4 text-ink-500" />}
-          </div>
-        </button>
-
-        {ordersExpanded && (
-          <>
-            {orders.isLoading ? (
-              <div className="text-sm text-ink-500 py-4 text-center">Loading…</div>
-            ) : (orders.data?.items ?? []).length === 0 ? (
-              <div className="text-sm text-ink-500 dark:text-ink-400 py-6 text-center">
-                No orders yet. Buy a service above to get started.
-              </div>
-            ) : (
-              <ul className="divide-y divide-ink-100 dark:divide-ink-800">
-                {orders.data!.items.map((o) => (
-                  <OrderRow key={o.id} order={o} />
-                ))}
-              </ul>
-            )}
-          </>
-        )}
-      </div>
+      {purchaseForm}
+      {ordersSection}
     </div>
   );
 }

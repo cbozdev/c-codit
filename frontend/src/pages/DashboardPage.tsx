@@ -37,7 +37,7 @@ export default function DashboardPage() {
 
   const QUICK_ACTIONS = [
     {
-      to: '/services', icon: Smartphone, title: 'Virtual Numbers',
+      to: '/services/virtual-numbers', icon: Smartphone, title: 'Virtual Numbers',
       desc: 'Disposable numbers via 5sim & SMS-Man.',
       iconColor: 'text-violet-600', iconBg: 'bg-violet-100 dark:bg-violet-900/40',
       border: 'hover:border-violet-300 dark:hover:border-violet-700',
@@ -49,13 +49,13 @@ export default function DashboardPage() {
       border: 'hover:border-brand-300 dark:hover:border-brand-700',
     },
     {
-      to: '/services', icon: Gift, title: 'Gift Cards',
+      to: '/services/gift-cards', icon: Gift, title: 'Gift Cards',
       desc: 'Amazon, Google Play, Netflix and more.',
       iconColor: 'text-pink-600', iconBg: 'bg-pink-100 dark:bg-pink-900/40',
       border: 'hover:border-pink-300 dark:hover:border-pink-700',
     },
     {
-      to: '/services', icon: Zap, title: 'Utility Bills',
+      to: '/services/utility', icon: Zap, title: 'Utility Bills',
       desc: 'Airtime, data, electricity, TV.',
       iconColor: 'text-amber-600', iconBg: 'bg-amber-100 dark:bg-amber-900/40',
       border: 'hover:border-amber-300 dark:hover:border-amber-700',
