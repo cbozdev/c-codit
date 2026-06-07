@@ -18,11 +18,14 @@ export default function LoginPage() {
   const next                = params.get('next') ?? '/dashboard';
   const { login, loading }  = useAuth();
 
-  const [email, setEmail]         = useState('');
-  const [password, setPassword]   = useState('');
-  const [show, setShow]           = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
-  const [errors, setErrors]       = useState<{ email?: string; password?: string; general?: string }>({});
+  const REMEMBER_KEY = 'ccodit_remembered_email';
+  const savedEmail   = localStorage.getItem(REMEMBER_KEY) ?? '';
+
+  const [email, setEmail]           = useState(savedEmail);
+  const [password, setPassword]     = useState('');
+  const [show, setShow]             = useState(false);
+  const [rememberMe, setRememberMe] = useState(!!savedEmail);
+  const [errors, setErrors]         = useState<{ email?: string; password?: string; general?: string }>({});
 
   function clearErr(field: string) {
     setErrors((e) => { const n = { ...e }; delete n[field as keyof typeof n]; return n; });
@@ -40,7 +43,14 @@ export default function LoginPage() {
     if (Object.keys(localErrors).length > 0) { setErrors(localErrors); return; }
 
     try {
-      const result = await login(email.trim().toLowerCase(), password, rememberMe);
+      const trimmedEmail = email.trim().toLowerCase();
+      if (rememberMe) {
+        localStorage.setItem(REMEMBER_KEY, trimmedEmail);
+      } else {
+        localStorage.removeItem(REMEMBER_KEY);
+      }
+
+      const result = await login(trimmedEmail, password, rememberMe);
       if (result?.requires_2fa) {
         navigate('/2fa', { state: { challenge: result.challenge, rememberMe: result.rememberMe }, replace: true });
         return;
@@ -162,14 +172,21 @@ export default function LoginPage() {
               )}
             </div>
 
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 rounded border-ink-300 dark:border-ink-600 text-brand-600 focus:ring-brand-500 bg-white dark:bg-ink-800 cursor-pointer"
-              />
-              <span className="text-sm text-ink-600 dark:text-ink-400">Remember me</span>
+            <label className="flex items-center justify-between cursor-pointer select-none py-1">
+              <span className="text-sm text-ink-700 dark:text-ink-300 font-medium">Remember me</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={rememberMe}
+                onClick={() => setRememberMe((v) => !v)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 ${
+                  rememberMe ? 'bg-brand-600' : 'bg-ink-300 dark:bg-ink-600'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  rememberMe ? 'translate-x-6' : 'translate-x-1'
+                }`} />
+              </button>
             </label>
 
             <button type="submit" disabled={loading} className="btn-brand w-full py-3 text-base font-semibold">
