@@ -24,7 +24,7 @@ export default function LoginPage() {
   const [email, setEmail]           = useState(savedEmail);
   const [password, setPassword]     = useState('');
   const [show, setShow]             = useState(false);
-  const [rememberMe, setRememberMe] = useState(!!savedEmail);
+  const [rememberMe, setRememberMe] = useState(true);
   const [errors, setErrors]         = useState<{ email?: string; password?: string; general?: string }>({});
 
   function clearErr(field: string) {
