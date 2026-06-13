@@ -149,26 +149,24 @@ class FiveSimService implements SmsNumberProvider
         $product    = strtolower(trim($service));
         $countryKey = strtolower(trim($country));
 
-        // Find cheapest available operator
-        $best = $this->bestOperator($countryKey, $product);
-
-        $operator = $best ? $best['operator'] : 'any';
-        $endpoint = "/user/buy/activation/{$countryKey}/{$operator}/{$product}";
+        // Use 'any' so 5sim picks the best available operator automatically.
+        // Calling bestOperator() first adds a full round-trip and creates a
+        // race condition (operator may run out between check and purchase).
+        $endpoint = "/user/buy/activation/{$countryKey}/any/{$product}";
 
         Log::info('5sim.purchase.attempt', [
-            'product'  => $product,
-            'country'  => $countryKey,
-            'operator' => $operator,
+            'product' => $product,
+            'country' => $countryKey,
         ]);
 
         $res = $this->client()->get($endpoint);
 
         Log::info('5sim.purchase.response', [
-            'status'  => $res->status(),
-            'body'    => substr($res->body(), 0, 300),
+            'status' => $res->status(),
+            'body'   => substr($res->body(), 0, 300),
         ]);
 
-        if ($res->status() === 400) {
+        if ($res->status() === 400 || $res->status() === 404) {
             throw new ServiceUnavailableException(
                 'No numbers available. Please try a different country.'
             );
@@ -185,9 +183,13 @@ class FiveSimService implements SmsNumberProvider
 
         $body = $res->json();
 
-        if (empty($body['id']) || empty($body['phone'])) {
-            Log::error('5sim.purchase.bad_response', ['body' => $body]);
-            throw new RuntimeException('5sim returned unexpected response: ' . json_encode($body));
+        // 5sim sometimes returns HTTP 200 with a plain-text error (e.g. "no free phones")
+        if (!is_array($body) || empty($body['id']) || empty($body['phone'])) {
+            $raw = trim($res->body());
+            Log::warning('5sim.purchase.bad_response', ['body' => $raw]);
+            throw new ServiceUnavailableException(
+                'No numbers available. Please try a different country.'
+            );
         }
 
         return [
