@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AdminController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\FiveSimController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\ProxyAdminController;
@@ -94,6 +95,12 @@ Route::prefix('v1')->group(function () {
             Route::get('/services/{code}',                [ServiceController::class, 'show']);
             Route::get('/orders',                         [ServiceController::class, 'orders']);
             Route::get('/orders/{id}',                    [ServiceController::class, 'order']);
+
+            // 5sim reference data
+            Route::get('/fivesim/countries',              [FiveSimController::class, 'getCountries']);
+            Route::get('/fivesim/products',               [FiveSimController::class, 'getProducts']);
+            Route::get('/fivesim/prices/{productCode}',   [FiveSimController::class, 'getPricesByProduct']);
+            Route::post('/fivesim/operators',             [FiveSimController::class, 'getOperators']);
         });
 
         // Order actions — cancel & fetch SMS code
@@ -207,6 +214,9 @@ Route::prefix('v1')->group(function () {
             Route::post('/proxy/subscriptions/{id}/reset-creds',[ProxyAdminController::class, 'resetCredentials']);
             Route::post('/proxy/subscriptions/{id}/sync-usage', [ProxyAdminController::class, 'syncUsage']);
             Route::post('/proxy/subscriptions/{id}/cancel',     [ProxyAdminController::class, 'cancelSubscription']);
+
+            // 5sim admin
+            Route::post('/fivesim/sync',                        [FiveSimController::class, 'sync']);
         });
     });
 });
