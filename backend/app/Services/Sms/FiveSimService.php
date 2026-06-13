@@ -46,11 +46,11 @@ class FiveSimService implements SmsNumberProvider
 
             $body = $res->json() ?? [];
 
-            // 5sim may return either:
-            // Format A: {country: {product: {operator: {cost,count}}}}
-            // Format B: {country: {operator: {cost,count}}}  (product level stripped when filtered)
-            $countryData = $body[$country] ?? [];
-            $operators   = $countryData[$product] ?? $countryData;
+            // Actual 5sim format: {product: {country: {operator: {cost,count}}}}
+            $operators = $body[$product][$country]  // primary format
+                      ?? $body[$country][$product]  // fallback A
+                      ?? $body[$country]            // fallback B
+                      ?? [];
 
             $best = null;
             foreach ($operators as $opCode => $info) {
@@ -78,8 +78,8 @@ class FiveSimService implements SmsNumberProvider
         $best = $this->bestOperator($countryKey, $product);
         if (!$best) return null;
 
-        $usd = $this->rubToUsd($best['cost']);
-        return Money::fromDecimal(sprintf('%.4f', max($usd, 0.01)), 'USD');
+        // cost is already in USD from the 5sim API
+        return Money::fromDecimal(sprintf('%.4f', max($best['cost'], 0.01)), 'USD');
     }
 
     /**
@@ -95,15 +95,18 @@ class FiveSimService implements SmsNumberProvider
             if (!$res->successful()) return [];
 
             $body = $res->json() ?? [];
-            // Response: {country: {product: {operator: {cost, count}}}}
-            $results = [];
 
-            foreach ($body as $countryCode => $data) {
-                $operators = $data[$product] ?? $data;
-                $bestCost  = null;
+            // Actual 5sim format: {product: {country: {operator: {cost,count}}}}
+            $countryMap = $body[$product] ?? $body;
+            $results    = [];
+
+            foreach ($countryMap as $countryCode => $operators) {
+                if (!is_array($operators)) continue;
+
+                $bestCost   = null;
                 $totalCount = 0;
 
-                foreach ($operators as $info) {
+                foreach ($operators as $opCode => $info) {
                     if (!is_array($info) || !isset($info['cost'])) continue;
                     $cnt  = (int)   ($info['count'] ?? 0);
                     $cost = (float) ($info['cost']  ?? 0);
@@ -120,7 +123,7 @@ class FiveSimService implements SmsNumberProvider
                         'country_code' => $countryCode,
                         'country_name' => ucwords(str_replace('_', ' ', $countryCode)),
                         'count'        => $totalCount,
-                        'price_usd'    => $this->rubToUsd($bestCost),
+                        'price_usd'    => $bestCost,
                     ];
                 }
             }
