@@ -46,11 +46,15 @@ class FiveSimService implements SmsNumberProvider
 
             $body = $res->json() ?? [];
 
-            // Response: {country: {product: {operator: {cost, count}}}}
-            $operators = $body[$country][$product] ?? [];
+            // 5sim may return either:
+            // Format A: {country: {product: {operator: {cost,count}}}}
+            // Format B: {country: {operator: {cost,count}}}  (product level stripped when filtered)
+            $countryData = $body[$country] ?? [];
+            $operators   = $countryData[$product] ?? $countryData;
 
             $best = null;
             foreach ($operators as $opCode => $info) {
+                if (!is_array($info) || !isset($info['cost'])) continue;
                 $count = (int)   ($info['count'] ?? 0);
                 $cost  = (float) ($info['cost']  ?? 0);
                 if ($count > 0 && $cost > 0) {
@@ -94,12 +98,13 @@ class FiveSimService implements SmsNumberProvider
             // Response: {country: {product: {operator: {cost, count}}}}
             $results = [];
 
-            foreach ($body as $countryCode => $products) {
-                $operators = $products[$product] ?? [];
+            foreach ($body as $countryCode => $data) {
+                $operators = $data[$product] ?? $data;
                 $bestCost  = null;
                 $totalCount = 0;
 
                 foreach ($operators as $info) {
+                    if (!is_array($info) || !isset($info['cost'])) continue;
                     $cnt  = (int)   ($info['count'] ?? 0);
                     $cost = (float) ($info['cost']  ?? 0);
                     if ($cnt > 0 && $cost > 0) {
@@ -144,13 +149,7 @@ class FiveSimService implements SmsNumberProvider
         // Find cheapest available operator
         $best = $this->bestOperator($countryKey, $product);
 
-        if (!$best) {
-            throw new ServiceUnavailableException(
-                'No numbers available for this service in the selected country. Try a different country.'
-            );
-        }
-
-        $operator = $best['operator'];
+        $operator = $best ? $best['operator'] : 'any';
         $endpoint = "/user/buy/activation/{$countryKey}/{$operator}/{$product}";
 
         Log::info('5sim.purchase.attempt', [
