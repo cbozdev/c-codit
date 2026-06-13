@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FiveSimPrice extends Model
 {
+    protected $table = 'fivesim_prices';
     protected $fillable = ['country_id', 'product_id', 'operator_id', 'price_rub', 'available_count', 'last_fetched_at'];
     protected $casts = ['price_rub' => 'decimal:4', 'last_fetched_at' => 'datetime'];
 

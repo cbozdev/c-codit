@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class FiveSimOperator extends Model
 {
+    protected $table = 'fivesim_operators';
     protected $fillable = ['country_id', 'api_code', 'name', 'product_count', 'is_active', 'metadata'];
     protected $casts = ['metadata' => 'array', 'is_active' => 'boolean'];
 

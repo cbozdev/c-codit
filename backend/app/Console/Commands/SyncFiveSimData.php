@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\FiveSimCountry;
 use App\Models\FiveSimOperator;
+use App\Models\FiveSimPrice;
 use App\Models\FiveSimProduct;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -11,216 +12,125 @@ use Illuminate\Support\Facades\Log;
 
 class SyncFiveSimData extends Command
 {
-    protected $signature = 'fivesim:sync {--countries} {--products} {--operators} {--prices}';
-    protected $description = 'Sync 5sim reference data (countries, products, operators, prices) from their API';
+    protected $signature = 'fivesim:sync';
+    protected $description = 'Sync 5sim reference data (countries, products, operators, prices) from the bulk prices endpoint';
 
     private string $baseUrl = 'https://5sim.net/v1';
-    private string $apiKey;
 
     public function handle()
     {
-        $this->apiKey = config('services.fivesim.api_key');
-        if (!$this->apiKey) {
+        $apiKey = config('services.fivesim.api_key');
+        if (!$apiKey) {
             $this->error('FIVESIM_API_KEY not configured');
             return 1;
         }
 
-        $options = $this->options();
-        $all = !($options['countries'] || $options['products'] || $operators = $options['operators'] || $options['prices']);
+        $this->info('Fetching all prices from 5sim API...');
 
-        if ($all || $options['countries']) $this->syncCountries();
-        if ($all || $options['products']) $this->syncProducts();
-        if ($all || $options['operators']) $this->syncOperators();
-        if ($all || $options['prices']) $this->syncPrices();
-
-        $this->info('5sim data sync complete');
-        return 0;
-    }
-
-    private function client()
-    {
-        return Http::baseUrl($this->baseUrl)
-            ->withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
-                'Accept' => 'application/json',
-            ])
-            ->timeout(30);
-    }
-
-    private function syncCountries(): void
-    {
-        $this->info('Syncing countries...');
         try {
-            $res = $this->client()->get('/guest/countries');
+            $res = Http::baseUrl($this->baseUrl)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $apiKey,
+                    'Accept'        => 'application/json',
+                ])
+                ->timeout(60)
+                ->get('/guest/prices');
+
             if (!$res->successful()) {
-                $this->error('Failed to fetch countries: ' . $res->status());
-                return;
+                $this->error('Failed to fetch prices: HTTP ' . $res->status());
+                return 1;
             }
 
-            $body = $res->json();
-            $countries = is_array($body) ? $body : ($body['countries'] ?? $body['data'] ?? []);
-
-            $created = 0;
-            $updated = 0;
-
-            foreach ($countries as $apiCode => $countryName) {
-                if (is_array($countryName)) {
-                    $name = $countryName['name'] ?? $apiCode;
-                } else {
-                    $name = $countryName;
-                }
-
-                FiveSimCountry::updateOrCreate(
-                    ['api_code' => $apiCode],
-                    ['name' => $name, 'is_active' => true]
-                ) ? $updated++ : $created++;
-            }
-
-            $this->info("Countries sync: {$created} created, {$updated} updated");
+            // Response structure: {countryCode: {productCode: {operatorCode: {cost, count}}}}
+            $body = $res->json() ?? [];
         } catch (\Throwable $e) {
-            $this->error('Error syncing countries: ' . $e->getMessage());
-            Log::error('fivesim.sync.countries.error', ['error' => $e->getMessage()]);
+            $this->error('Request failed: ' . $e->getMessage());
+            return 1;
         }
-    }
 
-    private function syncProducts(): void
-    {
-        $this->info('Syncing products...');
-        try {
-            $res = $this->client()->get('/guest/products');
-            if (!$res->successful()) {
-                $this->error('Failed to fetch products: ' . $res->status());
-                return;
+        $this->info('Processing ' . count($body) . ' countries...');
+
+        $countryCache  = [];
+        $productCache  = [];
+        $operatorCache = [];
+        $priceCount    = 0;
+
+        foreach ($body as $countryCode => $products) {
+            if (!is_array($products)) continue;
+
+            // Upsert country
+            if (!isset($countryCache[$countryCode])) {
+                $country = FiveSimCountry::updateOrCreate(
+                    ['api_code' => $countryCode],
+                    ['name' => ucwords(str_replace('_', ' ', $countryCode)), 'is_active' => true]
+                );
+                $countryCache[$countryCode] = $country->id;
             }
+            $countryId = $countryCache[$countryCode];
 
-            $body = $res->json();
-            $products = is_array($body) ? $body : ($body['products'] ?? $body['data'] ?? []);
+            foreach ($products as $productCode => $operators) {
+                if (!is_array($operators)) continue;
 
-            $created = 0;
-            $updated = 0;
-
-            foreach ($products as $apiCode => $productName) {
-                if (is_array($productName)) {
-                    $name = $productName['name'] ?? $apiCode;
-                    $serviceId = $productName['id'] ?? null;
-                } else {
-                    $name = $productName;
-                    $serviceId = null;
-                }
-
-                FiveSimProduct::updateOrCreate(
-                    ['api_code' => $apiCode],
-                    ['name' => $name, 'service_id' => $serviceId, 'is_active' => true]
-                ) ? $updated++ : $created++;
-            }
-
-            $this->info("Products sync: {$created} created, {$updated} updated");
-        } catch (\Throwable $e) {
-            $this->error('Error syncing products: ' . $e->getMessage());
-            Log::error('fivesim.sync.products.error', ['error' => $e->getMessage()]);
-        }
-    }
-
-    private function syncOperators(): void
-    {
-        $this->info('Syncing operators...');
-
-        $countries = FiveSimCountry::where('is_active', true)->get();
-        $products = FiveSimProduct::where('is_active', true)->get();
-        $total = 0;
-
-        foreach ($countries as $country) {
-            foreach ($products as $product) {
-                try {
-                    $res = $this->client()->get(
-                        "/guest/products/{$country->api_code}/{$product->api_code}"
+                // Upsert product
+                if (!isset($productCache[$productCode])) {
+                    $product = FiveSimProduct::updateOrCreate(
+                        ['api_code' => $productCode],
+                        ['name' => ucwords(str_replace('_', ' ', $productCode)), 'is_active' => true]
                     );
+                    $productCache[$productCode] = $product->id;
+                }
+                $productId = $productCache[$productCode];
 
-                    if (!$res->successful()) continue;
+                foreach ($operators as $operatorCode => $priceData) {
+                    if (!is_array($priceData)) continue;
 
-                    $body = $res->json();
-                    $operators = $body['operators'] ?? $body ?? [];
+                    $priceRub = (float) ($priceData['cost']  ?? 0);
+                    $count    = (int)   ($priceData['count'] ?? 0);
 
-                    foreach ($operators as $operatorData) {
-                        if (is_array($operatorData)) {
-                            $apiCode = $operatorData['code'] ?? $operatorData['id'] ?? null;
-                            $name = $operatorData['name'] ?? $apiCode;
-                        } else {
-                            $apiCode = (string) $operatorData;
-                            $name = $apiCode;
-                        }
+                    if ($priceRub <= 0) continue;
 
-                        if (!$apiCode) continue;
-
-                        FiveSimOperator::updateOrCreate(
-                            ['country_id' => $country->id, 'api_code' => $apiCode],
-                            ['name' => $name, 'is_active' => true]
+                    // Upsert operator
+                    $operatorKey = $countryId . ':' . $operatorCode;
+                    if (!isset($operatorCache[$operatorKey])) {
+                        $operator = FiveSimOperator::updateOrCreate(
+                            ['country_id' => $countryId, 'api_code' => $operatorCode],
+                            ['name' => ucwords(str_replace('_', ' ', $operatorCode)), 'is_active' => true]
                         );
-                        $total++;
+                        $operatorCache[$operatorKey] = $operator->id;
                     }
-                } catch (\Throwable) {
-                    // Skip on error for this product/country combo
+                    $operatorId = $operatorCache[$operatorKey];
+
+                    // Upsert price
+                    FiveSimPrice::updateOrCreate(
+                        [
+                            'country_id'  => $countryId,
+                            'product_id'  => $productId,
+                            'operator_id' => $operatorId,
+                        ],
+                        [
+                            'price_rub'       => $priceRub,
+                            'available_count' => $count,
+                            'last_fetched_at' => now(),
+                        ]
+                    );
+                    $priceCount++;
                 }
             }
         }
 
-        $this->info("Operators sync: {$total} processed");
-    }
+        $this->info('Sync complete:');
+        $this->info('  Countries: ' . count($countryCache));
+        $this->info('  Products:  ' . count($productCache));
+        $this->info('  Operators: ' . count($operatorCache));
+        $this->info('  Prices:    ' . $priceCount);
 
-    private function syncPrices(): void
-    {
-        $this->info('Syncing prices (this may take a while)...');
-        try {
-            $res = $this->client()->get('/guest/prices');
-            if (!$res->successful()) {
-                $this->error('Failed to fetch prices: ' . $res->status());
-                return;
-            }
+        Log::info('fivesim.sync.complete', [
+            'countries' => count($countryCache),
+            'products'  => count($productCache),
+            'operators' => count($operatorCache),
+            'prices'    => $priceCount,
+        ]);
 
-            $body = $res->json();
-            $upserted = 0;
-
-            // Expected structure: {country: {product: {operator: {cost, count}}}}
-            foreach ($body as $countryCode => $products) {
-                $country = FiveSimCountry::where('api_code', $countryCode)->first();
-                if (!$country) continue;
-
-                foreach ($products as $productCode => $operators) {
-                    $product = FiveSimProduct::where('api_code', $productCode)->first();
-                    if (!$product) continue;
-
-                    foreach ($operators as $operatorCode => $priceData) {
-                        $operator = FiveSimOperator::where('country_id', $country->id)
-                            ->where('api_code', $operatorCode)
-                            ->first();
-                        if (!$operator) continue;
-
-                        $priceRub = (float) ($priceData['cost'] ?? 0);
-                        $count = (int) ($priceData['count'] ?? 0);
-
-                        if ($priceRub > 0) {
-                            \App\Models\FiveSimPrice::updateOrCreate(
-                                [
-                                    'country_id' => $country->id,
-                                    'product_id' => $product->id,
-                                    'operator_id' => $operator->id,
-                                ],
-                                [
-                                    'price_rub' => $priceRub,
-                                    'available_count' => $count,
-                                    'last_fetched_at' => now(),
-                                ]
-                            );
-                            $upserted++;
-                        }
-                    }
-                }
-            }
-
-            $this->info("Prices sync: {$upserted} entries upserted");
-        } catch (\Throwable $e) {
-            $this->error('Error syncing prices: ' . $e->getMessage());
-            Log::error('fivesim.sync.prices.error', ['error' => $e->getMessage()]);
-        }
+        return 0;
     }
 }
