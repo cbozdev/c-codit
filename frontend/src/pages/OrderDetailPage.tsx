@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { apiCall } from '@/lib/api';
-import { playCodeArrivedSound } from '@/lib/notify';
+import { playCodeArrivedSound, unlockAudio } from '@/lib/notify';
 import { formatMoney, formatDate } from '@/lib/format';
 import type { ServiceOrder } from '@/types/api';
 import {
@@ -56,6 +56,9 @@ export default function OrderDetailPage() {
 
     return () => clearInterval(interval);
   }, [order.data?.status, (order.data?.delivery as Record<string, unknown> | null)?.sms_code, id, qc]);
+
+  // Unlock audio context on mount — user just tapped to navigate here
+  useEffect(() => { unlockAudio(); }, []);
 
   // Tick every second for the timer — uses a fixed reference point
   useEffect(() => {
