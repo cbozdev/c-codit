@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { apiCall } from '@/lib/api';
+import { playCodeArrivedSound } from '@/lib/notify';
 import { formatMoney, formatDate } from '@/lib/format';
 import type { ServiceOrder } from '@/types/api';
 import {
@@ -43,7 +44,7 @@ export default function OrderDetailPage() {
           url: `/orders/${id}/fetch-code`,
         });
         if (res.code) {
-          // Code arrived — refetch order to get updated delivery
+          playCodeArrivedSound();
           qc.invalidateQueries({ queryKey: ['order', id] });
           qc.invalidateQueries({ queryKey: ['orders'] });
           clearInterval(interval);
