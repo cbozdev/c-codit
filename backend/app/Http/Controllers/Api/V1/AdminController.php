@@ -283,6 +283,22 @@ class AdminController extends Controller
         return ApiResponse::ok(null, 'Markup updated.');
     }
 
+    public function renameService(Request $request, string $code)
+    {
+        $request->validate([
+            'name'        => ['required', 'string', 'max:80'],
+            'description' => ['nullable', 'string', 'max:255'],
+        ]);
+        $svc = Service::where('code', $code)->firstOrFail();
+        $old = $svc->name;
+        $svc->update([
+            'name'        => trim($request->input('name')),
+            'description' => $request->input('description', $svc->description),
+        ]);
+        Audit::log('admin.service_renamed', $svc, ['old_name' => $old, 'new_name' => $svc->name], actorType: 'admin');
+        return ApiResponse::ok(null, 'Service renamed.');
+    }
+
     // ─── Metrics ──────────────────────────────────────────────────────────────
 
     public function metrics()

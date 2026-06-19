@@ -755,7 +755,6 @@ export default function ServicesPage() {
                 <div className="font-semibold dark:text-white">{svc.name}</div>
                 <span className="badge-success">Active</span>
               </div>
-              <p className="text-xs text-ink-600 dark:text-ink-400 mt-1.5">{svc.description}</p>
             </button>
           ))}
           {catSoon.map((svc) => (
@@ -765,7 +764,6 @@ export default function ServicesPage() {
                 <div className="font-semibold dark:text-white">{svc.name}</div>
                 <span className="badge-muted">Coming soon</span>
               </div>
-              <p className="text-xs text-ink-500 dark:text-ink-500 mt-1.5">{svc.description}</p>
             </div>
           ))}
         </div>

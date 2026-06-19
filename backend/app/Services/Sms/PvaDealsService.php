@@ -73,7 +73,8 @@ class PvaDealsService implements SmsNumberProvider
      */
     private function getCatalog(): array
     {
-        $cached = Cache::get('pvadeals.catalog');
+        // v2 key invalidates the old flat-structure cache
+        $cached = Cache::get('pvadeals.catalog.v2');
         if (is_array($cached) && count($cached) > 0) {
             return $cached;
         }
@@ -109,7 +110,7 @@ class PvaDealsService implements SmsNumberProvider
             }
 
             if (count($index) > 0) {
-                Cache::put('pvadeals.catalog', $index, 600);
+                Cache::put('pvadeals.catalog.v2', $index, 600);
                 Log::info('pvadeals.catalog.loaded', ['count' => count($index)]);
             }
 

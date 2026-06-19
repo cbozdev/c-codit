@@ -12,7 +12,7 @@ import {
   Plus, Minus, RefreshCw, Eye, ImagePlus, Settings2,
   DollarSign, TrendingDown, BarChart3, RotateCcw,
   Globe, Server, Key, EyeOff, Trash2, CheckCircle2,
-  Gift, Crown, Calendar,
+  Gift, Crown, Calendar, Pencil,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 
@@ -689,6 +689,8 @@ function ServicesTab() {
   const qc = useQueryClient();
   const [markupTarget, setMarkupTarget] = useState<AdminService | null>(null);
   const [markup, setMarkup]             = useState('');
+  const [renameTarget, setRenameTarget] = useState<AdminService | null>(null);
+  const [newName, setNewName]           = useState('');
 
   const services = useQuery({
     queryKey: ['admin', 'services'],
@@ -711,6 +713,18 @@ function ServicesTab() {
     onSuccess: () => {
       toast.success('Markup updated.'); setMarkupTarget(null);
       qc.invalidateQueries({ queryKey: ['admin', 'services'] });
+      qc.invalidateQueries({ queryKey: ['services'] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const renameService = useMutation({
+    mutationFn: ({ code, name }: { code: string; name: string }) =>
+      apiCall<null>({ method: 'POST', url: `/admin/services/${code}/rename`, data: { name } }),
+    onSuccess: () => {
+      toast.success('Service renamed.'); setRenameTarget(null);
+      qc.invalidateQueries({ queryKey: ['admin', 'services'] });
+      qc.invalidateQueries({ queryKey: ['services'] });
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -735,7 +749,7 @@ function ServicesTab() {
               <table className="min-w-full text-sm">
                 <thead className="bg-ink-50 border-b border-ink-100">
                   <tr>
-                    {['Service', 'Provider', 'Markup', 'Orders today', 'Failed (7d)', 'Status', 'Actions'].map((h) => (
+                    {['Service', 'Provider', 'Markup', 'Orders today', 'Failed (7d)', 'Status', 'Actions', ''].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-ink-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -779,6 +793,14 @@ function ServicesTab() {
                             : <><ToggleLeft className="h-3.5 w-3.5" /> Enable</>}
                         </button>
                       </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => { setRenameTarget(svc); setNewName(svc.name); }}
+                          className="p-1.5 rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100 transition"
+                          title="Rename">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -787,6 +809,32 @@ function ServicesTab() {
           </div>
         </div>
       ))}
+
+      {/* Rename modal */}
+      {renameTarget && (
+        <Modal onClose={() => setRenameTarget(null)}>
+          <h3 className="font-semibold text-lg">Rename service</h3>
+          <p className="text-sm text-ink-600 mt-1">This name is shown to users on the services page.</p>
+          <div className="mt-4">
+            <label className="label">Display name</label>
+            <input
+              type="text" maxLength={80}
+              className="input" value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-2 mt-5 justify-end">
+            <button onClick={() => setRenameTarget(null)} className="btn-outline">Cancel</button>
+            <button
+              onClick={() => renameService.mutate({ code: renameTarget.code, name: newName.trim() })}
+              disabled={!newName.trim() || newName.trim() === renameTarget.name || renameService.isPending}
+              className="btn-primary">
+              {renameService.isPending ? 'Saving…' : 'Save name'}
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* Markup modal */}
       {markupTarget && (

@@ -185,6 +185,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/services',                             [AdminController::class, 'services']);
             Route::post('/services/{code}/toggle',              [AdminController::class, 'toggleService']);
             Route::post('/services/{code}/markup',              [AdminController::class, 'updateServiceMarkup']);
+            Route::post('/services/{code}/rename',              [AdminController::class, 'renameService']);
 
             // App settings
             Route::get('/settings',                             [AdminController::class, 'getSettings']);
