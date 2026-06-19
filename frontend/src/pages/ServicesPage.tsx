@@ -780,8 +780,10 @@ export default function ServicesPage() {
 type PvaCatalogItem = {
   slug: string;
   name: string;
-  price_usd: number;
+  price_usd: number | null;
+  uk_price_usd: number | null;
   ltr_prices?: Record<number, number>;
+  uk_ltr_prices?: Record<number, number>;
   image_url?: string;
 };
 
@@ -962,7 +964,7 @@ function VirtualNumberForm({
                   <span className="text-xs text-ink-400 dark:text-ink-500">
                     {isLtr
                       ? (s.ltr_prices?.[ltrDuration] != null ? `$${s.ltr_prices[ltrDuration].toFixed(2)}` : '–')
-                      : `$${s.price_usd.toFixed(2)}`}
+                      : s.price_usd != null ? `$${s.price_usd.toFixed(2)}` : '–'}
                   </span>
                 </button>
               ))
@@ -1061,7 +1063,7 @@ function VirtualNumberForm({
             <div className="mt-2 flex items-center gap-3 p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-sm">
               <span className="text-base">🇺🇸</span>
               <span className="font-medium">United States</span>
-              <span className="ml-auto font-semibold">${selectedPvaItem.price_usd.toFixed(2)}</span>
+              <span className="ml-auto font-semibold">{selectedPvaItem.price_usd != null ? `$${selectedPvaItem.price_usd.toFixed(2)}` : '–'}</span>
             </div>
           ) : (
             <div className="mt-2 text-sm text-ink-500 dark:text-ink-400 p-3 rounded-lg bg-ink-50 dark:bg-ink-800">
@@ -1174,7 +1176,7 @@ function VirtualNumberForm({
           : isLtr
             ? (selectedPvaItem && ltrPrice != null ? `Buy US number · ${ltrDuration} days — $${(ltrPrice as number).toFixed(2)}` : 'Select a service above')
             : isPvaDeals
-              ? (selectedPvaItem ? `Buy US number — $${selectedPvaItem.price_usd.toFixed(2)}` : 'Select a service above')
+              ? (selectedPvaItem && selectedPvaItem.price_usd != null ? `Buy US number — $${selectedPvaItem.price_usd.toFixed(2)}` : 'Select a service above')
               : country && selectedRow
                 ? `Buy number in ${selectedRow.country_label}`
                 : 'Select a country above'}
