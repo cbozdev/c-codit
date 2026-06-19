@@ -57,9 +57,6 @@ export default function OrderDetailPage() {
     return () => clearInterval(interval);
   }, [order.data?.status, (order.data?.delivery as Record<string, unknown> | null)?.sms_code, id, qc]);
 
-  // Unlock audio context on mount — user just tapped to navigate here
-  useEffect(() => { unlockAudio(); }, []);
-
   // Tick every second for the timer — uses a fixed reference point
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -138,7 +135,7 @@ export default function OrderDetailPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-2xl">
+    <div className="space-y-5 max-w-2xl" onClick={unlockAudio}>
       <button onClick={() => navigate('/services')} className="btn-ghost -ml-2 text-sm">
         <ArrowLeft className="h-4 w-4" /> Back to services
       </button>

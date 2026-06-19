@@ -1,4 +1,3 @@
-// Singleton AudioContext — created once, reused across plays.
 let ctx: AudioContext | null = null;
 
 function getCtx(): AudioContext {
@@ -9,8 +8,7 @@ function getCtx(): AudioContext {
   return ctx;
 }
 
-// Call this on any user tap/click so the browser unlocks audio.
-// OrderDetailPage calls it on mount (user just tapped to navigate here).
+// Must be called synchronously inside a user tap handler (not useEffect).
 export function unlockAudio() {
   try {
     const c = getCtx();
@@ -32,13 +30,16 @@ function playTones(c: AudioContext) {
     osc.start(startAt);
     osc.stop(startAt + duration);
   };
-
   const t = c.currentTime;
-  play(880,  t,        0.18);
-  play(1108, t + 0.2,  0.22);
+  play(880,  t,       0.18);
+  play(1108, t + 0.2, 0.22);
 }
 
 export function playCodeArrivedSound() {
+  // Vibration works on Android without any gesture restriction
+  try { navigator.vibrate?.([300, 100, 300]); } catch { /* ignore */ }
+
+  // Web Audio (works on desktop and iOS after user has tapped the page)
   try {
     const c = getCtx();
     if (c.state === 'suspended') {
@@ -46,5 +47,5 @@ export function playCodeArrivedSound() {
     } else {
       playTones(c);
     }
-  } catch { /* Web Audio not supported */ }
+  } catch { /* ignore */ }
 }
