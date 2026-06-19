@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * PVADeals virtual number integration (USA only, STR + LTR).
+ * PVADeals virtual number integration (USA + UK, STR + LTR).
  * Docs: https://docs.pvadeals.com
  *
  * Required env vars:
@@ -60,14 +60,20 @@ class PvaDealsService implements SmsNumberProvider
                 $name = strtolower(trim((string) ($svc['name'] ?? '')));
                 if ($name && isset($svc['_id'])) {
                     $index[$name] = [
-                        'id'        => (string) $svc['_id'],
-                        'name'      => (string) $svc['name'],
-                        'price'     => (float) ($svc['STRprice'] ?? 0),
-                        'ltr3'      => (float) ($svc['LTR3price'] ?? 0),
-                        'ltr7'      => (float) ($svc['LTR7price'] ?? 0),
-                        'ltr14'     => (float) ($svc['LTR14price'] ?? 0),
-                        'ltr30'     => (float) ($svc['LTR30price'] ?? 0),
-                        'image_url' => (string) ($svc['picture'] ?? ''),
+                        'id'         => (string) $svc['_id'],
+                        'name'       => (string) $svc['name'],
+                        'price'      => (float) ($svc['STRprice'] ?? 0),
+                        'ltr3'       => (float) ($svc['LTR3price'] ?? 0),
+                        'ltr7'       => (float) ($svc['LTR7price'] ?? 0),
+                        'ltr14'      => (float) ($svc['LTR14price'] ?? 0),
+                        'ltr30'      => (float) ($svc['LTR30price'] ?? 0),
+                        // UK prices (may be 0 if service not available in UK)
+                        'uk_price'   => (float) ($svc['UKSTRprice'] ?? $svc['ukSTRprice'] ?? $svc['UKprice'] ?? 0),
+                        'uk_ltr3'    => (float) ($svc['UKLTR3price'] ?? $svc['ukLTR3price'] ?? 0),
+                        'uk_ltr7'    => (float) ($svc['UKLTR7price'] ?? $svc['ukLTR7price'] ?? 0),
+                        'uk_ltr14'   => (float) ($svc['UKLTR14price'] ?? $svc['ukLTR14price'] ?? 0),
+                        'uk_ltr30'   => (float) ($svc['UKLTR30price'] ?? $svc['ukLTR30price'] ?? 0),
+                        'image_url'  => (string) ($svc['picture'] ?? ''),
                     ];
                 }
             }
@@ -96,19 +102,21 @@ class PvaDealsService implements SmsNumberProvider
 
         $items = [];
         foreach ($catalog as $slug => $info) {
-            if ($info['price'] <= 0) continue;
-            $ltrPrices = [];
+            if ($info['price'] <= 0 && $info['uk_price'] <= 0) continue;
+            $ltrPrices   = [];
+            $ukLtrPrices = [];
             foreach ([3 => 'ltr3', 7 => 'ltr7', 14 => 'ltr14', 30 => 'ltr30'] as $days => $key) {
-                if ($info[$key] > 0) {
-                    $ltrPrices[$days] = round($info[$key] * $m, 4);
-                }
+                if ($info[$key] > 0)           $ltrPrices[$days]   = round($info[$key] * $m, 4);
+                if ($info['uk_' . $key] > 0)   $ukLtrPrices[$days] = round($info['uk_' . $key] * $m, 4);
             }
             $items[] = [
-                'slug'       => $slug,
-                'name'       => $info['name'],
-                'price_usd'  => round($info['price'] * $m, 4),
-                'ltr_prices' => $ltrPrices,
-                'image_url'  => $info['image_url'] ?? '',
+                'slug'          => $slug,
+                'name'          => $info['name'],
+                'price_usd'     => $info['price'] > 0 ? round($info['price'] * $m, 4) : null,
+                'uk_price_usd'  => $info['uk_price'] > 0 ? round($info['uk_price'] * $m, 4) : null,
+                'ltr_prices'    => $ltrPrices,
+                'uk_ltr_prices' => $ukLtrPrices,
+                'image_url'     => $info['image_url'] ?? '',
             ];
         }
         usort($items, fn($a, $b) => strcmp($a['name'], $b['name']));
@@ -131,32 +139,40 @@ class PvaDealsService implements SmsNumberProvider
         return null;
     }
 
-    private function isUsaCountry(string $country): bool
+    private function normalizeCountry(string $country): ?string
     {
-        return in_array(strtolower(trim($country)), ['us', 'usa', 'united states', 'united states of america'], true);
+        $c = strtolower(trim($country));
+        if (in_array($c, ['us', 'usa', 'united states', 'united states of america'], true)) return 'US';
+        if (in_array($c, ['uk', 'gb', 'england', 'united kingdom', 'great britain'], true))  return 'UK';
+        return null;
     }
 
     public function getPrice(string $service, string $country): ?Money
     {
-        if (! $this->isUsaCountry($country)) return null;
+        $cc = $this->normalizeCountry($country);
+        if (! $cc) return null;
 
         $svc = $this->findService($service);
-        if (! $svc || $svc['price'] <= 0) return null;
+        if (! $svc) return null;
 
-        return Money::fromDecimal(sprintf('%.4f', $svc['price']), 'USD');
+        $price = $cc === 'UK' ? $svc['uk_price'] : $svc['price'];
+        if ($price <= 0) return null;
+
+        return Money::fromDecimal(sprintf('%.4f', $price), 'USD');
     }
 
-    public function getLtrPrice(string $service, int $duration): ?Money
+    public function getLtrPrice(string $service, int $duration, string $country = 'US'): ?Money
     {
         if ($duration === 28) {
             return Money::fromDecimal('12.99', 'USD'); // All-Services fixed price
         }
 
+        $cc  = $this->normalizeCountry($country) ?? 'US';
         $svc = $this->findService($service);
         if (! $svc) return null;
 
-        $key = 'ltr' . $duration;
-        $price = $svc[$key] ?? 0;
+        $prefix = $cc === 'UK' ? 'uk_ltr' : 'ltr';
+        $price  = $svc[$prefix . $duration] ?? 0;
         if ($price <= 0) return null;
 
         return Money::fromDecimal(sprintf('%.4f', $price), 'USD');
@@ -170,21 +186,25 @@ class PvaDealsService implements SmsNumberProvider
     public function getCountryPrices(string $service): array
     {
         $svc = $this->findService($service);
-        if (! $svc || $svc['price'] <= 0) return [];
+        if (! $svc) return [];
 
-        return [[
-            'country_code' => 'US',
-            'count'        => 1,
-            'price_usd'    => $svc['price'],
-        ]];
+        $results = [];
+        if ($svc['price'] > 0) {
+            $results[] = ['country_code' => 'US', 'count' => 1, 'price_usd' => $svc['price']];
+        }
+        if ($svc['uk_price'] > 0) {
+            $results[] = ['country_code' => 'GB', 'count' => 1, 'price_usd' => $svc['uk_price']];
+        }
+        return $results;
     }
 
 
 
     public function purchase(string $service, string $country, ?string $areaCode = null): array
     {
-        if (! $this->isUsaCountry($country)) {
-            throw new ServiceUnavailableException('PVADeals only provides US numbers.');
+        $cc = $this->normalizeCountry($country);
+        if (! $cc) {
+            throw new ServiceUnavailableException('PVADeals only provides US and UK numbers.');
         }
 
         $svc = $this->findService($service);
@@ -192,14 +212,20 @@ class PvaDealsService implements SmsNumberProvider
             throw new ServiceUnavailableException('Service not available on PVADeals. Please try a different provider.');
         }
 
-        Log::info('pvadeals.purchase.attempt', ['service' => $svc['name'], 'service_id' => $svc['id']]);
+        $priceField = $cc === 'UK' ? 'uk_price' : 'price';
+        if (($svc[$priceField] ?? 0) <= 0) {
+            throw new ServiceUnavailableException("This service is not available in {$cc} from PVADeals.");
+        }
+
+        Log::info('pvadeals.purchase.attempt', ['service' => $svc['name'], 'service_id' => $svc['id'], 'country' => $cc]);
 
         $serviceEntry = ['serviceId' => $svc['id']];
         if ($areaCode) $serviceEntry['areaCode'] = $areaCode;
 
-        $res = $this->client()->asJson()->post('/purchase', [
-            'services' => [$serviceEntry],
-        ]);
+        $payload = ['services' => [$serviceEntry]];
+        if ($cc === 'UK') $payload['country'] = 'GB';
+
+        $res = $this->client()->asJson()->post('/purchase', $payload);
 
         Log::info('pvadeals.purchase.response', [
             'status' => $res->status(),
