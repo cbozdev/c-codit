@@ -418,14 +418,17 @@ export default function ServicesPage() {
       const baseData: Record<string, unknown> = { service_code: selected.code };
 
       if (selected.category === 'virtual_number' && selected.provider === 'pvadeals' && pvaMode === 'ltr') {
+        const pvaLtrCountry = (country === 'GB' || country === 'gb') ? 'GB' : 'US';
+        const isAllSvcLtr   = ltrDuration === 28 || (ltrDuration === 30 && pvaLtrCountry === 'GB');
         return apiCall<ServiceOrder>({
           url: '/services/virtual-number/purchase-ltr',
           method: 'POST',
           headers: { 'Idempotency-Key': newIdempotencyKey() },
           data: {
             service_code: selected.code,
-            service: ltrDuration === 28 ? 'ALL_SERVICES' : providerSvc,
-            duration: ltrDuration,
+            service:   isAllSvcLtr ? 'ALL_SERVICES' : providerSvc,
+            duration:  ltrDuration,
+            country:   pvaLtrCountry,
             ...(pvaAreaCode ? { area_code: pvaAreaCode } : {}),
           },
         });
@@ -848,9 +851,12 @@ function VirtualNumberForm({
   const rows = priceQuery.data?.items ?? [];
   const selectedRow = rows.find((r) => r.country_code === country);
 
+  const pvaCountry = (country === 'GB' || country === 'gb') ? 'GB' : 'US';
+  const pvaHasUk   = !!(selectedPvaItem?.uk_price_usd != null);
+
   // Area codes for PVADeals (STR + LTR, not All-Services)
   const isLtr        = isPvaDeals && pvaMode === 'ltr';
-  const isAllSvc     = isLtr && ltrDuration === 28;
+  const isAllSvc     = isLtr && (ltrDuration === 28 || (ltrDuration === 30 && pvaCountry === 'GB'));
 
   function handleAppChange(value: string) {
     setProviderSvc(value);
@@ -861,7 +867,18 @@ function VirtualNumberForm({
     setProviderSvc(slug);
     setCountry('US');
   }
-  const ltrPrice     = isLtr && !isAllSvc ? (selectedPvaItem?.ltr_prices?.[ltrDuration] ?? null) : (isAllSvc ? 12.99 * 1.15 : null);
+
+  const pvaStrPrice = pvaCountry === 'GB'
+    ? selectedPvaItem?.uk_price_usd
+    : selectedPvaItem?.price_usd;
+
+  const ltrPrice = isLtr && !isAllSvc
+    ? (pvaCountry === 'GB'
+        ? (selectedPvaItem?.uk_ltr_prices?.[ltrDuration] ?? null)
+        : (selectedPvaItem?.ltr_prices?.[ltrDuration] ?? null))
+    : (isAllSvc
+        ? (pvaCountry === 'GB' ? 9.99 * 1.15 : 12.99 * 1.15)
+        : null);
 
   return (
     <>
@@ -1047,24 +1064,78 @@ function VirtualNumberForm({
         {isPvaDeals ? (
           isAllSvc ? null :
           isLtr ? (
-            selectedPvaItem && ltrPrice != null ? (
-              <div className="mt-2 flex items-center gap-3 p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-sm">
-                <span className="text-base">🇺🇸</span>
-                <span className="font-medium">United States · {ltrDuration} days</span>
-                <span className="ml-auto font-semibold">${(ltrPrice as number).toFixed(2)}</span>
+            selectedPvaItem ? (
+            <>
+              {/* Country selector — show UK option only when service has UK price */}
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setCountry('US')}
+                  className={clsx('flex items-center gap-2 p-3 rounded-lg border-2 text-sm transition',
+                    pvaCountry === 'US'
+                      ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30 text-brand-700 dark:text-brand-300'
+                      : 'border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-400 hover:border-brand-300')}>
+                  <span>🇺🇸</span>
+                  <span className="font-medium">United States</span>
+                  <span className="ml-auto text-xs">
+                    {isLtr
+                      ? (selectedPvaItem.ltr_prices?.[ltrDuration] != null ? `$${selectedPvaItem.ltr_prices[ltrDuration].toFixed(2)}` : isAllSvc ? `$${(12.99 * 1.15).toFixed(2)}` : '–')
+                      : (selectedPvaItem.price_usd != null ? `$${selectedPvaItem.price_usd.toFixed(2)}` : '–')}
+                  </span>
+                </button>
+                {pvaHasUk && (
+                  <button type="button" onClick={() => setCountry('GB')}
+                    className={clsx('flex items-center gap-2 p-3 rounded-lg border-2 text-sm transition',
+                      pvaCountry === 'GB'
+                        ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30 text-brand-700 dark:text-brand-300'
+                        : 'border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-400 hover:border-brand-300')}>
+                    <span>🇬🇧</span>
+                    <span className="font-medium">United Kingdom</span>
+                    <span className="ml-auto text-xs">
+                      {isLtr
+                        ? (selectedPvaItem.uk_ltr_prices?.[ltrDuration] != null ? `$${selectedPvaItem.uk_ltr_prices[ltrDuration].toFixed(2)}` : isAllSvc ? `$${(9.99 * 1.15).toFixed(2)}` : '–')
+                        : `$${selectedPvaItem.uk_price_usd!.toFixed(2)}`}
+                    </span>
+                  </button>
+                )}
               </div>
-            ) : (
-              <div className="mt-2 text-sm text-ink-500 dark:text-ink-400 p-3 rounded-lg bg-ink-50 dark:bg-ink-800">
-                Select a service above to see price.
-              </div>
-            )
+              {ltrPrice != null && (
+                <div className="mt-2 flex items-center gap-3 p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-sm">
+                  <span>{pvaCountry === 'GB' ? '🇬🇧' : '🇺🇸'}</span>
+                  <span className="font-medium">{pvaCountry === 'GB' ? 'United Kingdom' : 'United States'} · {pvaCountry === 'GB' && isAllSvc ? 30 : ltrDuration} days</span>
+                  <span className="ml-auto font-semibold">${(ltrPrice as number).toFixed(2)}</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="mt-2 text-sm text-ink-500 dark:text-ink-400 p-3 rounded-lg bg-ink-50 dark:bg-ink-800">
+              Select a service above to see price.
+            </div>
+          )
           ) :
           selectedPvaItem ? (
-            <div className="mt-2 flex items-center gap-3 p-3 rounded-lg bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-sm">
-              <span className="text-base">🇺🇸</span>
-              <span className="font-medium">United States</span>
-              <span className="ml-auto font-semibold">{selectedPvaItem.price_usd != null ? `$${selectedPvaItem.price_usd.toFixed(2)}` : '–'}</span>
-            </div>
+            <>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setCountry('US')}
+                  className={clsx('flex items-center gap-2 p-3 rounded-lg border-2 text-sm transition',
+                    pvaCountry === 'US'
+                      ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30 text-brand-700 dark:text-brand-300'
+                      : 'border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-400 hover:border-brand-300')}>
+                  <span>🇺🇸</span>
+                  <span className="font-medium">United States</span>
+                  <span className="ml-auto text-xs">{selectedPvaItem.price_usd != null ? `$${selectedPvaItem.price_usd.toFixed(2)}` : '–'}</span>
+                </button>
+                {pvaHasUk && (
+                  <button type="button" onClick={() => setCountry('GB')}
+                    className={clsx('flex items-center gap-2 p-3 rounded-lg border-2 text-sm transition',
+                      pvaCountry === 'GB'
+                        ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/30 text-brand-700 dark:text-brand-300'
+                        : 'border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-400 hover:border-brand-300')}>
+                    <span>🇬🇧</span>
+                    <span className="font-medium">United Kingdom</span>
+                    <span className="ml-auto text-xs">{selectedPvaItem.uk_price_usd != null ? `$${selectedPvaItem.uk_price_usd.toFixed(2)}` : '–'}</span>
+                  </button>
+                )}
+              </div>
+            </>
           ) : (
             <div className="mt-2 text-sm text-ink-500 dark:text-ink-400 p-3 rounded-lg bg-ink-50 dark:bg-ink-800">
               Select a service above to continue.
@@ -1176,7 +1247,7 @@ function VirtualNumberForm({
           : isLtr
             ? (selectedPvaItem && ltrPrice != null ? `Buy US number · ${ltrDuration} days — $${(ltrPrice as number).toFixed(2)}` : 'Select a service above')
             : isPvaDeals
-              ? (selectedPvaItem && selectedPvaItem.price_usd != null ? `Buy US number — $${selectedPvaItem.price_usd.toFixed(2)}` : 'Select a service above')
+              ? (selectedPvaItem && pvaStrPrice != null ? `Buy ${pvaCountry === 'GB' ? 'UK' : 'US'} number — $${pvaStrPrice.toFixed(2)}` : 'Select a service above')
               : country && selectedRow
                 ? `Buy number in ${selectedRow.country_label}`
                 : 'Select a country above'}
