@@ -941,6 +941,8 @@ class ServiceController extends Controller
                     app(\App\Services\Sms\SmsManService::class)->cancel($order->provider_order_id);
                 } elseif ($provider === 'smspool') {
                     app(\App\Services\Sms\SmsPoolService::class)->cancel($order->provider_order_id);
+                } elseif ($provider === 'pvadeals') {
+                    app(\App\Services\Sms\PvaDealsService::class)->cancel($order->provider_order_id);
                 } elseif ($provider === 'textverified') {
                     app(\App\Services\Sms\TextVerifiedService::class)->cancel($order->provider_order_id);
                 } elseif ($provider === 'textverified_rental') {

@@ -84,6 +84,28 @@ export default function OrderDetailPage() {
   const serviceName = request?.service as string | null;
   const country     = request?.country as string | null;
 
+  // Detect country mismatch between selected country and received phone number prefix
+  const COUNTRY_PREFIXES: Record<string, string> = {
+    usa: '+1', canada: '+1', uk: '+44', england: '+44',
+    russia: '+7', germany: '+49', france: '+33', netherlands: '+31',
+    poland: '+48', ukraine: '+38', philippines: '+63', indonesia: '+62',
+    india: '+91', brazil: '+55', mexico: '+52', sweden: '+46',
+    spain: '+34', italy: '+39', australia: '+61', nigeria: '+234',
+    ghana: '+233', kenya: '+254',
+  };
+  const expectedPrefix = country ? COUNTRY_PREFIXES[country.toLowerCase()] : null;
+  const countryMismatch = !!(
+    phoneNumber && expectedPrefix && country &&
+    country.toLowerCase() !== 'usa' &&  // +1 is ambiguous (US/Canada), skip
+    !phoneNumber.startsWith(expectedPrefix)
+  ) || !!(
+    // Special case: USA/Canada share +1, but we can still flag non-+1 numbers
+    phoneNumber && country?.toLowerCase() === 'usa' && !phoneNumber.startsWith('+1')
+  );
+  const receivedFlag = phoneNumber
+    ? Object.entries(COUNTRY_PREFIXES).find(([, pfx]) => phoneNumber.startsWith(pfx))?.[0]
+    : null;
+
   const cancel = useMutation({
     mutationFn: () => apiCall<null>({ method: 'POST', url: `/orders/${id}/cancel` }),
     onSuccess: () => {
@@ -165,6 +187,17 @@ export default function OrderDetailPage() {
             ? 'bg-ink-900 border-ink-700'
             : 'bg-gradient-to-br from-ink-950 to-ink-900 border-brand-500/30',
         )}>
+          {/* Country mismatch warning */}
+          {countryMismatch && !isRefunded && (
+            <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+              <span>
+                You selected <span className="font-semibold capitalize">{country}</span> but received a{' '}
+                <span className="font-semibold capitalize">{receivedFlag ?? 'different country'}</span> number.
+                This may not work for the app you're trying to verify. Consider cancelling for a refund.
+              </span>
+            </div>
+          )}
           {/* Phone number */}
           <div className="flex items-center gap-3 mb-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-500/20">
