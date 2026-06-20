@@ -1,8 +1,33 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, lazy, Suspense, Component } from 'react';
+import type { ReactNode, ErrorInfo } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/auth';
 import AppShell from '@/components/AppShell';
 import CookieConsent from '@/components/CookieConsent';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('App render error:', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      const msg = (this.state.error as Error).message;
+      return (
+        <div style={{ padding: 32, fontFamily: 'monospace', background: '#fff', minHeight: '100vh' }}>
+          <h2 style={{ color: '#c00', marginBottom: 12 }}>Something went wrong</h2>
+          <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 8, overflow: 'auto', fontSize: 13 }}>{msg}</pre>
+          <p style={{ marginTop: 16, fontSize: 14 }}>Please screenshot this and send it.</p>
+          <button onClick={() => this.setState({ error: null })} style={{ marginTop: 12, padding: '8px 16px', cursor: 'pointer' }}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Lazy load all pages for better performance
 const LandingPage        = lazy(() => import('@/pages/LandingPage'));
@@ -56,6 +81,7 @@ export default function App() {
   useEffect(() => { initialize(); }, [initialize]);
 
   return (
+    <ErrorBoundary>
     <Suspense fallback={<PageSpinner />}>
       <CookieConsent />
       <Routes>
@@ -91,5 +117,6 @@ export default function App() {
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
+    </ErrorBoundary>
   );
 }
