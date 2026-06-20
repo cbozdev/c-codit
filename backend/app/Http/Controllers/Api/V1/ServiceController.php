@@ -131,6 +131,7 @@ class ServiceController extends Controller
             'service_code' => ['required', 'string', 'exists:services,code'],
             'service'      => ['required', 'string', 'max:80'],
             'duration'     => ['required', 'integer', 'in:3,7,14,28,30'],
+            'country'      => ['nullable', 'string', 'in:US,GB,us,gb'],
             'area_code'    => ['nullable', 'string', 'max:10'],
         ]);
 
@@ -145,7 +146,7 @@ class ServiceController extends Controller
             $order = $this->purchases->purchaseLtrVirtualNumber(
                 user: $request->user(),
                 service: $service,
-                request: $request->only(['service', 'duration', 'area_code']),
+                request: $request->only(['service', 'duration', 'country', 'area_code']),
                 idempotencyKey: $idempotencyKey,
             );
         } catch (ServiceUnavailableException $e) {

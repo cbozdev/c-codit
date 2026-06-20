@@ -177,8 +177,10 @@ class ServicePurchaseService
     ): ServiceOrder {
         $serviceSlug = (string) $request['service'];
         $duration    = (int) $request['duration'];
+        $country     = strtoupper((string) ($request['country'] ?? 'US'));
+        if (! in_array($country, ['US', 'GB'], true)) $country = 'US';
 
-        $price = $this->pvaDeals->getLtrPrice($serviceSlug, $duration);
+        $price = $this->pvaDeals->getLtrPrice($serviceSlug, $duration, $country);
         if (! $price) {
             throw new ServiceUnavailableException('No LTR numbers available for this service/duration.');
         }
@@ -214,7 +216,7 @@ class ServicePurchaseService
 
         try {
             $areaCode = isset($request['area_code']) ? (string) $request['area_code'] : null;
-            $result   = $this->pvaDeals->purchaseLtr($serviceSlug, $duration, $areaCode);
+            $result   = $this->pvaDeals->purchaseLtr($serviceSlug, $duration, $areaCode, $country);
         } catch (\Throwable $e) {
             $this->refundOrder($order, $holdTx, $e->getMessage());
             throw $e;
@@ -232,7 +234,7 @@ class ServicePurchaseService
                     'number_type'       => 'LTR',
                     'duration'          => $duration,
                     'service_name'      => ucfirst($serviceSlug),
-                    'country'           => 'United States',
+                    'country'           => $country === 'GB' ? 'United Kingdom' : 'United States',
                     'auto_renew_enable' => $result['auto_renew_enable'] ?? false,
                     'allow_flag'        => $result['allow_flag'] ?? true,
                     'allow_reuse'       => $result['allow_reuse'] ?? false,
