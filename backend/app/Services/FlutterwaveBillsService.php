@@ -139,13 +139,11 @@ class FlutterwaveBillsService
         // not just data bundles — the type filter is broken on their end. We whitelist
         // only known data billers (electricity, school fees, church offerings etc. pollute
         // the catalog under other biller codes):
-        //   BIL108 = MTN data (38 plans)
-        //   BIL109 = Glo data (9 plans)
-        //   BIL110 = Airtel data (10 plans) + 1 MTN promo plan
-        //   BIL111 = 9mobile data (4 plans)
-        // NOTE: If BIL108/BIL109 still fail with "Invalid Biller selected", contact
-        // Flutterwave support to enable those billers for this merchant account.
-        $validDataBillers = ['BIL108', 'BIL109', 'BIL110', 'BIL111'];
+        //   BIL108 = MTN data — NOT yet enabled on this merchant account (contact Flutterwave)
+        //   BIL109 = Glo data — NOT yet enabled on this merchant account (contact Flutterwave)
+        //   BIL110 = Airtel data (confirmed working)
+        //   BIL111 = 9mobile data (confirmed working)
+        $validDataBillers = ['BIL110', 'BIL111'];
 
         try {
             $res = Http::withToken($this->secretKey)
