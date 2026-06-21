@@ -24,17 +24,17 @@ Route::get('/v1/debug-flw-data', function (\Illuminate\Http\Request $req) {
     $res = \Illuminate\Support\Facades\Http::withToken($key)->acceptJson()
         ->get('https://api.flutterwave.com/v3/bill-categories', ['country' => 'NG', 'type' => 'data_bundle']);
     $items = $res->json('data') ?? [];
-    // Only BIL110 items — show ALL of them so we can identify MTN and Glo plan names
-    $bil110 = array_values(array_filter($items, fn($i) => ($i['biller_code'] ?? '') === 'BIL110'));
-    return response()->json([
-        'total_catalog' => count($items),
-        'total_bil110'  => count($bil110),
-        'bil110_items'  => array_map(fn($i) => [
-            'item_code'  => $i['item_code'] ?? null,
-            'short_name' => $i['short_name'] ?? $i['name'] ?? null,
-            'amount'     => $i['amount'] ?? null,
-        ], $bil110),
-    ]);
+    // Group all items by biller_code, show count + 3 sample names per biller
+    $grouped = [];
+    foreach ($items as $i) {
+        $bc = $i['biller_code'] ?? 'NULL';
+        $name = $i['short_name'] ?? $i['name'] ?? '';
+        if (! isset($grouped[$bc])) $grouped[$bc] = ['count' => 0, 'samples' => []];
+        $grouped[$bc]['count']++;
+        if (count($grouped[$bc]['samples']) < 5) $grouped[$bc]['samples'][] = $name;
+    }
+    ksort($grouped);
+    return response()->json(['total' => count($items), 'by_biller' => $grouped]);
 });
 
 Route::prefix('v1')->group(function () {
