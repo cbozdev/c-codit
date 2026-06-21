@@ -205,6 +205,9 @@ Route::prefix('v1')->group(function () {
             // Referral stats
             Route::get('/referrals',                            [AdminController::class, 'referralStats']);
 
+            // Debug
+            Route::get('/flutterwave-data-debug',               [AdminController::class, 'flutterwaveDataDebug']);
+
             // Proxy admin
             Route::get('/proxy/overview',                       [ProxyAdminController::class, 'overview']);
             Route::get('/proxy/subscriptions',                  [ProxyAdminController::class, 'subscriptions']);

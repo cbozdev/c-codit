@@ -929,4 +929,23 @@ class AdminController extends Controller
             'top_referrers'   => $topReferrers,
         ]);
     }
+
+    /** GET /admin/flutterwave-data-debug — shows raw Flutterwave data plan catalog */
+    public function flutterwaveDataDebug()
+    {
+        $key = (string) config('services.flutterwave.secret_key');
+        $res = Http::withToken($key)
+            ->acceptJson()
+            ->get('https://api.flutterwave.com/v3/bill-categories', ['country' => 'NG', 'type' => 'data_bundle']);
+
+        $mode = str_contains(strtolower($key), 'test') ? 'TEST' : 'LIVE';
+
+        return ApiResponse::ok([
+            'key_mode'     => $mode,
+            'key_prefix'   => substr($key, 0, 15) . '...',
+            'http_status'  => $res->status(),
+            'items_count'  => count($res->json('data') ?? []),
+            'first_10'     => array_slice($res->json('data') ?? [], 0, 10),
+        ]);
+    }
 }
