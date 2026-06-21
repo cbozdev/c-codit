@@ -153,16 +153,29 @@ class FlutterwaveBillsService
 
             if ($res->failed()) return [];
 
+            // Enterprise/router plan keywords — these use a different Flutterwave sub-biller
+            // that the /bills purchase endpoint rejects with "Invalid Biller selected".
+            $excludeKeywords = ['router', 'broadband', 'home broadband', 'mifi', 'cpe'];
+
             $items = $res->json('data') ?? [];
             $plans = [];
             foreach ($items as $item) {
                 if (empty($item['item_code'])) continue;
                 $name = strtolower($item['short_name'] ?? $item['name'] ?? '');
+
+                // Must match network keyword
                 $matched = false;
                 foreach ($keywords as $kw) {
                     if (str_contains($name, $kw)) { $matched = true; break; }
                 }
                 if (! $matched) continue;
+
+                // Skip enterprise/router plans — not purchasable via the bills API
+                $excluded = false;
+                foreach ($excludeKeywords as $ex) {
+                    if (str_contains($name, $ex)) { $excluded = true; break; }
+                }
+                if ($excluded) continue;
 
                 $plans[] = [
                     'item_code'   => $item['item_code'],
