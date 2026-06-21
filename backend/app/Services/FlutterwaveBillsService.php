@@ -137,10 +137,15 @@ class FlutterwaveBillsService
 
         // Flutterwave's /bill-categories?type=data_bundle returns ALL 290+ bill categories,
         // not just data bundles — the type filter is broken on their end. We whitelist
-        // only the billers that are confirmed to work with type=DATA_BUNDLE in /bills:
-        //   BIL110 = mobile data (MTN + Airtel plans are both under this biller)
-        //   BIL111 = 9mobile data
-        $validDataBillers = ['BIL110', 'BIL111'];
+        // only known data billers (electricity, school fees, church offerings etc. pollute
+        // the catalog under other biller codes):
+        //   BIL108 = MTN data (38 plans)
+        //   BIL109 = Glo data (9 plans)
+        //   BIL110 = Airtel data (10 plans) + 1 MTN promo plan
+        //   BIL111 = 9mobile data (4 plans)
+        // NOTE: If BIL108/BIL109 still fail with "Invalid Biller selected", contact
+        // Flutterwave support to enable those billers for this merchant account.
+        $validDataBillers = ['BIL108', 'BIL109', 'BIL110', 'BIL111'];
 
         try {
             $res = Http::withToken($this->secretKey)
@@ -203,13 +208,16 @@ class FlutterwaveBillsService
             throw new \RuntimeException('Data purchase requires a plan selection. Please pick a plan and try again.');
         }
 
-        // Always use the confirmed working biller codes regardless of what the catalog
-        // returned — 9mobile uses BIL111, everything else (MTN, Airtel, Glo) uses BIL110.
+        // Resolve biller code by network — from catalog analysis:
+        //   BIL108 = MTN, BIL109 = Glo, BIL110 = Airtel, BIL111 = 9mobile
         $billerCodes = [
-            '9mobile' => 'BIL111',
+            'mtn'      => 'BIL108',
+            'glo'      => 'BIL109',
+            'airtel'   => 'BIL110',
+            '9mobile'  => 'BIL111',
             'etisalat' => 'BIL111',
         ];
-        $resolvedBillerCode = $billerCodes[strtolower($network)] ?? 'BIL110';
+        $resolvedBillerCode = $billerCodes[strtolower($network)] ?? $billerCode;
 
         $phone = $this->normaliseNigerianPhone($phone);
 
