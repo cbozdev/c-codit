@@ -135,6 +135,13 @@ class FlutterwaveBillsService
         ];
         $keywords = $keywords[$network] ?? [strtolower($network)];
 
+        // Flutterwave's /bill-categories?type=data_bundle returns ALL 290+ bill categories,
+        // not just data bundles — the type filter is broken on their end. We whitelist
+        // only the billers that are confirmed to work with type=DATA_BUNDLE in /bills:
+        //   BIL110 = mobile data (MTN + Airtel plans are both under this biller)
+        //   BIL111 = 9mobile data
+        $validDataBillers = ['BIL110', 'BIL111'];
+
         try {
             $res = Http::withToken($this->secretKey)
                 ->acceptJson()
@@ -153,14 +160,15 @@ class FlutterwaveBillsService
 
             if ($res->failed()) return [];
 
-            // Enterprise/router plan keywords — these use a different Flutterwave sub-biller
-            // that the /bills purchase endpoint rejects with "Invalid Biller selected".
-            $excludeKeywords = ['router', 'broadband', 'home broadband', 'mifi', 'cpe'];
-
             $items = $res->json('data') ?? [];
             $plans = [];
             foreach ($items as $item) {
                 if (empty($item['item_code'])) continue;
+
+                // Skip any item not from a whitelisted data biller (removes electricity,
+                // school fees, SME/corporate broadband plans, etc. that pollute the catalog)
+                if (! in_array($item['biller_code'] ?? '', $validDataBillers, true)) continue;
+
                 $name = strtolower($item['short_name'] ?? $item['name'] ?? '');
 
                 // Must match network keyword
@@ -170,16 +178,9 @@ class FlutterwaveBillsService
                 }
                 if (! $matched) continue;
 
-                // Skip enterprise/router plans — not purchasable via the bills API
-                $excluded = false;
-                foreach ($excludeKeywords as $ex) {
-                    if (str_contains($name, $ex)) { $excluded = true; break; }
-                }
-                if ($excluded) continue;
-
                 $plans[] = [
                     'item_code'   => $item['item_code'],
-                    'biller_code' => $item['biller_code'] ?? '',
+                    'biller_code' => $item['biller_code'],
                     'name'        => $item['short_name'] ?? $item['name'] ?? $item['item_code'],
                     'amount'      => (int) ($item['amount'] ?? 0),
                 ];
@@ -198,9 +199,17 @@ class FlutterwaveBillsService
      */
     public function buyData(string $phone, string $network, string $itemCode, string $billerCode, float $amount, string $txRef): array
     {
-        if (empty($itemCode) || empty($billerCode)) {
+        if (empty($itemCode)) {
             throw new \RuntimeException('Data purchase requires a plan selection. Please pick a plan and try again.');
         }
+
+        // Always use the confirmed working biller codes regardless of what the catalog
+        // returned — 9mobile uses BIL111, everything else (MTN, Airtel, Glo) uses BIL110.
+        $billerCodes = [
+            '9mobile' => 'BIL111',
+            'etisalat' => 'BIL111',
+        ];
+        $resolvedBillerCode = $billerCodes[strtolower($network)] ?? 'BIL110';
 
         $phone = $this->normaliseNigerianPhone($phone);
 
@@ -211,7 +220,7 @@ class FlutterwaveBillsService
             'recurrence'  => 'ONCE',
             'type'        => 'DATA_BUNDLE',
             'reference'   => $txRef,
-            'biller_code' => $billerCode,
+            'biller_code' => $resolvedBillerCode,
             'item_code'   => $itemCode,
         ]);
     }
