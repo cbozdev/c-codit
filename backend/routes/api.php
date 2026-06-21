@@ -17,6 +17,26 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', HealthController::class);
 Route::get('/v1/settings', [AdminController::class, 'getSettings']); // public app settings
 
+// TEMP DEBUG — remove after biller_code investigation
+Route::get('/v1/debug-flw-data', function (\Illuminate\Http\Request $req) {
+    if ($req->query('s') !== 'ccodit2026') abort(404);
+    $key = config('services.flutterwave.secret_key');
+    $res = \Illuminate\Support\Facades\Http::withToken($key)->acceptJson()
+        ->get('https://api.flutterwave.com/v3/bill-categories', ['country' => 'NG', 'type' => 'data_bundle']);
+    $items = $res->json('data') ?? [];
+    // Return first 20 with biller_code visible
+    return response()->json([
+        'total'   => count($items),
+        'key_mode' => str_contains(strtolower($key), 'test') ? 'TEST' : 'LIVE',
+        'items'   => array_map(fn($i) => [
+            'biller_code' => $i['biller_code'] ?? null,
+            'item_code'   => $i['item_code'] ?? null,
+            'short_name'  => $i['short_name'] ?? $i['name'] ?? null,
+            'amount'      => $i['amount'] ?? null,
+        ], array_slice($items, 0, 20)),
+    ]);
+});
+
 Route::prefix('v1')->group(function () {
 
     // Public auth
