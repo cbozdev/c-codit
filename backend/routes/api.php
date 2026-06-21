@@ -24,16 +24,16 @@ Route::get('/v1/debug-flw-data', function (\Illuminate\Http\Request $req) {
     $res = \Illuminate\Support\Facades\Http::withToken($key)->acceptJson()
         ->get('https://api.flutterwave.com/v3/bill-categories', ['country' => 'NG', 'type' => 'data_bundle']);
     $items = $res->json('data') ?? [];
-    // Return first 20 with biller_code visible
+    // Only BIL110 items — show ALL of them so we can identify MTN and Glo plan names
+    $bil110 = array_values(array_filter($items, fn($i) => ($i['biller_code'] ?? '') === 'BIL110'));
     return response()->json([
-        'total'   => count($items),
-        'key_mode' => str_contains(strtolower($key), 'test') ? 'TEST' : 'LIVE',
-        'items'   => array_map(fn($i) => [
-            'biller_code' => $i['biller_code'] ?? null,
-            'item_code'   => $i['item_code'] ?? null,
-            'short_name'  => $i['short_name'] ?? $i['name'] ?? null,
-            'amount'      => $i['amount'] ?? null,
-        ], array_slice($items, 0, 20)),
+        'total_catalog' => count($items),
+        'total_bil110'  => count($bil110),
+        'bil110_items'  => array_map(fn($i) => [
+            'item_code'  => $i['item_code'] ?? null,
+            'short_name' => $i['short_name'] ?? $i['name'] ?? null,
+            'amount'     => $i['amount'] ?? null,
+        ], $bil110),
     ]);
 });
 
