@@ -79,13 +79,13 @@ class ProxySubscription extends Model
         $host = $this->host;
         $pass = $this->getPassword() ?? '';
 
-        // Resolve hostname to an IP so users can configure IP:PORT when needed.
-        // gethostbyname returns the input unchanged if resolution fails, so we
-        // only expose `ip` when it actually differs from the stored host.
-        $resolvedIp = filter_var($host, FILTER_VALIDATE_IP)
-            ? $host
-            : gethostbyname($host);
-        $ip = ($resolvedIp !== $host) ? $resolvedIp : null;
+        // resolved_ip is stored in config at provisioning time; fall back to a
+        // live DNS lookup only if it wasn't captured (e.g. old subscriptions).
+        $ip = $this->config['resolved_ip'] ?? null;
+        if (! $ip && ! filter_var($host, FILTER_VALIDATE_IP)) {
+            $resolved = gethostbyname($host);
+            $ip = ($resolved !== $host) ? $resolved : null;
+        }
 
         return [
             'host'         => $host,

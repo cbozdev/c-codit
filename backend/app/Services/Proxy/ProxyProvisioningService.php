@@ -130,6 +130,7 @@ class ProxyProvisioningService
                 'duration_days'            => $durationDays,
                 'expires_at'               => $result['expires_at'],
                 'provisioned_at'           => now(),
+                'config'                   => ['resolved_ip' => $result['resolved_ip'] ?? null],
             ]);
             $sub->setPassword($result['password']);
             $sub->save();
@@ -224,6 +225,7 @@ class ProxyProvisioningService
             'duration_days'            => 1,
             'expires_at'               => now()->addDay(),
             'provisioned_at'           => now(),
+            'config'                   => ['resolved_ip' => $result['resolved_ip'] ?? null],
         ]);
         $sub->setPassword($result['password']);
         $sub->save();
@@ -319,6 +321,7 @@ class ProxyProvisioningService
                     'speed_upgrade'   => $speedUpgrade,
                     'access_ip'       => $accessIp,
                     'amount_minor'    => $amountMinor,
+                    'resolved_ip'     => $result['resolved_ip'] ?? null,
                 ],
             ]);
             $sub->setPassword($result['password']);
@@ -444,6 +447,7 @@ class ProxyProvisioningService
                             'rotation_minutes'  => $rotationMinutes,
                             'state_code'        => $stateCode ?: null,
                             'amount_minor'      => $pricePerProxy,
+                            'resolved_ip'       => $result['resolved_ip'] ?? null,
                         ],
                     ]);
                     $s->setPassword($result['password']);

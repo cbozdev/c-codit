@@ -575,20 +575,10 @@ class ProxyController extends Controller
 
     // ─── Format helper ────────────────────────────────────────────────────────
 
-    private function resolveHostIp(string $host): ?string
-    {
-        if (filter_var($host, FILTER_VALIDATE_IP)) return null; // already an IP
-
-        $cacheKey = 'proxy.host_ip.' . md5($host);
-        return \Illuminate\Support\Facades\Cache::remember($cacheKey, 3600, function () use ($host) {
-            $resolved = gethostbyname($host);
-            return ($resolved !== $host) ? $resolved : null;
-        });
-    }
-
     private function formatSubscription(ProxySubscription $sub, bool $withCredentials = false): array
     {
-        $resolvedIp = $this->resolveHostIp($sub->host);
+        // resolved_ip is stored in config at provisioning time by DecodoService
+        $resolvedIp = $sub->config['resolved_ip'] ?? null;
 
         $data = [
             'id'                   => $sub->public_id,

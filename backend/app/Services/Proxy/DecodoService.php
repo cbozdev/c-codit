@@ -84,6 +84,7 @@ class DecodoService
         $subUserId = $res->json('id') ?? $res->json('sub_user_id') ?? $subUsername;
 
         [$host, $port] = $this->resolveEndpoint('residential', $protocol);
+        $resolvedIp    = $this->resolveIp($host);
 
         Log::info('decodo.sub_user_provisioned', [
             'sub_user_id' => $subUserId,
@@ -91,11 +92,13 @@ class DecodoService
             'country'     => $country,
             'host'        => $host,
             'port'        => $port,
+            'resolved_ip' => $resolvedIp,
         ]);
 
         return [
             'provider_subscription_id' => (string) $subUserId,
             'host'                     => $host,
+            'resolved_ip'              => $resolvedIp,
             'port'                     => $port,
             'username'                 => $this->buildGatewayUsername($subUsername, $country, $sessionType, $sessionId),
             'password'                 => $subPassword,
@@ -113,19 +116,22 @@ class DecodoService
             throw new RuntimeException('Decodo gateway credentials not configured (DECODO_USERNAME / DECODO_PASSWORD).');
         }
 
-        $sessionId = Str::random(16);
+        $sessionId  = Str::random(16);
         [$host, $port] = $this->resolveEndpoint($proxyType, $protocol);
+        $resolvedIp = $this->resolveIp($host);
 
         Log::info('decodo.gateway_credential_provisioned', [
-            'proxy_type' => $proxyType,
-            'country'    => $country,
-            'host'       => $host,
-            'port'       => $port,
+            'proxy_type'  => $proxyType,
+            'country'     => $country,
+            'host'        => $host,
+            'port'        => $port,
+            'resolved_ip' => $resolvedIp,
         ]);
 
         return [
             'provider_subscription_id' => $sessionId,
             'host'                     => $host,
+            'resolved_ip'              => $resolvedIp,
             'port'                     => $port,
             'username'                 => $this->buildGatewayUsername($username, $country, $sessionType, $sessionId),
             'password'                 => $password,
@@ -347,6 +353,13 @@ class DecodoService
         // Always store the hostname — Decodo rotates gateway IPs so a
         // DNS-resolved IP becomes stale within hours.
         return [$hostname, $port];
+    }
+
+    private function resolveIp(string $host): ?string
+    {
+        if (filter_var($host, FILTER_VALIDATE_IP)) return $host;
+        $resolved = gethostbyname($host);
+        return ($resolved !== $host) ? $resolved : null;
     }
 
     private function buildGatewayUsername(string $baseUser, string $country, string $sessionType, string $sessionId): string
