@@ -4,13 +4,13 @@ import toast from 'react-hot-toast';
 import { apiCall } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import type {
-  MarketplaceCountries, MarketplacePage, ProxyListing,
+  MarketplaceCountries,
   ProxySubscription, ProxyTrialStatus, Wallet,
 } from '@/types/api';
 import {
-  Globe, Copy, Eye, EyeOff, RotateCcw, Wifi, WifiOff, Smartphone,
-  ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, X, Shield,
-  Zap, ArrowRight, Plus, Minus,
+  Globe, Copy, Eye, EyeOff, RotateCcw, Wifi, WifiOff,
+  CheckCircle2, AlertCircle, X, Shield,
+  Zap, Plus, Minus,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -47,12 +47,6 @@ function calcPrice(connectionType: string, protocol: string, days: number, speed
 
 function fmt(minor: number): string {
   return '$' + (minor / 100).toFixed(2);
-}
-
-function speedColor(ms: number) {
-  if (ms < 100) return 'text-emerald-500';
-  if (ms < 200) return 'text-amber-500';
-  return 'text-rose-500';
 }
 
 function copyText(text: string, label = 'Copied') {
@@ -142,21 +136,6 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
         </div>
         <div className="p-5 space-y-4">
           {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
-          {/* Proxy Helper format: IP:PORT:USER:PASS */}
-          {data?.password && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-ink-500 uppercase tracking-wide">Proxy Helper Format <span className="normal-case text-brand-600 dark:text-brand-400">(IP:Port:User:Pass)</span></p>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 font-mono text-xs bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-700 rounded-lg px-3 py-2 break-all">
-                  {(data?.ip ?? creds.host)}:{creds.port}:{creds.username}:{data.password}
-                </div>
-                <button onClick={() => copyText(`${data?.ip ?? creds.host}:${creds.port}:${creds.username}:${data.password}`, 'Proxy Helper format copied')} className="btn-ghost p-2">
-                  <Copy className="h-4 w-4" />
-                </button>
-              </div>
-              <p className="text-[11px] text-ink-400">Paste this line directly into Proxy Helper.</p>
-            </div>
-          )}
           <CredRow label="IP Address" value={(data?.ip ?? creds.host) ?? ''} />
           <CredRow label="Host"       value={creds.host ?? ''} />
           <CredRow label="Port"     value={String(creds.port)} />
@@ -256,29 +235,43 @@ function CredRow({ label, value, noCopy = false }: { label: string; value: strin
   );
 }
 
-// ─── 1By1 Buy Modal ───────────────────────────────────────────────────────────
+// ─── 1 By 1 Config Modal ──────────────────────────────────────────────────────
 
-function OneByOneBuyModal({
-  listing, walletMinor, ips, onClose,
+function OneByOneConfigModal({
+  walletMinor, ips, countries, onClose,
 }: {
-  listing: ProxyListing; walletMinor: number; ips: string[]; onClose: () => void;
+  walletMinor: number; ips: string[]; countries: MarketplaceCountries | undefined; onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const [durationDays, setDuration] = useState(30);
-  const [speedUpgrade, setSpeed]    = useState(false);
-  const [accessIp, setAccessIp]     = useState(ips[0] ?? '');
+  const [connection, setConnection]   = useState<'wifi' | 'cell'>('wifi');
+  const [protocol, setProtocol]       = useState<'http' | 'socks5'>('http');
+  const [durationIdx, setDurationIdx] = useState(4);
+  const [speedUpgrade, setSpeed]      = useState(false);
+  const [accessIp, setAccessIp]       = useState(ips[0] ?? '');
+  const [country, setCountry]         = useState('US');
+  const [state, setState]             = useState('');
 
-  const priceMinor = (() => {
-    const daily = Math.ceil(listing.price_minor / 30);
-    const base  = Math.round(daily * durationDays);
-    return speedUpgrade ? Math.round(base * 1.5) : base;
-  })();
+  const days        = DURATIONS[durationIdx]?.days ?? 30;
+  const priceMinor  = calcPrice(connection, protocol, days, speedUpgrade, 30);
   const insufficient = walletMinor < priceMinor;
 
+  const worldCountries = countries?.world ?? [];
+  const usStates       = countries?.us_states ?? [];
+
   const buy = useMutation({
-    mutationFn: () => apiCall<ProxySubscription>({
-      method: 'POST', url: `/proxy/marketplace/${listing.id}/buy`,
-      data: { duration_days: durationDays, speed_upgrade: speedUpgrade, access_ip: accessIp || undefined },
+    mutationFn: () => apiCall<ProxySubscription[]>({
+      method: 'POST', url: '/proxy/social-buy',
+      data: {
+        connection_type:   connection,
+        protocol,
+        duration_days:     days,
+        quantity:          1,
+        country_code:      country || undefined,
+        state_code:        state   || undefined,
+        speed_upgrade:     speedUpgrade,
+        rotation_minutes:  30,
+        access_ip:         accessIp || undefined,
+      },
     }),
     onSuccess: () => {
       toast.success('Proxy activated!');
@@ -290,68 +283,76 @@ function OneByOneBuyModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-ink-900 rounded-2xl shadow-2xl w-full max-w-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/60 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white dark:bg-ink-900 rounded-2xl shadow-2xl w-full max-w-lg my-auto">
         <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex items-center justify-between">
-          <h2 className="font-semibold dark:text-white">Buy Proxy</h2>
+          <div>
+            <h2 className="font-semibold dark:text-white">1 By 1 — Select Location</h2>
+            <p className="text-xs text-ink-500 mt-0.5">1 rotating residential proxy · choose your target location</p>
+          </div>
           <button onClick={onClose} className="btn-ghost p-1.5 text-ink-400"><X className="h-4 w-4" /></button>
         </div>
-        <div className="p-5 space-y-4">
-          {/* Proxy info */}
-          <div className="rounded-xl bg-ink-50 dark:bg-ink-800 p-3 text-sm space-y-1.5">
-            <div className="flex items-center gap-2 font-medium dark:text-white">
-              {listing.connection_type === 'cell'
-                ? <Smartphone className="h-4 w-4 text-purple-500" />
-                : <Wifi className="h-4 w-4 text-blue-500" />}
-              1 Proxy · {listing.protocol.toUpperCase()}
-            </div>
-            <div className="grid grid-cols-2 gap-1 text-xs text-ink-500">
-              <span>IP: <span className="font-mono">{listing.ip_display}</span></span>
-              <span>ISP: {listing.isp}</span>
-              <span>GEO: {listing.country_code}{listing.state_code ? `, ${listing.state_code}` : ''}{listing.city ? `, ${listing.city}` : ''}</span>
-              <span>Connection: <span className="capitalize">{listing.connection_type}</span></span>
-            </div>
+
+        <div className="p-5 space-y-5">
+          {/* Country */}
+          <div>
+            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">Country</p>
+            <select className="input text-sm w-full" value={country} onChange={(e) => { setCountry(e.target.value); setState(''); }}>
+              <option value="US">🇺🇸 United States</option>
+              {worldCountries.map((c) => (
+                <option key={c.code} value={c.code}>{c.name} ({c.count})</option>
+              ))}
+            </select>
           </div>
+
+          {/* State (US only) */}
+          {country === 'US' && usStates.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">State</p>
+              <select className="input text-sm w-full" value={state} onChange={(e) => setState(e.target.value)}>
+                <option value="">Any state</option>
+                {usStates.map((s) => (
+                  <option key={s.code} value={s.code}>{s.name} ({s.count})</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Connection */}
+          <ConfigGroup label="Connection">
+            {(['wifi', 'cell'] as const).map((v) => (
+              <ConfigBtn key={v} active={connection === v} onClick={() => setConnection(v)} label={v === 'wifi' ? 'WiFi' : 'Cellular'} />
+            ))}
+          </ConfigGroup>
+
+          {/* Protocol */}
+          <ConfigGroup label="Protocol">
+            {(['http', 'socks5'] as const).map((v) => (
+              <ConfigBtn key={v} active={protocol === v} onClick={() => setProtocol(v)} label={v === 'socks5' ? 'SOCKS5' : 'HTTPS'} />
+            ))}
+          </ConfigGroup>
 
           {/* Duration */}
           <div>
-            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-2">Duration</p>
-            <div className="flex gap-1.5 flex-wrap">
-              {DURATIONS.map(({ days, label }) => {
-                const d = Math.ceil(listing.price_minor / 30);
-                const p = Math.round(d * days);
-                return (
-                  <button key={days} onClick={() => setDuration(days)}
-                    className={clsx('flex-1 min-w-[72px] rounded-lg border py-2 text-center text-xs transition',
-                      durationDays === days
-                        ? 'bg-ink-900 dark:bg-white border-ink-900 dark:border-white text-white dark:text-ink-900 font-semibold'
-                        : 'border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-300 hover:border-ink-400',
-                    )}>
-                    <p className="font-medium">{label}</p>
-                    <p className="text-[10px] opacity-70">{fmt(p)}</p>
-                  </button>
-                );
-              })}
+            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-2">
+              Period · <span className="text-ink-900 dark:text-white">{DURATIONS[durationIdx]?.label}</span>
+            </p>
+            <input type="range" min={0} max={4} step={1} value={durationIdx}
+              onChange={(e) => setDurationIdx(Number(e.target.value))} className="w-full accent-brand-500" />
+            <div className="flex justify-between text-[10px] text-ink-400 mt-1">
+              {DURATIONS.map(({ days: d, label }, i) => (
+                <span key={d} className={clsx(durationIdx === i && 'text-brand-600 font-semibold')}>
+                  {label}<br />{fmt(calcPrice(connection, protocol, d, speedUpgrade, 30))}
+                </span>
+              ))}
             </div>
-          </div>
-
-          {/* Access IP */}
-          <div>
-            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">Your Access IP</p>
-            <input
-              className="input font-mono text-sm w-full"
-              placeholder="Enter your device IP (optional)"
-              value={accessIp}
-              onChange={(e) => setAccessIp(e.target.value.trim())}
-            />
-            <p className="text-[11px] text-ink-400 mt-1">Access limited to this IP. Can be changed later via "Your IPs".</p>
           </div>
 
           {/* Speed upgrade */}
           <label className="flex items-center justify-between rounded-xl border border-ink-200 dark:border-ink-700 p-3 cursor-pointer hover:border-brand-400 transition">
             <div>
               <p className="text-sm font-medium dark:text-white">Double the speed limit</p>
-              <p className="text-xs text-ink-500">Upgrade this proxy to high speed (+50%)</p>
+              <p className="text-xs text-ink-500">Upgrade to high speed (+50%)</p>
             </div>
             <input type="checkbox" className="sr-only" checked={speedUpgrade} onChange={(e) => setSpeed(e.target.checked)} />
             <div className={clsx('h-5 w-10 rounded-full transition-colors relative shrink-0',
@@ -361,15 +362,29 @@ function OneByOneBuyModal({
             </div>
           </label>
 
-          {/* Price summary */}
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-ink-500">Total</span>
-            <span className="font-bold text-lg dark:text-white">{fmt(priceMinor)}</span>
+          {/* Access IP */}
+          <div>
+            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">Your Access IP (optional)</p>
+            <input className="input font-mono text-sm w-full" placeholder="Your device IP"
+              value={accessIp} onChange={(e) => setAccessIp(e.target.value.trim())} />
           </div>
-          <div className="flex justify-between text-xs text-ink-400">
-            <span>Wallet balance</span>
-            <span className={insufficient ? 'text-rose-600 font-medium' : ''}>{fmt(walletMinor)}</span>
+
+          {/* Summary */}
+          <div className="rounded-xl bg-ink-50 dark:bg-ink-800 p-3 space-y-1.5 text-sm">
+            <div className="flex justify-between text-ink-500">
+              <span>1 proxy · {DURATIONS[durationIdx]?.label} · {country}{state ? `-${state}` : ''}</span>
+              <span>{connection === 'cell' ? 'Cellular' : 'WiFi'} · {protocol.toUpperCase()}</span>
+            </div>
+            <div className="flex justify-between font-bold dark:text-white border-t border-ink-200 dark:border-ink-700 pt-1.5">
+              <span>Total</span>
+              <span>{fmt(priceMinor)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-ink-400">
+              <span>Wallet</span>
+              <span className={insufficient ? 'text-rose-600 font-medium' : ''}>{fmt(walletMinor)}</span>
+            </div>
           </div>
+
           {insufficient && (
             <p className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">
               Insufficient balance. Please top up your wallet.
@@ -379,6 +394,7 @@ function OneByOneBuyModal({
             Refund time 1h — if the proxy doesn't work in the first hour, you'll get a refund instantly.
           </p>
         </div>
+
         <div className="flex gap-3 p-5 pt-0">
           <button onClick={onClose} className="btn-outline flex-1">Cancel</button>
           <button onClick={() => buy.mutate()} disabled={buy.isPending || insufficient} className="btn-primary flex-1">
@@ -623,7 +639,7 @@ function PlanCards({ selected, onSelect }: { selected: Plan; onSelect: (p: Plan)
     {
       id: 'onebyone' as Plan,
       name: '1 By 1',
-      desc: 'Buy specific IPs. Select exact proxy with ISP, location, and type.',
+      desc: 'Buy one proxy at a time. Pick your country, state, connection type and protocol.',
       protocols: 'Socks / Https',
       from: 'from $0.27/day',
       badge: null,
@@ -676,132 +692,6 @@ function PlanCards({ selected, onSelect }: { selected: Plan; onSelect: (p: Plan)
   );
 }
 
-// ─── Marketplace Table ────────────────────────────────────────────────────────
-
-function MarketplaceTable({ items, onBuy }: { items: ProxyListing[]; onBuy: (l: ProxyListing) => void }) {
-  if (items.length === 0) {
-    return (
-      <div className="text-center py-12 text-ink-400">
-        <Globe className="h-8 w-8 mx-auto mb-2 opacity-40" />
-        <p className="text-sm">No proxies match your filters.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs text-ink-400 uppercase tracking-wide border-b border-ink-100 dark:border-ink-800">
-            {['IP', 'Type', 'Protocol', 'Region', 'City', 'ISP', 'Speed', 'Price/30d', ''].map((h) => (
-              <th key={h} className="pb-2 pr-4 font-medium last:pr-0">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-ink-50 dark:divide-ink-800/60">
-          {items.map((l) => (
-            <tr key={l.id} className="hover:bg-ink-50 dark:hover:bg-ink-800/40 transition-colors">
-              <td className="py-2.5 pr-4 font-mono text-xs text-ink-500">{l.ip_display ?? '–'}</td>
-              <td className="py-2.5 pr-4">
-                <div className="flex items-center gap-1">
-                  {l.connection_type === 'cell'
-                    ? <Smartphone className="h-3.5 w-3.5 text-purple-500 shrink-0" />
-                    : <Wifi className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
-                  <span className="text-xs capitalize dark:text-ink-300">{l.connection_type}</span>
-                </div>
-              </td>
-              <td className="py-2.5 pr-4">
-                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold uppercase',
-                  l.protocol === 'socks5'
-                    ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
-                    : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400')}>
-                  {l.protocol === 'socks5' ? 'SOCKS' : 'HTTP'}
-                </span>
-              </td>
-              <td className="py-2.5 pr-4 text-xs dark:text-ink-300">{l.state_code ?? l.country_code}</td>
-              <td className="py-2.5 pr-4 text-xs dark:text-ink-300">{l.city ?? '–'}</td>
-              <td className="py-2.5 pr-4 text-xs text-ink-400 max-w-[120px] truncate">{l.isp ?? '–'}</td>
-              <td className="py-2.5 pr-4">
-                <div className="flex items-center gap-1">
-                  <Zap className={clsx('h-3 w-3 shrink-0', speedColor(l.speed_ms))} />
-                  <span className={clsx('text-xs font-medium', speedColor(l.speed_ms))}>{l.speed_ms}ms</span>
-                </div>
-              </td>
-              <td className="py-2.5 pr-4 font-semibold dark:text-white">{l.price}</td>
-              <td className="py-2.5">
-                <button onClick={() => onBuy(l)} className="btn-primary text-xs px-3 py-1.5 whitespace-nowrap">
-                  Buy <ArrowRight className="h-3 w-3 ml-0.5 inline" />
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// ─── Country Tabs ─────────────────────────────────────────────────────────────
-
-function CountryTabs({
-  countries, activeCountry, activeState, onSelect,
-}: {
-  countries: MarketplaceCountries; activeCountry: string; activeState: string;
-  onSelect: (c: string, s: string) => void;
-}) {
-  const [showAll, setShowAll] = useState(false);
-  const states = countries.us_states;
-  const visible = showAll ? states : states.slice(0, 12);
-
-  return (
-    <div className="space-y-2">
-      <div className="flex gap-1.5 flex-wrap">
-        <TabBtn active={activeCountry === 'US' && !activeState} onClick={() => onSelect('US', '')}>
-          US Mix <span className="opacity-60 ml-1">{countries.us_total}</span>
-        </TabBtn>
-        {countries.world.map((c) => (
-          <TabBtn key={c.code} active={activeCountry === c.code && !activeState} onClick={() => onSelect(c.code, '')}>
-            {c.name} <span className="opacity-60 ml-1">{c.count}</span>
-          </TabBtn>
-        ))}
-      </div>
-      {activeCountry === 'US' && (
-        <div className="flex gap-1 flex-wrap pt-0.5">
-          <button onClick={() => onSelect('US', '')}
-            className={clsx('px-2.5 py-1 rounded text-xs font-medium transition',
-              !activeState ? 'bg-brand-500 text-white' : 'text-ink-500 hover:text-ink-700 dark:hover:text-ink-300')}>
-            All
-          </button>
-          {visible.map((s) => (
-            <button key={s.code} onClick={() => onSelect('US', s.code)}
-              className={clsx('px-2.5 py-1 rounded text-xs font-medium transition',
-                activeState === s.code ? 'bg-brand-500 text-white' : 'text-ink-500 hover:text-ink-700 dark:hover:text-ink-300')}>
-              {s.code}<span className="text-[10px] opacity-60 ml-0.5">-{s.count}</span>
-            </button>
-          ))}
-          {states.length > 12 && (
-            <button onClick={() => setShowAll(!showAll)} className="px-2.5 py-1 rounded text-xs text-brand-600 dark:text-brand-400 hover:underline">
-              {showAll ? 'Less' : `+${states.length - 12} more`}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button onClick={onClick}
-      className={clsx('px-3 py-1.5 rounded-lg text-xs font-medium border transition',
-        active
-          ? 'bg-ink-900 dark:bg-white text-white dark:text-ink-900 border-transparent'
-          : 'border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-300 hover:border-ink-400',
-      )}>
-      {children}
-    </button>
-  );
-}
 
 // ─── Active Proxy Row ─────────────────────────────────────────────────────────
 
@@ -935,18 +825,11 @@ type PageTab = 'active' | 'history';
 export default function MyProxiesPage() {
   const qc = useQueryClient();
   const [pageTab, setPageTab]         = useState<PageTab>('active');
-  const [credsSub, setCredsSub]       = useState<ProxySubscription | null>(null);
-  const [showIpModal, setShowIpModal] = useState(false);
+  const [credsSub, setCredsSub]         = useState<ProxySubscription | null>(null);
+  const [showIpModal, setShowIpModal]   = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan>(null);
-  const [showSocial, setShowSocial]   = useState(false);
-  const [buyListing, setBuyListing]   = useState<ProxyListing | null>(null);
-
-  // Marketplace filters
-  const [filterCountry, setFilterCountry] = useState('US');
-  const [filterState, setFilterState]     = useState('');
-  const [filterType, setFilterType]       = useState('');
-  const [filterProtocol, setFilterProtocol] = useState('');
-  const [mktPage, setMktPage]             = useState(1);
+  const [showSocial, setShowSocial]     = useState(false);
+  const [showOneByOne, setShowOneByOne] = useState(false);
 
   const wallet = useQuery({
     queryKey: ['wallet'],
@@ -979,23 +862,6 @@ export default function MyProxiesPage() {
     staleTime: 300_000,
   });
 
-  const marketplace = useQuery({
-    queryKey: ['proxy', 'marketplace', filterCountry, filterState, filterType, filterProtocol, mktPage],
-    queryFn:  () => apiCall<MarketplacePage>({
-      url: '/proxy/marketplace',
-      params: {
-        country:  filterCountry || undefined,
-        state:    filterState   || undefined,
-        type:     filterType    || undefined,
-        protocol: filterProtocol || undefined,
-        per_page: 20, page: mktPage,
-      },
-    }),
-    placeholderData: (prev) => prev,
-    staleTime: 120_000,
-    enabled: selectedPlan === 'onebyone',
-  });
-
   const trialStatus = useQuery({
     queryKey: ['proxy', 'trial-status'],
     queryFn:  () => apiCall<ProxyTrialStatus>({ url: '/proxy/trial-status' }),
@@ -1014,7 +880,6 @@ export default function MyProxiesPage() {
 
   const activeItems  = active.data?.items ?? [];
   const historyItems = history.data?.items ?? [];
-  const mkt          = marketplace.data;
   const countries    = marketplaceCountries.data;
   const ips          = whitelist.data?.ips ?? [];
   const walletMinor  = wallet.data?.balance_minor ?? 0;
@@ -1023,7 +888,8 @@ export default function MyProxiesPage() {
 
   function handleSelectPlan(p: Plan) {
     setSelectedPlan(p);
-    if (p === 'social') setShowSocial(true);
+    if (p === 'social')    setShowSocial(true);
+    if (p === 'onebyone')  setShowOneByOne(true);
   }
 
   return (
@@ -1128,51 +994,6 @@ export default function MyProxiesPage() {
             <PlanCards selected={selectedPlan} onSelect={handleSelectPlan} />
           </div>
 
-          {/* ─ 1By1 Marketplace ─ */}
-          {selectedPlan === 'onebyone' && (
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-sm font-semibold text-ink-700 dark:text-ink-300">
-                  1 By 1 Proxies
-                  {mkt && <span className="font-normal text-ink-400 ml-2">({mkt.meta.total.toLocaleString()} available)</span>}
-                </p>
-                <div className="flex gap-2">
-                  <select className="input text-xs py-1.5" value={filterType} onChange={(e) => { setFilterType(e.target.value); setMktPage(1); }}>
-                    <option value="">All Types</option>
-                    <option value="wifi">WiFi</option>
-                    <option value="cell">Cell</option>
-                  </select>
-                  <select className="input text-xs py-1.5" value={filterProtocol} onChange={(e) => { setFilterProtocol(e.target.value); setMktPage(1); }}>
-                    <option value="">All Protocols</option>
-                    <option value="http">HTTP</option>
-                    <option value="socks5">SOCKS5</option>
-                  </select>
-                </div>
-              </div>
-
-              {countries && (
-                <CountryTabs countries={countries} activeCountry={filterCountry} activeState={filterState}
-                  onSelect={(c, s) => { setFilterCountry(c); setFilterState(s); setMktPage(1); }} />
-              )}
-
-              <div className="rounded-xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 p-4">
-                {marketplace.isLoading && !mkt && <p className="text-sm text-ink-400 py-8 text-center">Loading proxies…</p>}
-                {mkt && <MarketplaceTable items={mkt.items} onBuy={(l) => setBuyListing(l)} />}
-
-                {mkt && mkt.meta.last_page > 1 && (
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-ink-100 dark:border-ink-800">
-                    <span className="text-xs text-ink-400">Page {mkt.meta.current_page} of {mkt.meta.last_page}</span>
-                    <div className="flex gap-2">
-                      <button onClick={() => setMktPage((p) => Math.max(1, p - 1))} disabled={mkt.meta.current_page === 1}
-                        className="btn-ghost p-2 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-                      <button onClick={() => setMktPage((p) => Math.min(mkt.meta.last_page, p + 1))} disabled={mkt.meta.current_page === mkt.meta.last_page}
-                        className="btn-ghost p-2 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -1203,13 +1024,13 @@ export default function MyProxiesPage() {
       {/* ─── Modals ───────────────────────────────────────────────── */}
       {showIpModal && <IpWhitelistModal currentIps={ips} onClose={() => setShowIpModal(false)} />}
       {credsSub    && <CredentialsModal sub={credsSub} onClose={() => setCredsSub(null)} />}
-      {buyListing  && (
-        <OneByOneBuyModal
-          listing={buyListing} walletMinor={walletMinor} ips={ips}
-          onClose={() => setBuyListing(null)}
+      {showOneByOne && (
+        <OneByOneConfigModal
+          walletMinor={walletMinor} ips={ips} countries={countries}
+          onClose={() => { setShowOneByOne(false); setSelectedPlan(null); }}
         />
       )}
-      {showSocial && countries !== undefined && (
+      {showSocial && (
         <SocialConfigModal
           walletMinor={walletMinor} ips={ips} countries={countries}
           onClose={() => { setShowSocial(false); setSelectedPlan(null); }}
