@@ -731,7 +731,7 @@ class ServicePurchaseService
             $this->wallets->fundFromPayment(
                 wallet: $referrer->wallet,
                 amount: $reward,
-                cashAccountCode: \App\Services\Ledger\ChartOfAccounts::REFUND_POOL,
+                cashAccountCode: \App\Services\Ledger\ChartOfAccounts::REFUND_EXPENSE,
                 idempotencyKey: 'referral:' . $user->id,
                 description: "Referral bonus — {$user->name} completed their first order",
             );

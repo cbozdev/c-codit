@@ -99,10 +99,12 @@ export type ProxySubscription = {
   type_label: string;
   protocol: string;
   host: string;
+  ip?: string | null;
   port: number;
   username: string;
   password?: string;
   proxy_url?: string;
+  proxy_url_ip?: string | null;
   location_country: string;
   location_city: string | null;
   bandwidth_gb_total: number;

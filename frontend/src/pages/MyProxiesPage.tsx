@@ -143,6 +143,7 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
         <div className="p-5 space-y-4">
           {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
           <CredRow label="Host"     value={creds.host ?? ''} />
+          {data?.ip && <CredRow label="IP Address" value={data.ip} />}
           <CredRow label="Port"     value={String(creds.port)} />
           <CredRow label="Protocol" value={creds.protocol.toUpperCase()} noCopy />
           <CredRow label="Username" value={creds.username ?? ''} />
@@ -173,6 +174,21 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
               )}
             </div>
           </div>
+          {data?.proxy_url_ip && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-ink-500 uppercase tracking-wide">Proxy URL (IP format)</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 font-mono text-xs bg-ink-50 dark:bg-ink-800 rounded-lg px-3 py-2 break-all">{data.proxy_url_ip}</div>
+                <button onClick={() => copyText(data.proxy_url_ip!, 'URL copied')} className="btn-ghost p-2">
+                  <Copy className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-xs text-ink-400">Gateway IP — may change every few hours as Decodo rotates servers.</p>
+            </div>
+          )}
+          <p className="text-xs text-ink-400 bg-ink-50 dark:bg-ink-800 rounded-lg px-3 py-2">
+            <strong>Exit IP:</strong> Residential proxies route each request through a different IP in the selected region. Use "Check Exit IP" below to see your current exit IP.
+          </p>
           <button
             onClick={() => testProxy.mutate()} disabled={testProxy.isPending}
             className="btn-outline text-xs w-full flex items-center justify-center gap-2"

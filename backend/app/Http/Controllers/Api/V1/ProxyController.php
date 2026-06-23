@@ -285,7 +285,17 @@ class ProxyController extends Controller
             return ApiResponse::fail('Refund window has passed. Refunds are only available within 1 hour of activation.', null, 422);
         }
 
-        $this->provisioning->refundSubscription($sub, $request->user());
+        try {
+            $this->provisioning->refundSubscription($sub, $request->user());
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('proxy.refund.failed', [
+                'subscription_id' => $sub->public_id,
+                'user_id'         => $request->user()->id,
+                'error'           => $e->getMessage(),
+                'trace'           => $e->getTraceAsString(),
+            ]);
+            return ApiResponse::fail('Refund failed: ' . $e->getMessage(), null, 422);
+        }
 
         return ApiResponse::ok(null, 'Refund processed. Funds returned to your wallet.');
     }

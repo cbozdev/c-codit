@@ -498,7 +498,7 @@ class ProxyProvisioningService
                 $this->wallets->fundFromPayment(
                     wallet:          $wallet,
                     amount:          Money::minor($amountMinor, 'USD'),
-                    cashAccountCode: ChartOfAccounts::REFUND_POOL,
+                    cashAccountCode: ChartOfAccounts::REFUND_EXPENSE,
                     idempotencyKey:  'proxy_refund:' . $sub->public_id,
                     reference:       $sub,
                     description:     'Proxy 1h refund',

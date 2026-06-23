@@ -76,13 +76,26 @@ class ProxySubscription extends Model
 
     public function toCredentials(): array
     {
+        $host = $this->host;
+        $pass = $this->getPassword() ?? '';
+
+        // Resolve hostname to an IP so users can configure IP:PORT when needed.
+        // gethostbyname returns the input unchanged if resolution fails, so we
+        // only expose `ip` when it actually differs from the stored host.
+        $resolvedIp = filter_var($host, FILTER_VALIDATE_IP)
+            ? $host
+            : gethostbyname($host);
+        $ip = ($resolvedIp !== $host) ? $resolvedIp : null;
+
         return [
-            'host'      => $this->host,
-            'port'      => $this->port,
-            'username'  => $this->username,
-            'password'  => $this->getPassword(),
-            'protocol'  => $this->protocol,
-            'proxy_url' => $this->getProxyUrl(),
+            'host'         => $host,
+            'ip'           => $ip,
+            'port'         => $this->port,
+            'username'     => $this->username,
+            'password'     => $this->getPassword(),
+            'protocol'     => $this->protocol,
+            'proxy_url'    => $this->getProxyUrl(),
+            'proxy_url_ip' => $ip ? "{$this->protocol}://{$this->username}:{$pass}@{$ip}:{$this->port}" : null,
         ];
     }
 

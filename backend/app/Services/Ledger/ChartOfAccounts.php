@@ -18,7 +18,8 @@ class ChartOfAccounts
     public const REVENUE_MARKUP     = 'revenue.markup';
     public const EXPENSE_PROVIDER   = 'expense.provider_cost';
     public const PENDING_ORDERS     = 'liability.pending_orders';
-    public const REFUND_POOL        = 'liability.refund_pool';
+    public const REFUND_POOL        = 'liability.refund_pool';  // kept for reference; do NOT use as cash source — liability balance blocks debits
+    public const REFUND_EXPENSE     = 'expense.refund';         // use this when issuing refunds
     public const SUSPENSE           = 'suspense.clearing';
 
     /** System accounts that must exist for the app to function. */
@@ -29,6 +30,7 @@ class ChartOfAccounts
         self::EXPENSE_PROVIDER => ['name' => 'Provider Cost',             'type' => AccountType::EXPENSE],
         self::PENDING_ORDERS   => ['name' => 'Pending Order Obligations', 'type' => AccountType::LIABILITY],
         self::REFUND_POOL      => ['name' => 'Refund Liability Pool',     'type' => AccountType::LIABILITY],
+        self::REFUND_EXPENSE   => ['name' => 'Refund Expense',            'type' => AccountType::EXPENSE],
         self::SUSPENSE         => ['name' => 'Suspense / Clearing',       'type' => AccountType::ASSET],
     ];
 
