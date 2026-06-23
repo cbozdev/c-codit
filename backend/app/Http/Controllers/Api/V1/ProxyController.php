@@ -577,8 +577,15 @@ class ProxyController extends Controller
 
     private function formatSubscription(ProxySubscription $sub, bool $withCredentials = false): array
     {
-        // resolved_ip is stored in config at provisioning time by DecodoService
+        // resolved_ip stored at provisioning time; fall back to live DNS for old subscriptions
         $resolvedIp = $sub->config['resolved_ip'] ?? null;
+        if (! $resolvedIp && ! filter_var($sub->host, FILTER_VALIDATE_IP)) {
+            $cacheKey   = 'proxy.host_ip.' . md5($sub->host);
+            $resolvedIp = \Illuminate\Support\Facades\Cache::remember($cacheKey, 3600, function () use ($sub) {
+                $ip = gethostbyname($sub->host);
+                return ($ip !== $sub->host) ? $ip : null;
+            });
+        }
 
         $data = [
             'id'                   => $sub->public_id,
