@@ -140,6 +140,37 @@ class DecodoService
         ];
     }
 
+    // ─── IP Whitelist (allow sub-user to connect without username/password) ─────
+
+    public function updateSubUserAllowedIps(string $subUserId, array $ips): bool
+    {
+        if (! $this->hasApiKey() || ! is_numeric($subUserId)) {
+            return false;
+        }
+
+        try {
+            $res = Http::withHeaders($this->apiHeaders())
+                ->timeout(10)
+                ->put(self::API_BASE . "/v2/sub-users/{$subUserId}", [
+                    'allowed_ips' => array_values($ips),
+                ]);
+
+            if (! $res->successful()) {
+                Log::warning('decodo.update_allowed_ips_failed', [
+                    'sub_user_id' => $subUserId,
+                    'status'      => $res->status(),
+                    'body'        => $res->body(),
+                ]);
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('decodo.update_allowed_ips_exception', ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
     // ─── Get credentials (stored in DB; no-op) ────────────────────────────────
 
     public function getCredentials(string $subscriptionId): array

@@ -256,6 +256,16 @@ class ProxyController extends Controller
             UserIpWhitelist::create(['user_id' => $user->id, 'ip_address' => $ip]);
         }
 
+        // Push to Decodo for each active API sub-user so they can connect without credentials
+        ProxySubscription::where('user_id', $user->id)
+            ->where('status', 'active')
+            ->get()
+            ->each(function (ProxySubscription $sub) use ($ips) {
+                if (is_numeric($sub->provider_subscription_id)) {
+                    $this->decodo->updateSubUserAllowedIps($sub->provider_subscription_id, $ips);
+                }
+            });
+
         return ApiResponse::ok(['ips' => $ips], 'IP whitelist updated.');
     }
 
