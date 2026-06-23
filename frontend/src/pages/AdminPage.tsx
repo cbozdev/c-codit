@@ -1856,8 +1856,12 @@ function ProxyAdminTab() {
   });
 
   const syncListings = useMutation({
-    mutationFn: () => apiCall<{ output: string }>({ method: 'POST', url: '/admin/proxy/sync-listings' }),
-    onSuccess: (r) => { toast.success('Listings synced: ' + r.output); qc.invalidateQueries({ queryKey: ['proxy', 'marketplace'] }); },
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      return apiCall<{ count: number }>({ method: 'POST', url: '/admin/proxy/sync-listings', data: form });
+    },
+    onSuccess: (r) => { toast.success(`${r.count} proxy listings imported.`); qc.invalidateQueries({ queryKey: ['proxy', 'marketplace'] }); },
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -1880,15 +1884,22 @@ function ProxyAdminTab() {
       {/* Overview */}
       {subTab === 'overview' && (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <button
-              onClick={() => syncListings.mutate()}
-              disabled={syncListings.isPending}
-              className="btn-outline text-sm flex items-center gap-2"
-            >
+          <div className="flex justify-end items-center gap-3">
+            <p className="text-xs text-ink-400">Import proxy list from Decodo dashboard (JSON or CSV):</p>
+            <label className={`btn-outline text-sm flex items-center gap-2 cursor-pointer ${syncListings.isPending ? 'opacity-50 pointer-events-none' : ''}`}>
               <RotateCcw className={`h-4 w-4 ${syncListings.isPending ? 'animate-spin' : ''}`} />
-              {syncListings.isPending ? 'Syncing listings…' : 'Sync Proxy Listings from Decodo'}
-            </button>
+              {syncListings.isPending ? 'Importing…' : 'Import Proxy Listings'}
+              <input
+                type="file"
+                accept=".json,.csv,.txt"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) syncListings.mutate(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard icon={Globe}       label="Total subs"     value={d?.total_subscriptions ?? '…'} />

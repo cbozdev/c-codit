@@ -218,17 +218,100 @@ class ProxyAdminController extends Controller
         ]);
     }
 
-    // ─── Sync marketplace listings from Decodo ────────────────────────────────
+    // ─── Import marketplace listings from uploaded JSON/CSV ──────────────────
 
     public function syncListings(Request $request)
     {
-        $exitCode = \Illuminate\Support\Facades\Artisan::call('proxy:sync-listings');
-        $output   = \Illuminate\Support\Facades\Artisan::output();
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:json,txt,csv', 'max:10240'],
+        ]);
 
-        if ($exitCode !== 0) {
-            return ApiResponse::fail('Sync failed: ' . trim($output), null, 422);
+        $content = file_get_contents($request->file('file')->getRealPath());
+
+        // Try JSON first, then CSV/text (IP:PORT per line or similar)
+        $proxies = json_decode($content, true);
+
+        if (! is_array($proxies)) {
+            // Try CSV: ip,country,state,city,isp,type,protocol
+            $rows = [];
+            foreach (explode("\n", $content) as $line) {
+                $line = trim($line);
+                if (! $line || str_starts_with($line, '#')) continue;
+                $cols = str_getcsv($line);
+                if (count($cols) >= 4) {
+                    $rows[] = [
+                        'ip'           => $cols[0] ?? null,
+                        'country_code' => $cols[1] ?? null,
+                        'state_code'   => $cols[2] ?? null,
+                        'city'         => $cols[3] ?? null,
+                        'isp'          => $cols[4] ?? null,
+                        'type'         => $cols[5] ?? 'wifi',
+                        'protocol'     => $cols[6] ?? 'http',
+                        'speed_ms'     => (int) ($cols[7] ?? 120),
+                    ];
+                }
+            }
+            $proxies = $rows;
         }
 
-        return ApiResponse::ok(['output' => trim($output)], 'Listings synced successfully.');
+        if (empty($proxies)) {
+            return ApiResponse::fail('No valid proxy data found in file.', null, 422);
+        }
+
+        $now   = now()->toDateTimeString();
+        $rows  = [];
+        $order = 0;
+
+        foreach ($proxies as $proxy) {
+            $ip          = $proxy['ip'] ?? $proxy['host'] ?? null;
+            $countryCode = strtoupper($proxy['country_code'] ?? $proxy['country'] ?? '');
+            if (! $countryCode) continue;
+
+            $parts     = $ip ? explode('.', $ip) : [];
+            $ipDisplay = count($parts) === 4 ? "{$parts[0]}.{$parts[1]}.xxx.xxx" : ($ip ?? 'xxx.xxx.xxx.xxx');
+            $connType  = match (strtolower($proxy['type'] ?? $proxy['connection_type'] ?? '')) {
+                'cellular', 'cell', 'mobile' => 'cell',
+                default                       => 'wifi',
+            };
+            $proto = str_contains(strtolower($proxy['protocol'] ?? ''), 'socks') ? 'socks5' : 'http';
+            $priceMinor = match ("{$connType}-{$proto}") {
+                'wifi-http'   => 7200,  'wifi-socks5'  => 8200,
+                'cell-http'   => 9700,  'cell-socks5'  => 11700,
+                default       => 9700,
+            };
+
+            $rows[] = [
+                'public_id'       => (string) \Illuminate\Support\Str::uuid(),
+                'country_code'    => $countryCode,
+                'country_name'    => $proxy['country_name'] ?? $countryCode,
+                'state_code'      => strtoupper($proxy['state_code'] ?? $proxy['state'] ?? '') ?: null,
+                'state_name'      => $proxy['state_name'] ?? null,
+                'city'            => $proxy['city'] ?? null,
+                'isp'             => $proxy['isp'] ?? null,
+                'zip'             => $proxy['zip'] ?? null,
+                'ip_display'      => $ipDisplay,
+                'connection_type' => $connType,
+                'protocol'        => $proto,
+                'speed_ms'        => max(1, (int) ($proxy['speed_ms'] ?? $proxy['ping'] ?? 120)),
+                'price_minor'     => $priceMinor,
+                'is_available'    => (bool) ($proxy['available'] ?? $proxy['is_available'] ?? true),
+                'sort_order'      => $order++,
+                'created_at'      => $now,
+                'updated_at'      => $now,
+            ];
+        }
+
+        if (empty($rows)) {
+            return ApiResponse::fail('No valid rows could be parsed from the file.', null, 422);
+        }
+
+        DB::transaction(function () use ($rows) {
+            DB::table('proxy_listings')->delete();
+            foreach (array_chunk($rows, 200) as $chunk) {
+                DB::table('proxy_listings')->insert($chunk);
+            }
+        });
+
+        return ApiResponse::ok(['count' => count($rows)], count($rows) . ' proxy listings imported successfully.');
     }
 }
