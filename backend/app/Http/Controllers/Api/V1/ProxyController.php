@@ -204,7 +204,7 @@ class ProxyController extends Controller
 
     public function socialBuy(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'connection_type' => ['required', 'in:wifi,cell,all'],
             'protocol'        => ['required', 'in:http,socks5'],
             'duration_days'   => ['required', 'integer', 'in:1,7,14,21,30'],
@@ -218,7 +218,7 @@ class ProxyController extends Controller
         ]);
 
         try {
-            $subscriptions = $this->provisioning->purchaseSocialPlan($request->user(), $request->validated());
+            $subscriptions = $this->provisioning->purchaseSocialPlan($request->user(), $validated);
         } catch (\Throwable $e) {
             return ApiResponse::fail($e->getMessage(), null, 422);
         }
