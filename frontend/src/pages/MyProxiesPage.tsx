@@ -142,6 +142,21 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
         </div>
         <div className="p-5 space-y-4">
           {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
+          {/* Proxy Helper format: IP:PORT:USER:PASS */}
+          {data?.password && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-ink-500 uppercase tracking-wide">Proxy Helper Format <span className="normal-case text-brand-600 dark:text-brand-400">(IP:Port:User:Pass)</span></p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 font-mono text-xs bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-700 rounded-lg px-3 py-2 break-all">
+                  {(data?.ip ?? creds.host)}:{creds.port}:{creds.username}:{data.password}
+                </div>
+                <button onClick={() => copyText(`${data?.ip ?? creds.host}:${creds.port}:${creds.username}:${data.password}`, 'Proxy Helper format copied')} className="btn-ghost p-2">
+                  <Copy className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-[11px] text-ink-400">Paste this line directly into Proxy Helper.</p>
+            </div>
+          )}
           <CredRow label="IP Address" value={(data?.ip ?? creds.host) ?? ''} />
           <CredRow label="Host"       value={creds.host ?? ''} />
           <CredRow label="Port"     value={String(creds.port)} />
