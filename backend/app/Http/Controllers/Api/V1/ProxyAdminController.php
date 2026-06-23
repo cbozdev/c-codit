@@ -217,4 +217,18 @@ class ProxyAdminController extends Controller
             'new_subs'   => $newSubs,
         ]);
     }
+
+    // ─── Sync marketplace listings from Decodo ────────────────────────────────
+
+    public function syncListings(Request $request)
+    {
+        $exitCode = \Illuminate\Support\Facades\Artisan::call('proxy:sync-listings');
+        $output   = \Illuminate\Support\Facades\Artisan::output();
+
+        if ($exitCode !== 0) {
+            return ApiResponse::fail('Sync failed: ' . trim($output), null, 422);
+        }
+
+        return ApiResponse::ok(['output' => trim($output)], 'Listings synced successfully.');
+    }
 }

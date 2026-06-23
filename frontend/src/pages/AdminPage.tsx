@@ -1855,6 +1855,12 @@ function ProxyAdminTab() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const syncListings = useMutation({
+    mutationFn: () => apiCall<{ output: string }>({ method: 'POST', url: '/admin/proxy/sync-listings' }),
+    onSuccess: (r) => { toast.success('Listings synced: ' + r.output); qc.invalidateQueries({ queryKey: ['proxy', 'marketplace'] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const d = overview.data;
 
   return (
@@ -1874,6 +1880,16 @@ function ProxyAdminTab() {
       {/* Overview */}
       {subTab === 'overview' && (
         <div className="space-y-4">
+          <div className="flex justify-end">
+            <button
+              onClick={() => syncListings.mutate()}
+              disabled={syncListings.isPending}
+              className="btn-outline text-sm flex items-center gap-2"
+            >
+              <RotateCcw className={`h-4 w-4 ${syncListings.isPending ? 'animate-spin' : ''}`} />
+              {syncListings.isPending ? 'Syncing listings…' : 'Sync Proxy Listings from Decodo'}
+            </button>
+          </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard icon={Globe}       label="Total subs"     value={d?.total_subscriptions ?? '…'} />
             <MetricCard icon={Server}      label="Active"         value={d?.active_subscriptions ?? '…'} color="green" />

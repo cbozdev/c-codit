@@ -238,6 +238,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/proxy/subscriptions/{id}/reset-creds',[ProxyAdminController::class, 'resetCredentials']);
             Route::post('/proxy/subscriptions/{id}/sync-usage', [ProxyAdminController::class, 'syncUsage']);
             Route::post('/proxy/subscriptions/{id}/cancel',     [ProxyAdminController::class, 'cancelSubscription']);
+            Route::post('/proxy/sync-listings',                  [ProxyAdminController::class, 'syncListings']);
 
             // 5sim admin
             Route::post('/fivesim/sync',                        [FiveSimController::class, 'sync']);
