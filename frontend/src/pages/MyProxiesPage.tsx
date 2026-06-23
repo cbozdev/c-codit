@@ -142,8 +142,8 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
         </div>
         <div className="p-5 space-y-4">
           {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
-          <CredRow label="Host"     value={creds.host ?? ''} />
-          {data?.ip && <CredRow label="IP Address" value={data.ip} />}
+          <CredRow label="IP Address" value={(data?.ip ?? creds.host) ?? ''} />
+          <CredRow label="Host"       value={creds.host ?? ''} />
           <CredRow label="Port"     value={String(creds.port)} />
           <CredRow label="Protocol" value={creds.protocol.toUpperCase()} noCopy />
           <CredRow label="Username" value={creds.username ?? ''} />
@@ -829,7 +829,7 @@ function ActiveProxyRow({ sub, onViewCreds }: { sub: ProxySubscription; onViewCr
             <span className={clsx('h-2 w-2 rounded-full shrink-0 inline-block',
               sub.status === 'active' ? 'bg-emerald-500' : 'bg-rose-400')} />
             <span className="font-mono text-xs dark:text-ink-200">
-              {sub.host}:{sub.port}
+              {sub.ip ?? sub.host}:{sub.port}
             </span>
           </div>
         </td>

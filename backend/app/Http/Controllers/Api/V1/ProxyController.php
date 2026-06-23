@@ -219,7 +219,7 @@ class ProxyController extends Controller
 
         try {
             $subscriptions = $this->provisioning->purchaseSocialPlan($request->user(), $request->validated());
-        } catch (\RuntimeException $e) {
+        } catch (\Throwable $e) {
             return ApiResponse::fail($e->getMessage(), null, 422);
         }
 
@@ -575,8 +575,21 @@ class ProxyController extends Controller
 
     // ─── Format helper ────────────────────────────────────────────────────────
 
+    private function resolveHostIp(string $host): ?string
+    {
+        if (filter_var($host, FILTER_VALIDATE_IP)) return null; // already an IP
+
+        $cacheKey = 'proxy.host_ip.' . md5($host);
+        return \Illuminate\Support\Facades\Cache::remember($cacheKey, 3600, function () use ($host) {
+            $resolved = gethostbyname($host);
+            return ($resolved !== $host) ? $resolved : null;
+        });
+    }
+
     private function formatSubscription(ProxySubscription $sub, bool $withCredentials = false): array
     {
+        $resolvedIp = $this->resolveHostIp($sub->host);
+
         $data = [
             'id'                   => $sub->public_id,
             'provider'             => $sub->provider,
@@ -584,6 +597,7 @@ class ProxyController extends Controller
             'proxy_type_label'     => ProxySubscription::typeLabel($sub->proxy_type),
             'protocol'             => $sub->protocol,
             'host'                 => $sub->host,
+            'ip'                   => $resolvedIp,
             'port'                 => $sub->port,
             'username'             => $sub->username,
             'location_country'     => $sub->location_country,
@@ -603,8 +617,11 @@ class ProxyController extends Controller
         ];
 
         if ($withCredentials) {
-            $data['password']  = $sub->getPassword();
-            $data['proxy_url'] = $sub->getProxyUrl();
+            $creds = $sub->toCredentials();
+            $data['password']     = $creds['password'];
+            $data['proxy_url']    = $creds['proxy_url'];
+            $data['ip']           = $creds['ip'] ?? $resolvedIp;
+            $data['proxy_url_ip'] = $creds['proxy_url_ip'] ?? null;
         }
 
         return $data;
