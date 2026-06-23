@@ -405,6 +405,7 @@ class ProxyProvisioningService
                     'proxy_type'    => $proxyType,
                     'protocol'      => $protocol,
                     'country_code'  => $countryCode,
+                    'state_code'    => $stateCode ?: null,
                     'city'          => null,
                     'bandwidth_gb'  => 0,
                     'ip_count'      => 1,
@@ -573,9 +574,10 @@ class ProxyProvisioningService
 
         try {
             $country     = strtolower($sub->location_country ?? 'us');
+            $state       = strtolower($sub->config['state_code'] ?? '');
             $sessionType = $this->sessionTypeFromProxyType($sub->proxy_type);
             $result      = $this->getProviderService($sub->provider)->renewSubscription(
-                $sub->provider_subscription_id, $days, $country, $sessionType,
+                $sub->provider_subscription_id, $days, $country, $sessionType, $state,
             );
             $this->wallets->settleSuspense($holdTx, 'proxy_renew_settle:'.$sub->public_id.':'.now()->timestamp);
 
@@ -628,11 +630,13 @@ class ProxyProvisioningService
     public function rotateCredentials(ProxySubscription $sub): ProxySubscription
     {
         $country     = strtolower($sub->location_country ?? 'us');
+        $state       = strtolower($sub->config['state_code'] ?? '');
         $sessionType = $this->sessionTypeFromProxyType($sub->proxy_type);
         $creds       = $this->getProviderService($sub->provider)->rotateSession(
             $sub->provider_subscription_id,
             $country,
             $sessionType,
+            $state,
         );
 
         if (! empty($creds['username'])) $sub->username = $creds['username'];

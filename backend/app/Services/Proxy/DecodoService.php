@@ -44,18 +44,19 @@ class DecodoService
     {
         $proxyType   = $options['proxy_type'];
         $country     = strtolower($options['country_code'] ?? 'us');
+        $state       = strtolower($options['state_code']   ?? '');
         $sessionType = $options['session_type'] ?? 'rotating';
         $protocol    = $options['protocol'] ?? 'http';
         $duration    = (int) ($options['duration_days'] ?? 30);
 
         if ($this->hasApiKey() && $this->isResidential($proxyType)) {
-            return $this->createViaApi($proxyType, $country, $sessionType, $protocol, $duration, $options);
+            return $this->createViaApi($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
         }
 
-        return $this->createViaGateway($proxyType, $country, $sessionType, $protocol, $duration, $options);
+        return $this->createViaGateway($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
     }
 
-    private function createViaApi(string $proxyType, string $country, string $sessionType, string $protocol, int $duration, array $options): array
+    private function createViaApi(string $proxyType, string $country, string $state, string $sessionType, string $protocol, int $duration, array $options): array
     {
         // Sub-user username: 6–64 chars, alphanumeric + underscore only
         $subUsername = 'u' . strtolower(Str::random(11));
@@ -72,12 +73,12 @@ class DecodoService
                 ]);
         } catch (\Throwable $e) {
             Log::warning('decodo.sub_user_create_exception', ['error' => $e->getMessage()]);
-            return $this->createViaGateway($proxyType, $country, $sessionType, $protocol, $duration, $options);
+            return $this->createViaGateway($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
         }
 
         if (! $res->successful()) {
             Log::warning('decodo.sub_user_create_failed', ['status' => $res->status(), 'body' => $res->body()]);
-            return $this->createViaGateway($proxyType, $country, $sessionType, $protocol, $duration, $options);
+            return $this->createViaGateway($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
         }
 
         // Decodo returns the sub-user ID; fall back to username if not present
@@ -90,6 +91,7 @@ class DecodoService
             'sub_user_id' => $subUserId,
             'proxy_type'  => $proxyType,
             'country'     => $country,
+            'state'       => $state,
             'host'        => $host,
             'port'        => $port,
             'resolved_ip' => $resolvedIp,
@@ -100,14 +102,14 @@ class DecodoService
             'host'                     => $host,
             'resolved_ip'              => $resolvedIp,
             'port'                     => $port,
-            'username'                 => $this->buildGatewayUsername($subUsername, $country, $sessionType, $sessionId),
+            'username'                 => $this->buildGatewayUsername($subUsername, $country, $state, $sessionType, $sessionId),
             'password'                 => $subPassword,
             'bandwidth_gb_total'       => (float) ($options['bandwidth_gb'] ?? 0),
             'expires_at'               => now()->addDays($duration)->toISOString(),
         ];
     }
 
-    private function createViaGateway(string $proxyType, string $country, string $sessionType, string $protocol, int $duration, array $options): array
+    private function createViaGateway(string $proxyType, string $country, string $state, string $sessionType, string $protocol, int $duration, array $options): array
     {
         $username = config('services.decodo.username');
         $password = config('services.decodo.password');
@@ -123,6 +125,7 @@ class DecodoService
         Log::info('decodo.gateway_credential_provisioned', [
             'proxy_type'  => $proxyType,
             'country'     => $country,
+            'state'       => $state,
             'host'        => $host,
             'port'        => $port,
             'resolved_ip' => $resolvedIp,
@@ -133,7 +136,7 @@ class DecodoService
             'host'                     => $host,
             'resolved_ip'              => $resolvedIp,
             'port'                     => $port,
-            'username'                 => $this->buildGatewayUsername($username, $country, $sessionType, $sessionId),
+            'username'                 => $this->buildGatewayUsername($username, $country, $state, $sessionType, $sessionId),
             'password'                 => $password,
             'bandwidth_gb_total'       => (float) ($options['bandwidth_gb'] ?? 0),
             'expires_at'               => now()->addDays($duration)->toISOString(),
@@ -210,7 +213,7 @@ class DecodoService
 
     // ─── Renew ────────────────────────────────────────────────────────────────
 
-    public function renewSubscription(string $subscriptionId, int $days = 30, string $country = 'us', string $sessionType = 'rotating'): array
+    public function renewSubscription(string $subscriptionId, int $days = 30, string $country = 'us', string $sessionType = 'rotating', string $state = ''): array
     {
         // For API sub-users: Decodo has no expiry concept — just extend our local expiry.
         // For gateway subs: keep the same master credentials.
@@ -226,7 +229,7 @@ class DecodoService
         if ($password) {
             $username = config('services.decodo.username');
             $newSession = Str::random(16);
-            $result['username'] = $this->buildGatewayUsername($username, $country, $sessionType, $newSession);
+            $result['username'] = $this->buildGatewayUsername($username, $country, $state, $sessionType, $newSession);
             $result['password'] = $password;
         }
 
@@ -258,11 +261,11 @@ class DecodoService
 
     // ─── Rotate session ───────────────────────────────────────────────────────
 
-    public function rotateSession(string $subscriptionId, string $country = 'us', string $sessionType = 'rotating'): array
+    public function rotateSession(string $subscriptionId, string $country = 'us', string $sessionType = 'rotating', string $state = ''): array
     {
         // For API sub-users: rotate by generating a new password via PUT /v2/sub-users/{id}
         if ($this->hasApiKey() && is_numeric($subscriptionId)) {
-            return $this->rotateApiSubUser($subscriptionId, $country, $sessionType);
+            return $this->rotateApiSubUser($subscriptionId, $country, $state, $sessionType);
         }
 
         // Gateway creds: new session ID in username (rotating sessions change automatically anyway)
@@ -271,12 +274,12 @@ class DecodoService
         $newSession = Str::random(16);
 
         return [
-            'username' => $this->buildGatewayUsername($username, $country, $sessionType, $newSession),
+            'username' => $this->buildGatewayUsername($username, $country, $state, $sessionType, $newSession),
             'password' => $password,
         ];
     }
 
-    private function rotateApiSubUser(string $subUserId, string $country, string $sessionType): array
+    private function rotateApiSubUser(string $subUserId, string $country, string $state, string $sessionType): array
     {
         $newPassword = $this->generateSecurePassword();
         $newSession  = Str::random(16);
@@ -303,7 +306,7 @@ class DecodoService
                 : $subUserId;
 
             return [
-                'username' => $this->buildGatewayUsername($subUsername, $country, $sessionType, $newSession),
+                'username' => $this->buildGatewayUsername($subUsername, $country, $state, $sessionType, $newSession),
                 'password' => $newPassword,
             ];
         } catch (\Throwable $e) {
@@ -393,12 +396,16 @@ class DecodoService
         return ($resolved !== $host) ? $resolved : null;
     }
 
-    private function buildGatewayUsername(string $baseUser, string $country, string $sessionType, string $sessionId): string
+    private function buildGatewayUsername(string $baseUser, string $country, string $state, string $sessionType, string $sessionId): string
     {
         $parts = ["user-{$baseUser}"];
 
         if ($country && $country !== 'all') {
             $parts[] = "country-{$country}";
+        }
+
+        if ($state && $country === 'us') {
+            $parts[] = "state-{$state}";
         }
 
         if (in_array($sessionType, ['sticky', 'static'], true)) {
