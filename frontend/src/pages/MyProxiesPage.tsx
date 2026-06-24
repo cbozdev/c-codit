@@ -269,6 +269,7 @@ function OneByOneConfigModal({
         country_code:      country || undefined,
         state_code:        state   || undefined,
         speed_upgrade:     speedUpgrade,
+        session_type:      'sticky',
         rotation_minutes:  30,
         access_ip:         accessIp || undefined,
       },
@@ -288,7 +289,7 @@ function OneByOneConfigModal({
         <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex items-center justify-between">
           <div>
             <h2 className="font-semibold dark:text-white">1 By 1 — Select Location</h2>
-            <p className="text-xs text-ink-500 mt-0.5">1 rotating residential proxy · choose your target location</p>
+            <p className="text-xs text-ink-500 mt-0.5">1 sticky residential proxy · fixed IP per session · choose location</p>
           </div>
           <button onClick={onClose} className="btn-ghost p-1.5 text-ink-400"><X className="h-4 w-4" /></button>
         </div>

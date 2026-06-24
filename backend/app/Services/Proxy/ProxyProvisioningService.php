@@ -394,7 +394,9 @@ class ProxyProvisioningService
         );
 
         $proxyType   = ($connectionType === 'cell') ? 'mobile_rotating' : 'residential_rotating';
-        $sessionType = 'rotating';
+        $sessionType = in_array($options['session_type'] ?? '', ['sticky', 'rotating'], true)
+            ? $options['session_type']
+            : 'rotating';
 
         $subscriptions = [];
 
@@ -447,6 +449,7 @@ class ProxyProvisioningService
                             'access_ip'         => $accessIp,
                             'rotation_minutes'  => $rotationMinutes,
                             'state_code'        => $stateCode ?: null,
+                            'session_type'      => $sessionType,
                             'amount_minor'      => $pricePerProxy,
                             'resolved_ip'       => $result['resolved_ip'] ?? null,
                         ],
@@ -631,7 +634,7 @@ class ProxyProvisioningService
     {
         $country     = strtolower($sub->location_country ?? 'us');
         $state       = strtolower($sub->config['state_code'] ?? '');
-        $sessionType = $this->sessionTypeFromProxyType($sub->proxy_type);
+        $sessionType = $sub->config['session_type'] ?? $this->sessionTypeFromProxyType($sub->proxy_type);
         $creds       = $this->getProviderService($sub->provider)->rotateSession(
             $sub->provider_subscription_id,
             $country,
