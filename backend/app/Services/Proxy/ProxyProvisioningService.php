@@ -419,7 +419,7 @@ class ProxyProvisioningService
                 $sub = DB::transaction(function () use (
                     $user, $result, $proxyType, $protocol, $countryCode, $stateCode,
                     $durationDays, $connectionType, $speedUpgrade, $accessIp,
-                    $rotationMinutes, $pricePerProxy
+                    $rotationMinutes, $pricePerProxy, $sessionType
                 ) {
                     $s = new ProxySubscription([
                         'public_id'                => (string) Str::uuid(),
