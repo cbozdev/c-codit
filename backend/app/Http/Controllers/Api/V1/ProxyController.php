@@ -213,6 +213,7 @@ class ProxyController extends Controller
             'state_code'      => ['nullable', 'string', 'max:5'],
             'carrier'         => ['nullable', 'string', 'max:80'],
             'speed_upgrade'   => ['nullable', 'boolean'],
+            'session_type'    => ['nullable', 'in:rotating,sticky'],
             'access_ip'       => ['nullable', 'ip'],
             'rotation_minutes'=> ['nullable', 'integer', 'in:5,10,30'],
         ]);

@@ -473,7 +473,8 @@ class ProxyProvisioningService
             // If some provisioned, settle partial; if none, full refund
             if (empty($subscriptions)) {
                 $this->wallets->refundSuspense($holdTx, 'proxy_social_refund:' . $idempKey, $e->getMessage());
-                throw new RuntimeException('Proxy provisioning failed. Your wallet has been refunded.');
+                Log::error('proxy.social.provision_failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+                throw new RuntimeException('Proxy provisioning failed: ' . $e->getMessage() . '. Your wallet has been refunded.');
             }
             // Partial: settle for what we provisioned
             $actualTotal   = count($subscriptions) * $pricePerProxy;
