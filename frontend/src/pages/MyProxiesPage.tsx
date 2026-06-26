@@ -245,7 +245,7 @@ function OneByOneConfigModal({
   const qc = useQueryClient();
   const [connection, setConnection]   = useState<'wifi' | 'cell'>('wifi');
   const [protocol, setProtocol]       = useState<'http' | 'socks5'>('http');
-  const [durationIdx, setDurationIdx] = useState(4);
+  const [durationIdx, setDurationIdx] = useState(0);
   const [speedUpgrade, setSpeed]      = useState(false);
   const [accessIp, setAccessIp]       = useState(ips[0] ?? '');
   const [country, setCountry]         = useState('US');
