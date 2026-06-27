@@ -223,27 +223,32 @@ class ProxyAdminController extends Controller
 
     public function testDecodoApi()
     {
-        $apiKey = config('services.decodo.api_key');
-        $base   = 'https://api.decodo.com';
-        $headers = ['Authorization' => $apiKey];
+        $apiKey    = config('services.decodo.api_key');
+        $subUserId = config('services.decodo.sub_user_id');
+        $base      = 'https://api.decodo.com';
+        $headers   = ['Authorization' => $apiKey];
 
-        // 1. List existing sub-users
-        $list = Http::withHeaders($headers)->timeout(10)->get("{$base}/v2/sub-users");
+        // 1. GET specific sub-user detail (includes allowed_ips if set)
+        $get = Http::withHeaders($headers)->timeout(10)->get("{$base}/v2/sub-users/{$subUserId}");
 
-        // 2. Try creating a test sub-user
-        $create = Http::withHeaders($headers)->timeout(10)->post("{$base}/v2/sub-users", [
-            'username'     => 'testuser' . rand(1000, 9999),
-            'password'     => 'TestPass123_',
-            'service_type' => 'residential_proxies',
+        // 2. PUT allowed_ips on the sub-user
+        $testIp = request()->ip();
+        $put = Http::withHeaders($headers)->timeout(10)->put("{$base}/v2/sub-users/{$subUserId}", [
+            'allowed_ips' => [$testIp],
         ]);
 
+        // 3. GET again to confirm the update
+        $getAfter = Http::withHeaders($headers)->timeout(10)->get("{$base}/v2/sub-users/{$subUserId}");
+
         return ApiResponse::ok([
-            'api_key_set'       => ! empty($apiKey),
-            'api_key_prefix'    => substr($apiKey ?? '', 0, 8) . '...',
-            'list_status'       => $list->status(),
-            'list_body'         => $list->json() ?? $list->body(),
-            'create_status'     => $create->status(),
-            'create_body'       => $create->json() ?? $create->body(),
+            'sub_user_id'      => $subUserId,
+            'caller_ip'        => $testIp,
+            'get_status'       => $get->status(),
+            'get_body'         => $get->json() ?? $get->body(),
+            'put_status'       => $put->status(),
+            'put_body'         => $put->json() ?? $put->body(),
+            'get_after_status' => $getAfter->status(),
+            'get_after_body'   => $getAfter->json() ?? $getAfter->body(),
         ]);
     }
 
