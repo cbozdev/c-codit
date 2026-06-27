@@ -13,6 +13,7 @@ use App\Support\Audit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class ProxyAdminController extends Controller
 {
@@ -215,6 +216,34 @@ class ProxyAdminController extends Controller
             'revenue'    => $revenue,
             'bandwidth'  => $bandwidth,
             'new_subs'   => $newSubs,
+        ]);
+    }
+
+    // ─── Decodo API test ──────────────────────────────────────────────────────
+
+    public function testDecodoApi()
+    {
+        $apiKey = config('services.decodo.api_key');
+        $base   = 'https://api.decodo.com';
+        $headers = ['Authorization' => $apiKey];
+
+        // 1. List existing sub-users
+        $list = Http::withHeaders($headers)->timeout(10)->get("{$base}/v2/sub-users");
+
+        // 2. Try creating a test sub-user
+        $create = Http::withHeaders($headers)->timeout(10)->post("{$base}/v2/sub-users", [
+            'username'     => 'testuser' . rand(1000, 9999),
+            'password'     => 'TestPass123_',
+            'service_type' => 'residential_proxies',
+        ]);
+
+        return ApiResponse::ok([
+            'api_key_set'       => ! empty($apiKey),
+            'api_key_prefix'    => substr($apiKey ?? '', 0, 8) . '...',
+            'list_status'       => $list->status(),
+            'list_body'         => $list->json() ?? $list->body(),
+            'create_status'     => $create->status(),
+            'create_body'       => $create->json() ?? $create->body(),
         ]);
     }
 
