@@ -26,12 +26,12 @@ const DURATIONS: { days: number; label: string }[] = [
 
 // Base 30-day prices in cents for each type/protocol
 const BASE_30D: Record<string, number> = {
-  'wifi-http':    72,
-  'wifi-socks5':  80,
-  'cell-http':    95,
-  'cell-socks5': 117,
-  'all-http':    80,
-  'all-socks5':  95,
+  'wifi-http':   1650,
+  'wifi-socks5': 1950,
+  'cell-http':   2250,
+  'cell-socks5': 2550,
+  'all-http':    1950,
+  'all-socks5':  2250,
 };
 
 function dailyPrice(connectionType: string, protocol: string): number {
@@ -642,7 +642,7 @@ function PlanCards({ selected, onSelect }: { selected: Plan; onSelect: (p: Plan)
       name: '1 By 1',
       desc: 'Buy one proxy at a time. Pick your country, state, connection type and protocol.',
       protocols: 'Socks / Https',
-      from: 'from $0.27/day',
+      from: 'from $0.55/day',
       badge: null,
     },
     {
@@ -650,7 +650,7 @@ function PlanCards({ selected, onSelect }: { selected: Plan; onSelect: (p: Plan)
       name: 'Social US & World Mix',
       desc: 'High-quality proxies for social media, YouTube, and sensitive apps.',
       protocols: 'Socks / Https',
-      from: 'from $0.30/day',
+      from: 'from $0.65/day',
       badge: 'NEW',
     },
     {

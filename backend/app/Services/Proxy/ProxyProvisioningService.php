@@ -364,9 +364,9 @@ class ProxyProvisioningService
 
         // Price per proxy per 30 days based on connection type
         $baseMinorPer30 = match ($connectionType) {
-            'cell'  => ($protocol === 'socks5') ? 1300 : 1100,
-            'wifi'  => ($protocol === 'socks5') ? 950  : 800,
-            default => ($protocol === 'socks5') ? 1100 : 900,  // all = mixed
+            'cell'  => ($protocol === 'socks5') ? 2550 : 2250,
+            'wifi'  => ($protocol === 'socks5') ? 1950 : 1650,
+            default => ($protocol === 'socks5') ? 2250 : 1950,  // all = mixed
         };
 
         $dailyRate      = (int) ceil($baseMinorPer30 / 30);
