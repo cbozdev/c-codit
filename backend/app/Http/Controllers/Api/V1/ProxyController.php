@@ -257,13 +257,20 @@ class ProxyController extends Controller
             UserIpWhitelist::create(['user_id' => $user->id, 'ip_address' => $ip]);
         }
 
-        // Push to Decodo for each active API sub-user so they can connect without credentials
+        // Always update the master Decodo sub-user (all gateway proxies share this username).
+        // Also update any numerically-IDed sub-users the user may have.
+        $masterSubUserId = config('services.decodo.sub_user_id');
+        if ($masterSubUserId) {
+            $this->decodo->updateSubUserAllowedIps($masterSubUserId, $ips);
+        }
+
         ProxySubscription::where('user_id', $user->id)
             ->where('status', 'active')
             ->get()
-            ->each(function (ProxySubscription $sub) use ($ips) {
-                if (is_numeric($sub->provider_subscription_id)) {
-                    $this->decodo->updateSubUserAllowedIps($sub->provider_subscription_id, $ips);
+            ->each(function (ProxySubscription $sub) use ($ips, $masterSubUserId) {
+                $id = $sub->provider_subscription_id;
+                if (is_numeric($id) && $id !== $masterSubUserId) {
+                    $this->decodo->updateSubUserAllowedIps($id, $ips);
                 }
             });
 
