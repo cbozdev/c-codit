@@ -2,6 +2,7 @@
 
 namespace App\Services\Proxy;
 
+use App\Models\AppSetting;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -95,10 +96,16 @@ class ProxyRoutingEngine
     {
         $stats = [];
         foreach (self::ALL_PROVIDERS as $p) {
+            $dbVal        = AppSetting::getValue("proxy.{$p}.enabled");
+            $adminEnabled = $dbVal !== null
+                ? filter_var($dbVal, FILTER_VALIDATE_BOOLEAN)
+                : (bool) config("services.{$p}.enabled", false);
+
             $stats[$p] = [
-                'enabled'     => $this->isProviderAvailable($p),
-                'failures_1h' => Cache::get("proxy.provider.{$p}.failures", 0),
-                'priority'    => array_search($p, config('services.proxy.provider_priority', ['decodo', 'proxyempire']), true),
+                'admin_enabled' => $adminEnabled,
+                'enabled'       => $this->isProviderAvailable($p),
+                'failures_1h'   => Cache::get("proxy.provider.{$p}.failures", 0),
+                'priority'      => array_search($p, config('services.proxy.provider_priority', ['decodo', 'proxyempire']), true),
             ];
         }
         return $stats;

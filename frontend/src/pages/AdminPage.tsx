@@ -1786,7 +1786,7 @@ type ProxyOverview = {
   revenue_usd: string;
   by_provider: Record<string, number>;
   by_type: Record<string, number>;
-  provider_stats: Record<string, { enabled: boolean; failures_1h: number }>;
+  provider_stats: Record<string, { admin_enabled: boolean; enabled: boolean; failures_1h: number }>;
 };
 
 type AdminProxySub = {
@@ -1938,20 +1938,23 @@ function ProxyAdminTab() {
                 <div key={p} className="flex justify-between items-center py-2 border-b border-ink-50 last:border-0">
                   <div>
                     <span className="text-sm capitalize font-medium">{p}</span>
+                    {stat.admin_enabled && !stat.enabled && (
+                      <span className="ml-2 text-xs text-amber-500">no credentials</span>
+                    )}
                     {stat.failures_1h > 0 && (
                       <span className="ml-2 text-xs text-rose-500">{stat.failures_1h} fail/1h</span>
                     )}
                   </div>
                   <button
-                    onClick={() => toggleProvider.mutate({ provider: p, enabled: !stat.enabled })}
+                    onClick={() => toggleProvider.mutate({ provider: p, enabled: !stat.admin_enabled })}
                     disabled={toggleProvider.isPending}
                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${
-                      stat.enabled ? 'bg-green-500' : 'bg-ink-200'
+                      stat.admin_enabled ? 'bg-green-500' : 'bg-ink-200'
                     }`}
-                    title={stat.enabled ? 'Click to disable' : 'Click to enable'}
+                    title={stat.admin_enabled ? 'Click to disable' : 'Click to enable'}
                   >
                     <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
-                      stat.enabled ? 'translate-x-4' : 'translate-x-0'
+                      stat.admin_enabled ? 'translate-x-4' : 'translate-x-0'
                     }`} />
                   </button>
                 </div>

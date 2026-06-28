@@ -684,6 +684,7 @@ class AdminController extends Controller
         ['group' => 'decodo',        'key' => 'username',         'label' => 'Decodo Username',                 'is_secret' => false],
         ['group' => 'decodo',        'key' => 'password',         'label' => 'Decodo Password',                 'is_secret' => true],
         ['group' => 'decodo',        'key' => 'api_key',          'label' => 'Decodo API Key',                  'is_secret' => true],
+        ['group' => 'proxyempire',   'key' => 'api_token',        'label' => 'ProxyEmpire API Token',           'is_secret' => true],
         ['group' => 'textverified',  'key' => 'api_key',          'label' => 'TextVerified API Key',            'is_secret' => true],
         ['group' => 'textverified',  'key' => 'webhook_secret',   'label' => 'TextVerified Webhook Secret',     'is_secret' => true],
         ['group' => 'textverified',  'key' => 'proxy_url',        'label' => 'TextVerified Proxy URL (CF Worker)', 'is_secret' => false],
@@ -876,16 +877,24 @@ class AdminController extends Controller
         });
 
         $check('decodo', function () {
-            // Check via API if key is set, otherwise verify gateway hostname resolves
             if (! empty(config('services.decodo.api_key'))) {
                 $r = Http::withHeaders(['Authorization' => config('services.decodo.api_key')])
                     ->timeout(8)->get('https://api.decodo.com/v2/sub-users', ['service_type' => 'residential_proxies', 'limit' => 1]);
                 return $r->status() !== 0 && $r->status() < 500;
             }
-            // Fallback: DNS + TCP check on gateway
             $ip = gethostbyname('gate.decodo.com');
             return $ip !== 'gate.decodo.com';
         });
+
+        if (! empty(config('services.proxyempire.api_token'))) {
+            $check('proxyempire', function () {
+                $r = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . config('services.proxyempire.api_token'),
+                    'Accept'        => 'application/json',
+                ])->timeout(8)->get('https://panel.proxyempire.io/api/v2/user');
+                return $r->status() !== 0 && $r->status() < 500;
+            });
+        }
 
         // Alert admin if any provider is down
         $downProviders = collect($results)->where('status', 'down')->pluck('provider')->values()->toArray();
