@@ -104,8 +104,14 @@ return [
         'unsupported_types'=> [],
     ],
 
+    'proxyempire' => [
+        'api_token'        => env('PROXYEMPIRE_API_TOKEN'),
+        'enabled'          => (bool) env('PROXYEMPIRE_ENABLED', false),
+        'unsupported_types'=> [],
+    ],
+
     'proxy' => [
-        'provider_priority' => array_filter(explode(',', env('PROXY_PROVIDER_PRIORITY', 'decodo,brightdata'))),
+        'provider_priority' => array_filter(explode(',', env('PROXY_PROVIDER_PRIORITY', 'decodo,proxyempire'))),
         'trial_enabled'     => (bool) env('PROXY_TRIAL_ENABLED', true),
     ],
 

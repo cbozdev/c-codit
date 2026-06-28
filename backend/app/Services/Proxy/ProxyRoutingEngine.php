@@ -16,18 +16,17 @@ use Illuminate\Support\Facades\Log;
  */
 class ProxyRoutingEngine
 {
+    private const ALL_PROVIDERS = ['decodo', 'proxyempire', 'brightdata'];
+
     public function __construct(
-        private readonly DecodoService    $decodo,
-        private readonly BrightDataService $brightData,
+        private readonly DecodoService      $decodo,
+        private readonly ProxyEmpireService $proxyEmpire,
+        private readonly BrightDataService  $brightData,
     ) {}
 
-    /**
-     * Select the best provider for a given proxy type.
-     * Returns 'decodo' or 'brightdata'.
-     */
     public function selectProvider(string $proxyType, ?string $forcedProvider = null): string
     {
-        if ($forcedProvider && in_array($forcedProvider, ['decodo', 'brightdata'], true)) {
+        if ($forcedProvider && in_array($forcedProvider, self::ALL_PROVIDERS, true)) {
             if ($this->isProviderAvailable($forcedProvider)) {
                 return $forcedProvider;
             }
@@ -37,61 +36,52 @@ class ProxyRoutingEngine
             ]);
         }
 
-        $priority = config('services.proxy.provider_priority', ['decodo', 'brightdata']);
+        $priority = config('services.proxy.provider_priority', ['decodo', 'proxyempire']);
 
         foreach ($priority as $provider) {
             if ($this->isProviderAvailable($provider) && $this->supportsType($provider, $proxyType)) {
-                Log::info('proxy.routing.selected', [
-                    'provider'   => $provider,
-                    'proxy_type' => $proxyType,
-                ]);
+                Log::info('proxy.routing.selected', ['provider' => $provider, 'proxy_type' => $proxyType]);
                 return $provider;
             }
         }
 
-        // Last resort fallback
-        if ($this->decodo->isEnabled())    return 'decodo';
-        if ($this->brightData->isEnabled()) return 'brightdata';
+        // Last resort
+        foreach (self::ALL_PROVIDERS as $p) {
+            if ($this->isProviderAvailable($p)) return $p;
+        }
 
         throw new \RuntimeException('No proxy provider is currently available. Please try again later.');
     }
 
-    /**
-     * After a failure, select the fallback provider.
-     */
     public function fallback(string $failedProvider, string $proxyType): string
     {
         $this->recordFailure($failedProvider);
 
-        $fallback = $failedProvider === 'decodo' ? 'brightdata' : 'decodo';
-
-        Log::warning('proxy.routing.fallback', [
-            'from'       => $failedProvider,
-            'to'         => $fallback,
-            'proxy_type' => $proxyType,
-        ]);
-
-        if (! $this->isProviderAvailable($fallback)) {
-            throw new \RuntimeException('All proxy providers are currently unavailable. Your payment has been refunded.');
+        $priority = config('services.proxy.provider_priority', ['decodo', 'proxyempire']);
+        foreach ($priority as $provider) {
+            if ($provider !== $failedProvider && $this->isProviderAvailable($provider)) {
+                Log::warning('proxy.routing.fallback', ['from' => $failedProvider, 'to' => $provider]);
+                return $provider;
+            }
         }
 
-        return $fallback;
+        throw new \RuntimeException('All proxy providers are currently unavailable. Your payment has been refunded.');
     }
 
     public function isProviderAvailable(string $provider): bool
     {
         return match ($provider) {
-            'decodo'     => $this->decodo->isEnabled(),
-            'brightdata' => $this->brightData->isEnabled(),
-            default      => false,
+            'decodo'      => $this->decodo->isEnabled(),
+            'proxyempire' => $this->proxyEmpire->isEnabled(),
+            'brightdata'  => $this->brightData->isEnabled(),
+            default       => false,
         };
     }
 
     public function supportsType(string $provider, string $proxyType): bool
     {
-        // Both providers support all types; can be restricted per config
         $restrictions = config("services.{$provider}.unsupported_types", []);
-        $baseType = explode('_', $proxyType)[0];
+        $baseType     = explode('_', $proxyType)[0];
         return ! in_array($baseType, $restrictions, true);
     }
 
@@ -103,17 +93,14 @@ class ProxyRoutingEngine
 
     public function getProviderStats(): array
     {
-        $providers = ['decodo', 'brightdata'];
         $stats = [];
-
-        foreach ($providers as $p) {
+        foreach (self::ALL_PROVIDERS as $p) {
             $stats[$p] = [
-                'enabled'      => $this->isProviderAvailable($p),
-                'failures_1h'  => Cache::get("proxy.provider.{$p}.failures", 0),
-                'priority'     => array_search($p, config('services.proxy.provider_priority', $providers), true),
+                'enabled'     => $this->isProviderAvailable($p),
+                'failures_1h' => Cache::get("proxy.provider.{$p}.failures", 0),
+                'priority'    => array_search($p, config('services.proxy.provider_priority', ['decodo', 'proxyempire']), true),
             ];
         }
-
         return $stats;
     }
 }

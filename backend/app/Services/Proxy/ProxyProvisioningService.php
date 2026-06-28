@@ -24,6 +24,7 @@ class ProxyProvisioningService
         private readonly WalletService      $wallets,
         private readonly ProxyRoutingEngine $routing,
         private readonly DecodoService      $decodo,
+        private readonly ProxyEmpireService $proxyEmpire,
         private readonly BrightDataService  $brightData,
     ) {}
 
@@ -707,12 +708,13 @@ class ProxyProvisioningService
         return $this->getProviderService($provider)->createSubscription($options);
     }
 
-    private function getProviderService(string $provider): DecodoService|BrightDataService
+    private function getProviderService(string $provider): DecodoService|ProxyEmpireService|BrightDataService
     {
         return match ($provider) {
-            'decodo'     => $this->decodo,
-            'brightdata' => $this->brightData,
-            default      => throw new RuntimeException("Unknown proxy provider: {$provider}"),
+            'decodo'      => $this->decodo,
+            'proxyempire' => $this->proxyEmpire,
+            'brightdata'  => $this->brightData,
+            default       => throw new RuntimeException("Unknown proxy provider: {$provider}"),
         };
     }
 
