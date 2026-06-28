@@ -1865,13 +1865,6 @@ function ProxyAdminTab() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const [decodoTestResult, setDecodoTestResult] = useState<any>(null);
-  const testDecodo = useMutation({
-    mutationFn: () => apiCall<any>({ method: 'GET', url: '/admin/proxy/test-decodo' }),
-    onSuccess: (r) => setDecodoTestResult(r),
-    onError: (e) => toast.error((e as Error).message),
-  });
-
   const d = overview.data;
 
   return (
@@ -1892,10 +1885,6 @@ function ProxyAdminTab() {
       {subTab === 'overview' && (
         <div className="space-y-4">
           <div className="flex justify-end items-center gap-3">
-            <button onClick={() => testDecodo.mutate()} disabled={testDecodo.isPending}
-              className="btn-outline text-sm flex items-center gap-2">
-              {testDecodo.isPending ? 'Testing…' : 'Test Decodo API'}
-            </button>
             <p className="text-xs text-ink-400">Import proxy list from Decodo dashboard (JSON or CSV):</p>
             <label className={`btn-outline text-sm flex items-center gap-2 cursor-pointer ${syncListings.isPending ? 'opacity-50 pointer-events-none' : ''}`}>
               <RotateCcw className={`h-4 w-4 ${syncListings.isPending ? 'animate-spin' : ''}`} />
@@ -1912,11 +1901,6 @@ function ProxyAdminTab() {
               />
             </label>
           </div>
-          {decodoTestResult && (
-            <div className="rounded-xl border border-ink-200 dark:border-ink-700 p-4 bg-ink-50 dark:bg-ink-800 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
-              {JSON.stringify(decodoTestResult, null, 2)}
-            </div>
-          )}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard icon={Globe}       label="Total subs"     value={d?.total_subscriptions ?? '…'} />
             <MetricCard icon={Server}      label="Active"         value={d?.active_subscriptions ?? '…'} color="green" />

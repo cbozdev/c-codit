@@ -13,7 +13,6 @@ use App\Support\Audit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 
 class ProxyAdminController extends Controller
 {
@@ -216,39 +215,6 @@ class ProxyAdminController extends Controller
             'revenue'    => $revenue,
             'bandwidth'  => $bandwidth,
             'new_subs'   => $newSubs,
-        ]);
-    }
-
-    // ─── Decodo API test ──────────────────────────────────────────────────────
-
-    public function testDecodoApi()
-    {
-        $apiKey    = config('services.decodo.api_key');
-        $subUserId = config('services.decodo.sub_user_id');
-        $base      = 'https://api.decodo.com';
-        $headers   = ['Authorization' => $apiKey];
-
-        // 1. GET specific sub-user detail (includes allowed_ips if set)
-        $get = Http::withHeaders($headers)->timeout(10)->get("{$base}/v2/sub-users/{$subUserId}");
-
-        // 2. PUT allowed_ips on the sub-user
-        $testIp = request()->ip();
-        $put = Http::withHeaders($headers)->timeout(10)->put("{$base}/v2/sub-users/{$subUserId}", [
-            'allowed_ips' => [$testIp],
-        ]);
-
-        // 3. GET again to confirm the update
-        $getAfter = Http::withHeaders($headers)->timeout(10)->get("{$base}/v2/sub-users/{$subUserId}");
-
-        return ApiResponse::ok([
-            'sub_user_id'      => $subUserId,
-            'caller_ip'        => $testIp,
-            'get_status'       => $get->status(),
-            'get_body'         => $get->json() ?? $get->body(),
-            'put_status'       => $put->status(),
-            'put_body'         => $put->json() ?? $put->body(),
-            'get_after_status' => $getAfter->status(),
-            'get_after_body'   => $getAfter->json() ?? $getAfter->body(),
         ]);
     }
 
