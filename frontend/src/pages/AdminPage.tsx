@@ -1865,6 +1865,16 @@ function ProxyAdminTab() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const toggleProvider = useMutation({
+    mutationFn: ({ provider, enabled }: { provider: string; enabled: boolean }) =>
+      apiCall<null>({ method: 'POST', url: '/admin/proxy/provider-settings', data: { [`${provider}_enabled`]: enabled } }),
+    onSuccess: (_d, { provider, enabled }) => {
+      toast.success(`${provider} ${enabled ? 'enabled' : 'disabled'}.`);
+      qc.invalidateQueries({ queryKey: ['admin', 'proxy', 'overview'] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const d = overview.data;
 
   return (
@@ -1925,16 +1935,25 @@ function ProxyAdminTab() {
             <div className="card-pad">
               <h3 className="text-sm font-semibold mb-3">Provider Health</h3>
               {d?.provider_stats && Object.entries(d.provider_stats).map(([p, stat]) => (
-                <div key={p} className="flex justify-between items-center py-1.5 border-b border-ink-50 last:border-0">
+                <div key={p} className="flex justify-between items-center py-2 border-b border-ink-50 last:border-0">
                   <div>
-                    <span className="text-sm capitalize">{p}</span>
-                    <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${stat.enabled ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'}`}>
-                      {stat.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
+                    <span className="text-sm capitalize font-medium">{p}</span>
+                    {stat.failures_1h > 0 && (
+                      <span className="ml-2 text-xs text-rose-500">{stat.failures_1h} fail/1h</span>
+                    )}
                   </div>
-                  {stat.failures_1h > 0 && (
-                    <span className="text-xs text-rose-600">{stat.failures_1h} fail/1h</span>
-                  )}
+                  <button
+                    onClick={() => toggleProvider.mutate({ provider: p, enabled: !stat.enabled })}
+                    disabled={toggleProvider.isPending}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${
+                      stat.enabled ? 'bg-green-500' : 'bg-ink-200'
+                    }`}
+                    title={stat.enabled ? 'Click to disable' : 'Click to enable'}
+                  >
+                    <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+                      stat.enabled ? 'translate-x-4' : 'translate-x-0'
+                    }`} />
+                  </button>
                 </div>
               ))}
             </div>
@@ -1969,6 +1988,7 @@ function ProxyAdminTab() {
             <select className="input" value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)}>
               <option value="">All providers</option>
               <option value="decodo">Decodo</option>
+              <option value="proxyempire">ProxyEmpire</option>
               <option value="brightdata">BrightData</option>
             </select>
             <button onClick={() => qc.invalidateQueries({ queryKey: ['admin', 'proxy', 'subscriptions'] })} className="btn-outline">

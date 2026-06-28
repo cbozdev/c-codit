@@ -107,16 +107,21 @@ class ProxyAdminController extends Controller
 
     public function providerSettings()
     {
+        $dbDecodo      = AppSetting::getValue('proxy.decodo.enabled');
+        $dbProxyEmpire = AppSetting::getValue('proxy.proxyempire.enabled');
+
         return ApiResponse::ok([
             'decodo' => [
-                'enabled'  => config('services.decodo.enabled', true),
-                'priority' => 0,
+                'enabled' => $dbDecodo !== null
+                    ? filter_var($dbDecodo, FILTER_VALIDATE_BOOLEAN)
+                    : (bool) config('services.decodo.enabled', true),
             ],
-            'brightdata' => [
-                'enabled'  => config('services.brightdata.enabled', true),
-                'priority' => 1,
+            'proxyempire' => [
+                'enabled' => $dbProxyEmpire !== null
+                    ? filter_var($dbProxyEmpire, FILTER_VALIDATE_BOOLEAN)
+                    : (bool) config('services.proxyempire.enabled', false),
             ],
-            'routing_priority' => config('services.proxy.provider_priority', ['decodo', 'brightdata']),
+            'routing_priority' => config('services.proxy.provider_priority', ['decodo', 'proxyempire']),
             'stats'            => $this->routing->getProviderStats(),
         ]);
     }
@@ -124,10 +129,11 @@ class ProxyAdminController extends Controller
     public function updateProviderSettings(Request $request)
     {
         $request->validate([
-            'provider_priority' => ['nullable', 'array'],
-            'provider_priority.*' => ['in:decodo,brightdata'],
-            'decodo_enabled'    => ['nullable', 'boolean'],
-            'brightdata_enabled'=> ['nullable', 'boolean'],
+            'provider_priority'   => ['nullable', 'array'],
+            'provider_priority.*' => ['in:decodo,proxyempire,brightdata'],
+            'decodo_enabled'      => ['nullable', 'boolean'],
+            'proxyempire_enabled' => ['nullable', 'boolean'],
+            'brightdata_enabled'  => ['nullable', 'boolean'],
         ]);
 
         if ($request->has('provider_priority')) {
@@ -135,7 +141,19 @@ class ProxyAdminController extends Controller
             Cache::forget('config');
         }
 
-        Audit::log('admin.proxy_provider_settings_updated', $request->user(), $request->all(), actorType: 'admin');
+        if ($request->has('decodo_enabled')) {
+            AppSetting::setValue('proxy.decodo.enabled', $request->boolean('decodo_enabled') ? '1' : '0');
+            Cache::forget('proxy.decodo.enabled');
+        }
+
+        if ($request->has('proxyempire_enabled')) {
+            AppSetting::setValue('proxy.proxyempire.enabled', $request->boolean('proxyempire_enabled') ? '1' : '0');
+            Cache::forget('proxy.proxyempire.enabled');
+        }
+
+        Audit::log('admin.proxy_provider_settings_updated', $request->user(), $request->only([
+            'decodo_enabled', 'proxyempire_enabled', 'provider_priority',
+        ]), actorType: 'admin');
 
         return ApiResponse::ok(null, 'Provider settings updated.');
     }

@@ -26,9 +26,11 @@ class DecodoService
 
     public function isEnabled(): bool
     {
-        return (bool) config('services.decodo.enabled', false)
-            && ! empty(config('services.decodo.username'))
-            && ! empty(config('services.decodo.password'));
+        $dbVal   = \Illuminate\Support\Facades\Cache::remember('proxy.decodo.enabled', 60, fn() =>
+            \App\Models\AppSetting::getValue('proxy.decodo.enabled')
+        );
+        $enabled = $dbVal !== null ? filter_var($dbVal, FILTER_VALIDATE_BOOLEAN) : (bool) config('services.decodo.enabled', false);
+        return $enabled && ! empty(config('services.decodo.username')) && ! empty(config('services.decodo.password'));
     }
 
     // ─── Locations ────────────────────────────────────────────────────────────

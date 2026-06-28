@@ -46,8 +46,11 @@ class ProxyEmpireService
 
     public function isEnabled(): bool
     {
-        return (bool) config('services.proxyempire.enabled', false)
-            && ! empty(config('services.proxyempire.api_token'));
+        $dbVal   = Cache::remember('proxy.proxyempire.enabled', 60, fn() =>
+            \App\Models\AppSetting::getValue('proxy.proxyempire.enabled')
+        );
+        $enabled = $dbVal !== null ? filter_var($dbVal, FILTER_VALIDATE_BOOLEAN) : (bool) config('services.proxyempire.enabled', false);
+        return $enabled && ! empty(config('services.proxyempire.api_token'));
     }
 
     private function client()
