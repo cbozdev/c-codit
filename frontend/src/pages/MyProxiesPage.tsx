@@ -4,13 +4,13 @@ import toast from 'react-hot-toast';
 import { apiCall } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import type {
-  MarketplaceCountries,
+  MarketplaceCountries, MarketplacePage, ProxyListing,
   ProxySubscription, ProxyTrialStatus, Wallet,
 } from '@/types/api';
 import {
   Globe, Copy, Eye, EyeOff, RotateCcw, Wifi, WifiOff,
   CheckCircle2, AlertCircle, X, Shield,
-  Zap, Plus, Minus,
+  Zap, Plus, Minus, ShoppingCart, ChevronLeft, ChevronRight, Smartphone,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -821,12 +821,90 @@ function ActiveProxyRow({ sub, onViewCreds }: { sub: ProxySubscription; onViewCr
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type PageTab = 'active' | 'history';
+type PageTab = 'active' | 'history' | 'shop';
+
+// ─── Country flag emoji helper ─────────────────────────────────────────────────
+function flag(cc: string) {
+  return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(c.charCodeAt(0) + 127397));
+}
+
+// ─── Marketplace Buy Modal ────────────────────────────────────────────────────
+function BuyListingModal({ listing, walletMinor, accessIp, onClose }: {
+  listing: ProxyListing; walletMinor: number; accessIp: string; onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [durationIdx, setDurationIdx] = useState(4);
+  const days = DURATIONS[durationIdx]?.days ?? 30;
+  const priceMinor = listing.price_minor * Math.ceil(days / 30);
+  const insufficient = walletMinor < priceMinor;
+
+  const buy = useMutation({
+    mutationFn: () => apiCall<ProxySubscription>({
+      method: 'POST',
+      url: `/proxy/marketplace/${listing.id}/buy`,
+      data: { duration_days: days, access_ip: accessIp || undefined },
+    }),
+    onSuccess: () => {
+      toast.success('Proxy activated!');
+      qc.invalidateQueries({ queryKey: ['proxy', 'my'] });
+      qc.invalidateQueries({ queryKey: ['wallet'] });
+      onClose();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/60 backdrop-blur-sm">
+      <div className="bg-white dark:bg-ink-900 rounded-2xl shadow-2xl w-full max-w-sm">
+        <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold dark:text-white">
+              {flag(listing.country_code)} {listing.city ?? listing.country_name}
+            </h2>
+            <p className="text-xs text-ink-500 mt-0.5">
+              {listing.isp ?? listing.country_name} · {listing.protocol.toUpperCase()} · {listing.speed_ms}ms
+            </p>
+          </div>
+          <button onClick={onClose} className="btn-ghost p-1.5 text-ink-400"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-2">Duration</p>
+            <input type="range" min={0} max={4} step={1} value={durationIdx}
+              onChange={(e) => setDurationIdx(Number(e.target.value))} className="w-full accent-brand-500" />
+            <div className="flex justify-between text-[10px] text-ink-400 mt-1">
+              {DURATIONS.map(({ days: d, label }, i) => (
+                <span key={d} className={clsx(durationIdx === i && 'text-brand-600 font-semibold')}>
+                  {label}<br />{fmt(listing.price_minor * Math.ceil(d / 30))}
+                </span>
+              ))}
+            </div>
+          </div>
+          {insufficient && (
+            <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
+              Insufficient balance. Top up your wallet to continue.
+            </p>
+          )}
+          <button
+            onClick={() => buy.mutate()}
+            disabled={buy.isPending || insufficient}
+            className="btn-primary w-full justify-center disabled:opacity-50">
+            {buy.isPending ? 'Activating…' : `Buy · ${fmt(priceMinor)}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function MyProxiesPage() {
   const qc = useQueryClient();
   const [pageTab, setPageTab]         = useState<PageTab>('active');
   const [credsSub, setCredsSub]         = useState<ProxySubscription | null>(null);
+  const [buyListing, setBuyListing]     = useState<ProxyListing | null>(null);
+  const [shopProtocol, setShopProtocol] = useState<'http' | 'socks5'>('http');
+  const [shopType, setShopType]         = useState<'wifi' | 'cell'>('wifi');
+  const [shopPage, setShopPage]         = useState(1);
   const [showIpModal, setShowIpModal]   = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan>(null);
   const [showSocial, setShowSocial]     = useState(false);
@@ -861,6 +939,15 @@ export default function MyProxiesPage() {
     queryKey: ['proxy', 'marketplace', 'countries'],
     queryFn:  () => apiCall<MarketplaceCountries>({ url: '/proxy/marketplace/countries' }),
     staleTime: 300_000,
+  });
+
+  const marketplaceListings = useQuery({
+    queryKey: ['proxy', 'marketplace', 'listings', shopProtocol, shopType, shopPage],
+    queryFn:  () => apiCall<MarketplacePage>({
+      url: `/proxy/marketplace?protocol=${shopProtocol}&type=${shopType}&per_page=20&page=${shopPage}`,
+    }),
+    enabled: pageTab === 'shop',
+    staleTime: 60_000,
   });
 
   const trialStatus = useQuery({
@@ -929,6 +1016,7 @@ export default function MyProxiesPage() {
         {([
           ['active',  `Active (${activeItems.filter(s => s.status === 'active').length})`],
           ['history', `History (${historyItems.length})`],
+          ['shop',    'Shop'],
         ] as const).map(([t, label]) => (
           <button key={t} onClick={() => setPageTab(t)}
             className={clsx('px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition',
@@ -1022,9 +1110,145 @@ export default function MyProxiesPage() {
         </div>
       )}
 
+      {/* ─── Shop Tab ────────────────────────────────────────────── */}
+      {pageTab === 'shop' && (
+        <div className="space-y-4">
+          {/* Filters */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden text-sm">
+              {(['wifi', 'cell'] as const).map((t) => (
+                <button key={t} onClick={() => { setShopType(t); setShopPage(1); }}
+                  className={clsx('px-3 py-1.5 flex items-center gap-1.5 transition', shopType === t
+                    ? 'bg-ink-900 dark:bg-white text-white dark:text-ink-900 font-medium'
+                    : 'text-ink-500 hover:text-ink-800 dark:hover:text-ink-200')}>
+                  {t === 'wifi' ? <Wifi className="h-3.5 w-3.5" /> : <Smartphone className="h-3.5 w-3.5" />}
+                  {t === 'wifi' ? 'WiFi' : 'Cellular'}
+                </button>
+              ))}
+            </div>
+            <div className="flex rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden text-sm">
+              {(['http', 'socks5'] as const).map((p) => (
+                <button key={p} onClick={() => { setShopProtocol(p); setShopPage(1); }}
+                  className={clsx('px-3 py-1.5 transition', shopProtocol === p
+                    ? 'bg-ink-900 dark:bg-white text-white dark:text-ink-900 font-medium'
+                    : 'text-ink-500 hover:text-ink-800 dark:hover:text-ink-200')}>
+                  {p.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            {marketplaceListings.data && (
+              <span className="text-xs text-ink-400 ml-auto">
+                {marketplaceListings.data.meta.total} proxies available
+              </span>
+            )}
+          </div>
+
+          {/* List */}
+          <div className="rounded-xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 overflow-hidden">
+            {/* Header */}
+            <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_80px_90px] gap-2 px-4 py-2.5 text-[10px] font-medium text-ink-400 uppercase tracking-wide border-b border-ink-100 dark:border-ink-800">
+              <span>Location / ISP</span>
+              <span>Type</span>
+              <span>Speed</span>
+              <span>Protocol</span>
+              <span className="text-right">Price / mo</span>
+            </div>
+
+            {marketplaceListings.isLoading && (
+              <div className="text-center py-12 text-ink-400 text-sm">Loading…</div>
+            )}
+
+            {!marketplaceListings.isLoading && (marketplaceListings.data?.items ?? []).length === 0 && (
+              <div className="text-center py-12 text-ink-400">
+                <WifiOff className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">No proxies available with these filters.</p>
+              </div>
+            )}
+
+            {(marketplaceListings.data?.items ?? []).map((listing, i) => (
+              <div key={listing.id}
+                className={clsx('grid grid-cols-[1fr_auto] sm:grid-cols-[2fr_1fr_1fr_80px_90px] gap-2 items-center px-4 py-3 hover:bg-ink-50 dark:hover:bg-ink-800/50 transition',
+                  i > 0 && 'border-t border-ink-50 dark:border-ink-800')}>
+
+                {/* Location + ISP */}
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="text-xl leading-none shrink-0">{flag(listing.country_code)}</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium dark:text-white truncate">
+                      {listing.city ?? listing.country_name}
+                      {listing.state_code && <span className="text-ink-400 font-normal">, {listing.state_code}</span>}
+                    </p>
+                    <p className="text-xs text-ink-500 truncate">{listing.isp ?? listing.country_name}</p>
+                  </div>
+                </div>
+
+                {/* Type */}
+                <div className="hidden sm:flex items-center gap-1 text-xs text-ink-500">
+                  {listing.connection_type === 'wifi'
+                    ? <Wifi className="h-3.5 w-3.5 text-brand-500" />
+                    : <Smartphone className="h-3.5 w-3.5 text-purple-500" />}
+                  {listing.connection_type === 'wifi' ? 'WiFi' : 'Cell'}
+                </div>
+
+                {/* Speed */}
+                <div className="hidden sm:block">
+                  <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full',
+                    listing.speed_ms <= 15 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : listing.speed_ms <= 30 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                    : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400')}>
+                    {listing.speed_ms}ms
+                  </span>
+                </div>
+
+                {/* Protocol */}
+                <div className="hidden sm:block">
+                  <span className="text-xs bg-ink-100 dark:bg-ink-800 text-ink-600 dark:text-ink-400 px-2 py-0.5 rounded font-mono">
+                    {listing.protocol.toUpperCase()}
+                  </span>
+                </div>
+
+                {/* Price + Buy */}
+                <div className="flex items-center justify-end gap-2 col-span-1 sm:col-span-1">
+                  <div className="text-right">
+                    <p className="text-sm font-semibold dark:text-white">{listing.price}</p>
+                    <p className="text-[10px] text-ink-400 hidden sm:block">/mo</p>
+                  </div>
+                  <button
+                    onClick={() => setBuyListing(listing)}
+                    className="flex items-center gap-1 bg-brand-500 hover:bg-brand-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition shrink-0">
+                    <ShoppingCart className="h-3 w-3" />
+                    <span className="hidden sm:inline">Buy</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {marketplaceListings.data && marketplaceListings.data.meta.last_page > 1 && (
+            <div className="flex items-center justify-center gap-3">
+              <button onClick={() => setShopPage(p => Math.max(1, p - 1))}
+                disabled={shopPage === 1}
+                className="btn-ghost p-1.5 disabled:opacity-40">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm text-ink-500">
+                Page {shopPage} of {marketplaceListings.data.meta.last_page}
+              </span>
+              <button onClick={() => setShopPage(p => Math.min(marketplaceListings.data!.meta.last_page, p + 1))}
+                disabled={shopPage === marketplaceListings.data.meta.last_page}
+                className="btn-ghost p-1.5 disabled:opacity-40">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ─── Modals ───────────────────────────────────────────────── */}
       {showIpModal && <IpWhitelistModal currentIps={ips} onClose={() => setShowIpModal(false)} />}
       {credsSub    && <CredentialsModal sub={credsSub} onClose={() => setCredsSub(null)} />}
+      {buyListing  && <BuyListingModal listing={buyListing} walletMinor={walletMinor} accessIp={ips[0] ?? ''} onClose={() => setBuyListing(null)} />}
       {showOneByOne && (
         <OneByOneConfigModal
           walletMinor={walletMinor} ips={ips} countries={countries}
