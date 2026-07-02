@@ -300,8 +300,8 @@ class ProxyAdminController extends Controller
             };
             $proto = str_contains(strtolower($proxy['protocol'] ?? ''), 'socks') ? 'socks5' : 'http';
             $priceMinor = match ("{$connType}-{$proto}") {
-                'wifi-http'   => 7200,  'wifi-socks5'  => 8200,
-                'cell-http'   => 9700,  'cell-socks5'  => 11700,
+                'wifi-http'   => 1650,  'wifi-socks5'  => 1950,
+                'cell-http'   => 2250,  'cell-socks5'  => 2550,
                 default       => 9700,
             };
 
