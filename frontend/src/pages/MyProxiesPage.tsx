@@ -835,7 +835,7 @@ function BuyListingModal({ listing, walletMinor, accessIp, onClose }: {
   const qc = useQueryClient();
   const [durationIdx, setDurationIdx] = useState(0);
   const days = DURATIONS[durationIdx]?.days ?? 1;
-  const priceMinor = listing.price_minor * Math.ceil(days / 30);
+  const priceMinor = Math.round(listing.price_minor * days / 30);
   const insufficient = walletMinor < priceMinor;
 
   const buy = useMutation({
@@ -875,7 +875,7 @@ function BuyListingModal({ listing, walletMinor, accessIp, onClose }: {
             <div className="flex justify-between text-[10px] text-ink-400 mt-1">
               {DURATIONS.map(({ days: d, label }, i) => (
                 <span key={d} className={clsx(durationIdx === i && 'text-brand-600 font-semibold')}>
-                  {label}<br />{fmt(listing.price_minor * Math.ceil(d / 30))}
+                  {label}<br />{fmt(Math.round(listing.price_minor * d / 30))}
                 </span>
               ))}
             </div>
@@ -1152,7 +1152,7 @@ export default function MyProxiesPage() {
               <span>Type</span>
               <span>Speed</span>
               <span>Protocol</span>
-              <span className="text-right">Price / mo</span>
+              <span className="text-right">Price / day</span>
             </div>
 
             {marketplaceListings.isLoading && (
