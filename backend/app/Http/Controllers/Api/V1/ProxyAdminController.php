@@ -241,10 +241,17 @@ class ProxyAdminController extends Controller
     public function syncListings(Request $request)
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:json,txt,csv', 'max:10240'],
+            'file' => ['nullable', 'file', 'max:10240'],
+            'data' => ['nullable', 'string'],
         ]);
 
-        $content = file_get_contents($request->file('file')->getRealPath());
+        if ($request->hasFile('file')) {
+            $content = file_get_contents($request->file('file')->getRealPath());
+        } elseif ($request->filled('data')) {
+            $content = $request->input('data');
+        } else {
+            return ApiResponse::fail('Please upload a JSON or CSV file, or provide raw JSON in the data field.', null, 422);
+        }
 
         // Try JSON first, then CSV/text (IP:PORT per line or similar)
         $proxies = json_decode($content, true);
