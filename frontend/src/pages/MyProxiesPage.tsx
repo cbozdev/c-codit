@@ -160,7 +160,7 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
           )}
 
           <CredRow label="Protocol" value={creds.protocol.toUpperCase()} noCopy />
-          <CredRow label="Host" value={creds.host} />
+          <CredRow label="IP Address" value={creds.ip ?? creds.host} />
           <CredRow label="Port" value={String(creds.port)} noCopy />
           <CredRow label="Username" value={creds.username ?? ''} />
           {data?.password && (
