@@ -122,6 +122,8 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
   });
 
   const creds = data ?? sub;
+  const ipAuthEnabled = data?.ip_auth_enabled ?? sub.ip_auth_enabled;
+  const noCredUrl = `${creds.host}:${creds.port}`;
   const proxyUrl = data?.proxy_url ?? `${creds.protocol}://${creds.username}:***@${creds.host}:${creds.port}`;
 
   return (
@@ -136,9 +138,27 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
         </div>
         <div className="p-5 space-y-4">
           {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
-          <CredRow label="IP Address" value={(data?.ip ?? creds.host) ?? ''} />
-          <CredRow label="Host"       value={creds.host ?? ''} />
-          <CredRow label="Port"     value={String(creds.port)} />
+
+          {/* IP Auth banner */}
+          {ipAuthEnabled ? (
+            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 p-3">
+              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-1">✓ IP Auth Active — No credentials needed</p>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-2">Connect from your whitelisted IP using only the host and port below.</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 font-mono text-sm bg-white dark:bg-ink-900 rounded-lg px-3 py-2 border border-emerald-200 dark:border-emerald-700">{noCredUrl}</div>
+                <button onClick={() => copyText(noCredUrl, 'Host:Port copied')} className="btn-ghost p-2 text-emerald-600">
+                  <Copy className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-[10px] text-emerald-500 mt-1.5">If your IP changes, update "Your IPs" in the header to re-enable this.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1">IP Auth not active</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">Set your IP in "Your IPs" (top of page) to enable credential-free access.</p>
+            </div>
+          )}
+
           <CredRow label="Protocol" value={creds.protocol.toUpperCase()} noCopy />
           <CredRow label="Username" value={creds.username ?? ''} />
           {data?.password && (

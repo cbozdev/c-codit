@@ -199,6 +199,8 @@ class ProxyController extends Controller
             return ApiResponse::fail($e->getMessage(), null, 422);
         }
 
+        $this->syncUserIpsToSubscription($request->user(), $sub);
+
         return ApiResponse::ok($this->formatSubscription($sub, true), 'Proxy purchased successfully.');
     }
 
@@ -222,6 +224,10 @@ class ProxyController extends Controller
             $subscriptions = $this->provisioning->purchaseSocialPlan($request->user(), $validated);
         } catch (\Throwable $e) {
             return ApiResponse::fail($e->getMessage(), null, 422);
+        }
+
+        foreach ($subscriptions as $sub) {
+            $this->syncUserIpsToSubscription($request->user(), $sub);
         }
 
         return ApiResponse::ok(
@@ -270,7 +276,11 @@ class ProxyController extends Controller
             ->each(function (ProxySubscription $sub) use ($ips, $masterSubUserId) {
                 $id = $sub->provider_subscription_id;
                 if (is_numeric($id) && $id !== $masterSubUserId) {
-                    $this->decodo->updateSubUserAllowedIps($id, $ips);
+                    if ($this->decodo->updateSubUserAllowedIps($id, $ips)) {
+                        $config = $sub->config ?? [];
+                        $config['ip_auth_enabled'] = true;
+                        $sub->update(['config' => $config]);
+                    }
                 }
             });
 
@@ -593,6 +603,19 @@ class ProxyController extends Controller
 
     // ─── Format helper ────────────────────────────────────────────────────────
 
+    private function syncUserIpsToSubscription(\App\Models\User $user, ProxySubscription $sub): void
+    {
+        $ips = UserIpWhitelist::where('user_id', $user->id)->pluck('ip_address')->toArray();
+        if (empty($ips)) return;
+
+        $id = $sub->provider_subscription_id;
+        if (is_numeric($id) && $this->decodo->updateSubUserAllowedIps($id, $ips)) {
+            $config = $sub->config ?? [];
+            $config['ip_auth_enabled'] = true;
+            $sub->update(['config' => $config]);
+        }
+    }
+
     private function formatSubscription(ProxySubscription $sub, bool $withCredentials = false): array
     {
         // resolved_ip stored at provisioning time; fall back to live DNS for old subscriptions
@@ -619,6 +642,7 @@ class ProxyController extends Controller
             'location_city'        => $sub->location_city,
             'isp'                  => $sub->config['isp'] ?? null,
             'state_code'           => $sub->config['state_code'] ?? null,
+            'ip_auth_enabled'      => (bool) ($sub->config['ip_auth_enabled'] ?? false),
             'bandwidth_gb_total'   => (float) $sub->bandwidth_gb_total,
             'bandwidth_gb_used'    => (float) $sub->bandwidth_gb_used,
             'bandwidth_percent'    => $sub->bandwidthPercent(),
