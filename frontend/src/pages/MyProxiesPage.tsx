@@ -8,9 +8,9 @@ import type {
   ProxySubscription, ProxyTrialStatus, Wallet,
 } from '@/types/api';
 import {
-  Globe, Copy, Eye, EyeOff, RotateCcw, Wifi, WifiOff,
-  CheckCircle2, AlertCircle, X, Shield,
-  Zap, Plus, Minus, ShoppingCart, ChevronLeft, ChevronRight, Smartphone,
+  Copy, Eye, EyeOff, RotateCcw, Wifi, WifiOff,
+  CheckCircle2, AlertCircle, X,
+  Zap, Plus, Minus, Smartphone,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -651,68 +651,6 @@ function ConfigBtn({ active, onClick, label }: { active: boolean; onClick: () =>
   );
 }
 
-// ─── Plan Cards ───────────────────────────────────────────────────────────────
-
-type Plan = 'onebyone' | 'social' | null;
-
-function PlanCards({ selected, onSelect }: { selected: Plan; onSelect: (p: Plan) => void }) {
-  const plans = [
-    {
-      id: 'onebyone' as Plan,
-      name: '1 By 1',
-      desc: 'Buy one proxy at a time. Pick your country, state, connection type and protocol.',
-      protocols: 'Socks / Https',
-      from: 'from $0.55/day',
-      badge: null,
-    },
-    {
-      id: 'social' as Plan,
-      name: 'Social US & World Mix',
-      desc: 'High-quality proxies for social media, YouTube, and sensitive apps.',
-      protocols: 'Socks / Https',
-      from: 'from $0.65/day',
-      badge: 'NEW',
-    },
-    {
-      id: null as Plan,
-      name: 'Custom',
-      desc: 'Need a different plan? Contact us — 24/7 availability.',
-      protocols: null,
-      from: null,
-      badge: null,
-    },
-  ];
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {plans.map((p) => (
-        <button
-          key={p.id ?? 'custom'}
-          onClick={() => p.id && onSelect(selected === p.id ? null : p.id)}
-          className={clsx(
-            'rounded-xl border-2 p-4 text-left transition relative',
-            !p.id && 'cursor-default',
-            selected === p.id && p.id
-              ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20'
-              : 'border-ink-100 dark:border-ink-800 hover:border-ink-300 dark:hover:border-ink-600',
-          )}
-        >
-          {p.badge && (
-            <span className="absolute -top-2 left-4 bg-brand-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{p.badge}</span>
-          )}
-          <p className="font-semibold text-sm dark:text-white mb-1">{p.name}</p>
-          {p.protocols && <p className="text-xs text-ink-500 mb-2">{p.protocols}</p>}
-          <p className="text-xs text-ink-500 leading-relaxed">{p.desc}</p>
-          {p.from && <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 mt-2">{p.from}</p>}
-          {!p.id && (
-            <p className="text-xs font-medium text-brand-600 dark:text-brand-400 mt-2">Contact us →</p>
-          )}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 
 // ─── Active Proxy Row ─────────────────────────────────────────────────────────
 
@@ -838,10 +776,6 @@ function ActiveProxyRow({ sub, onViewCreds }: { sub: ProxySubscription; onViewCr
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
-type PageTab = 'active' | 'history' | 'shop';
-
 // ─── Country flag emoji helper ─────────────────────────────────────────────────
 function flag(cc: string) {
   return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(c.charCodeAt(0) + 127397));
@@ -916,16 +850,18 @@ function BuyListingModal({ listing, walletMinor, accessIp, onClose }: {
   );
 }
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function MyProxiesPage() {
   const qc = useQueryClient();
-  const [pageTab, setPageTab]         = useState<PageTab>('active');
+  const [activeTab, setActiveTab]       = useState<'active' | 'history'>('active');
   const [credsSub, setCredsSub]         = useState<ProxySubscription | null>(null);
   const [buyListing, setBuyListing]     = useState<ProxyListing | null>(null);
-  const [shopProtocol, setShopProtocol] = useState<'http' | 'socks5'>('http');
-  const [shopType, setShopType]         = useState<'wifi' | 'cell'>('wifi');
+  const [shopProtocol, setShopProtocol] = useState('');
+  const [shopType, setShopType]         = useState('');
+  const [shopState, setShopState]       = useState('');
+  const [shopGeo, setShopGeo]           = useState<'us' | 'world'>('us');
   const [shopPage, setShopPage]         = useState(1);
   const [showIpModal, setShowIpModal]   = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<Plan>(null);
   const [showSocial, setShowSocial]     = useState(false);
   const [showOneByOne, setShowOneByOne] = useState(false);
 
@@ -950,7 +886,7 @@ export default function MyProxiesPage() {
   const history = useQuery({
     queryKey: ['proxy', 'history'],
     queryFn:  () => apiCall<{ items: ProxySubscription[] }>({ url: '/proxy/my/history' }),
-    enabled:  pageTab === 'history',
+    enabled:  activeTab === 'history',
     staleTime: 60_000,
   });
 
@@ -961,11 +897,11 @@ export default function MyProxiesPage() {
   });
 
   const marketplaceListings = useQuery({
-    queryKey: ['proxy', 'marketplace', 'listings', shopProtocol, shopType, shopPage],
+    queryKey: ['proxy', 'marketplace', 'listings', shopProtocol, shopType, shopState, shopGeo, shopPage],
     queryFn:  () => apiCall<MarketplacePage>({
-      url: `/proxy/marketplace?protocol=${shopProtocol}&type=${shopType}&per_page=20&page=${shopPage}`,
+      url: `/proxy/marketplace?protocol=${shopProtocol}&type=${shopType}&state_code=${shopGeo === 'us' ? shopState : ''}&per_page=20&page=${shopPage}`,
     }),
-    enabled: pageTab === 'shop',
+    enabled: activeTab === 'active',
     staleTime: 60_000,
   });
 
@@ -985,7 +921,7 @@ export default function MyProxiesPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const now = Date.now();
+  const now          = Date.now();
   const activeItems  = (active.data?.items ?? []).filter(s => s.status === 'active' && (!s.expires_at || new Date(s.expires_at).getTime() > now));
   const historyItems = history.data?.items ?? [];
   const countries    = marketplaceCountries.data;
@@ -993,121 +929,309 @@ export default function MyProxiesPage() {
   const walletMinor  = wallet.data?.balance_minor ?? 0;
   const walletBal    = wallet.data?.balance ?? '$0.00';
   const trial        = trialStatus.data;
-
-  function handleSelectPlan(p: Plan) {
-    setSelectedPlan(p);
-    if (p === 'social')    setShowSocial(true);
-    if (p === 'onebyone')  setShowOneByOne(true);
-  }
+  const usStates     = countries?.us_states ?? [];
+  const usTotal      = countries?.us_total ?? 0;
+  const worldTotal   = countries?.world_total ?? 0;
+  const listings     = marketplaceListings.data?.items ?? [];
+  const listingMeta  = marketplaceListings.data?.meta;
+  const listingTotal = listingMeta?.total ?? 0;
+  const lastPage     = listingMeta?.last_page ?? 1;
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      {/* ─── Header ──────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight dark:text-white flex items-center gap-2">
-            <Globe className="h-6 w-6 text-brand-500" /> My Proxies
-          </h1>
-          <p className="text-xs text-ink-500 mt-0.5">
-            {countries ? `${(countries.us_total + countries.world_total).toLocaleString()} proxies available` : 'Loading…'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Balance */}
-          <div className="flex items-center gap-1.5 rounded-xl border border-ink-200 dark:border-ink-700 px-3 py-2 text-sm">
-            <Shield className="h-4 w-4 text-brand-500 shrink-0" />
-            <span className="text-ink-500">Balance:</span>
-            <span className="font-semibold dark:text-white">{walletBal}</span>
-          </div>
-          {/* Your IPs */}
-          <button onClick={() => setShowIpModal(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-ink-200 dark:border-ink-700 px-3 py-2 text-sm hover:border-brand-400 transition">
-            <Wifi className="h-4 w-4 text-ink-400 shrink-0" />
-            <span className="text-ink-500">Your IPs:</span>
-            <span className="font-medium dark:text-white">{ips[0] ?? 'None'}</span>
-            {ips.length > 1 && <span className="text-ink-400 text-xs">+{ips.length - 1}</span>}
-            <span className="text-xs text-brand-600 dark:text-brand-400 font-medium ml-1">Update</span>
-          </button>
-        </div>
-      </div>
+    <div className="max-w-5xl">
 
-      {/* ─── Tabs ────────────────────────────────────────────────── */}
-      <div className="flex gap-1 border-b border-ink-200 dark:border-ink-700">
-        {([
-          ['active',  `Active (${activeItems.filter(s => s.status === 'active').length})`],
-          ['history', `History (${historyItems.length})`],
-          ['shop',    'Shop'],
-        ] as const).map(([t, label]) => (
-          <button key={t} onClick={() => setPageTab(t)}
-            className={clsx('px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition',
-              pageTab === t ? 'border-ink-900 dark:border-white text-ink-900 dark:text-white' : 'border-transparent text-ink-500')}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* ─── Active Tab ──────────────────────────────────────────── */}
-      {pageTab === 'active' && (
-        <div className="space-y-6">
-          {/* Trial banner */}
-          {trial && !trial.claimed && (
-            <div className="rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-700 flex items-center justify-between gap-3 px-4 py-3">
-              <div className="flex items-center gap-2 text-sm">
-                <Zap className="h-4 w-4 text-brand-500 shrink-0" />
-                <span className="font-medium text-brand-700 dark:text-brand-300">Try a free 24h proxy</span>
-              </div>
-              <button onClick={() => claimTrial.mutate()} disabled={claimTrial.isPending}
-                className="btn-outline text-brand-600 border-brand-300 text-xs">
-                {claimTrial.isPending ? 'Activating…' : 'Claim Free Trial'}
-              </button>
-            </div>
-          )}
-
-          {/* ─ Active Subscriptions Table ─ */}
-          {activeItems.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-ink-700 dark:text-ink-300">
-                  Active proxies ({activeItems.filter(s => s.status === 'active').length})
-                  {historyItems.length > 0 && <span className="ml-2 text-ink-400 font-normal">· History ({historyItems.length})</span>}
-                </p>
-              </div>
-              <div className="rounded-xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-left text-[10px] text-ink-400 uppercase tracking-wide border-b border-ink-100 dark:border-ink-800">
-                      <th className="px-4 py-2.5 font-medium">Host:Port</th>
-                      <th className="px-2 py-2.5 font-medium">Protocol</th>
-                      <th className="px-2 py-2.5 font-medium">Location</th>
-                      <th className="px-2 py-2.5 font-medium">ISP</th>
-                      <th className="px-2 py-2.5 font-medium">Expires</th>
-                      <th className="px-2 py-2.5 font-medium">Actions</th>
-                      <th className="px-2 py-2.5 font-medium">Auto Renew</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeItems.map((s) => (
-                      <ActiveProxyRow key={s.id} sub={s} onViewCreds={() => setCredsSub(s)} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {active.isLoading && <p className="text-sm text-ink-400">Loading…</p>}
-
-          {/* ─ Plan Cards ─ */}
-          <div>
-            <p className="text-sm font-semibold text-ink-700 dark:text-ink-300 mb-3">Available plans</p>
-            <PlanCards selected={selectedPlan} onSelect={handleSelectPlan} />
-          </div>
-
+      {/* ── Balance warning ──────────────────────────────────────── */}
+      {wallet.data && wallet.data.balance_minor < 5500 && (
+        <div className="mb-4 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700 text-violet-700 dark:text-violet-300 text-sm text-center py-2.5 px-4">
+          Fund your wallet to purchase proxies — current balance: {walletBal}
         </div>
       )}
 
-      {/* ─── History Tab ─────────────────────────────────────────── */}
-      {pageTab === 'history' && (
+      {/* ── Plan Cards ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+
+        <button onClick={() => setShowOneByOne(true)}
+          className="rounded-xl border border-ink-200 dark:border-ink-700 p-4 text-left hover:border-brand-400 hover:shadow-sm transition bg-white dark:bg-ink-900">
+          <p className="font-semibold text-sm dark:text-white">1 By 1</p>
+          <p className="text-xs text-ink-500 mt-0.5">Socks / Https</p>
+          <p className="text-[11px] text-ink-400 mt-3">as low as</p>
+          <p className="text-lg font-bold dark:text-white leading-tight">$ 0.55</p>
+          <p className="text-[11px] text-ink-400">per proxy /day</p>
+        </button>
+
+        <button onClick={() => setShowSocial(true)}
+          className="relative rounded-xl border border-ink-200 dark:border-ink-700 p-4 text-left hover:border-brand-400 hover:shadow-sm transition bg-white dark:bg-ink-900">
+          <span className="absolute -top-2.5 left-4 bg-brand-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">NEW</span>
+          <p className="font-semibold text-sm dark:text-white">Social US & World Mix</p>
+          <p className="text-xs text-ink-500 mt-0.5">Socks / Https</p>
+          <p className="text-[11px] text-ink-400 mt-3">as low as</p>
+          <p className="text-lg font-bold dark:text-white leading-tight">$ 0.65</p>
+          <p className="text-[11px] text-ink-400">per proxy /day</p>
+        </button>
+
+        <div className="rounded-xl border border-ink-200 dark:border-ink-700 p-4 text-left bg-white dark:bg-ink-900">
+          <p className="font-semibold text-sm dark:text-white">Private US</p>
+          <p className="text-xs text-ink-500 mt-0.5">Socks / Https</p>
+          <p className="text-[11px] text-ink-400 mt-3">as low as</p>
+          <p className="text-lg font-bold dark:text-white leading-tight">$ 0.55</p>
+          <p className="text-[11px] text-ink-400">per proxy /day</p>
+        </div>
+
+        <div className="rounded-xl border border-ink-200 dark:border-ink-700 p-4 text-left bg-white dark:bg-ink-900">
+          <p className="font-semibold text-sm dark:text-white">Custom</p>
+          <p className="text-xs text-ink-400 mt-1">Need a different plan?</p>
+          <p className="text-sm font-bold text-ink-700 dark:text-ink-300 mt-3">CONTACT US</p>
+          <p className="text-xs text-ink-400">24 / 7 availability</p>
+        </div>
+      </div>
+
+      {/* ── Active / History nav ─────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-1 text-sm">
+          <button onClick={() => setActiveTab('active')}
+            className={clsx('font-medium transition', activeTab === 'active' ? 'text-ink-900 dark:text-white' : 'text-ink-400 hover:text-ink-600 dark:hover:text-ink-300')}>
+            Active proxies ({activeItems.length})
+          </button>
+          <span className="text-ink-300 mx-1">·</span>
+          <button onClick={() => setActiveTab('history')}
+            className={clsx('font-medium transition', activeTab === 'history' ? 'text-ink-900 dark:text-white' : 'text-ink-400 hover:text-ink-600 dark:hover:text-ink-300')}>
+            History ({historyItems.length})
+          </button>
+        </div>
+        <button onClick={() => setShowIpModal(true)}
+          className="flex items-center gap-1 text-sm text-ink-500 hover:text-ink-800 dark:hover:text-ink-200 transition">
+          <Wifi className="h-3.5 w-3.5 text-ink-400 shrink-0" />
+          <span>Your IPs:</span>
+          <span className="font-mono text-ink-700 dark:text-ink-300">{ips[0] ?? 'None'}</span>
+          {ips.length > 1 && <span className="text-ink-400 text-xs">+{ips.length - 1}</span>}
+          <span className="text-brand-500 font-medium ml-0.5">Update</span>
+        </button>
+      </div>
+
+      {/* ── Trial banner ─────────────────────────────────────────── */}
+      {activeTab === 'active' && trial && !trial.claimed && (
+        <div className="mb-4 rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-700 flex items-center justify-between gap-3 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm">
+            <Zap className="h-4 w-4 text-brand-500 shrink-0" />
+            <span className="font-medium text-brand-700 dark:text-brand-300">Try a free 24h proxy</span>
+          </div>
+          <button onClick={() => claimTrial.mutate()} disabled={claimTrial.isPending}
+            className="btn-outline text-brand-600 border-brand-300 text-xs">
+            {claimTrial.isPending ? 'Activating…' : 'Claim Free Trial'}
+          </button>
+        </div>
+      )}
+
+      {/* ── Active proxy table ───────────────────────────────────── */}
+      {activeTab === 'active' && activeItems.length > 0 && (
+        <div className="mb-5 rounded-xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-[10px] text-ink-400 uppercase tracking-wide border-b border-ink-100 dark:border-ink-800">
+                <th className="px-4 py-2.5 font-medium">Host:Port</th>
+                <th className="px-2 py-2.5 font-medium">Protocol</th>
+                <th className="px-2 py-2.5 font-medium">Location</th>
+                <th className="px-2 py-2.5 font-medium">ISP</th>
+                <th className="px-2 py-2.5 font-medium">Expires</th>
+                <th className="px-2 py-2.5 font-medium">Actions</th>
+                <th className="px-2 py-2.5 font-medium">Auto Renew</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeItems.map((s) => (
+                <ActiveProxyRow key={s.id} sub={s} onViewCreds={() => setCredsSub(s)} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'active' && active.isLoading && (
+        <p className="text-sm text-ink-400 mb-4">Loading…</p>
+      )}
+
+      {/* ── Available proxies section ────────────────────────────── */}
+      {activeTab === 'active' && (
+        <div>
+          <p className="text-sm font-semibold text-ink-700 dark:text-ink-300 mb-3">
+            Available proxies
+            {listingTotal > 0 && <span className="font-normal text-ink-400 ml-1">({listingTotal.toLocaleString()})</span>}
+          </p>
+
+          {/* Geo tabs */}
+          <div className="flex gap-2 mb-3">
+            {([
+              { key: 'us',    label: `US${usTotal > 0 ? ` - ${usTotal.toLocaleString()}` : ''}` },
+              { key: 'world', label: `WORLD MIX${worldTotal > 0 ? ` - ${worldTotal.toLocaleString()}` : ''}` },
+            ] as const).map(g => (
+              <button key={g.key}
+                onClick={() => { setShopGeo(g.key); setShopState(''); setShopPage(1); }}
+                className={clsx('px-4 py-1.5 text-xs font-medium border rounded-lg transition',
+                  shopGeo === g.key
+                    ? 'border-emerald-500 text-emerald-700 dark:text-emerald-400 bg-white dark:bg-ink-900'
+                    : 'border-ink-200 dark:border-ink-700 text-ink-500 hover:text-ink-700 dark:hover:text-ink-300 bg-white dark:bg-ink-900')}>
+                {g.label}
+              </button>
+            ))}
+          </div>
+
+          {/* US State grid */}
+          {shopGeo === 'us' && usStates.length > 0 && (
+            <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-10 gap-x-3 gap-y-0.5 p-3 mb-3 border border-ink-200 dark:border-ink-700 rounded-lg bg-white dark:bg-ink-900">
+              {usStates.map(s => (
+                <button key={s.code}
+                  onClick={() => { setShopState(shopState === s.code ? '' : s.code); setShopPage(1); }}
+                  className={clsx('text-[11px] py-0.5 text-left whitespace-nowrap transition',
+                    shopState === s.code
+                      ? 'text-brand-600 dark:text-brand-400 font-semibold'
+                      : 'text-ink-500 dark:text-ink-400 hover:text-ink-800 dark:hover:text-ink-200')}>
+                  {s.code} - {s.count}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Filter row */}
+          <div className="flex flex-wrap gap-2 mb-2">
+            <select value={shopType} onChange={e => { setShopType(e.target.value); setShopPage(1); }}
+              className="input text-xs py-1.5 px-2 h-auto w-auto">
+              <option value="">All Types</option>
+              <option value="wifi">WiFi</option>
+              <option value="cell">Cell</option>
+            </select>
+            <select value={shopProtocol} onChange={e => { setShopProtocol(e.target.value); setShopPage(1); }}
+              className="input text-xs py-1.5 px-2 h-auto w-auto">
+              <option value="">All Protocols</option>
+              <option value="http">HTTP</option>
+              <option value="socks5">SOCKS5</option>
+            </select>
+            {shopState && (
+              <button onClick={() => { setShopState(''); setShopPage(1); }}
+                className="text-xs px-3 py-1.5 border border-brand-300 text-brand-600 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-900/20 transition flex items-center gap-1">
+                {shopState} <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Proxy table */}
+          <div className="rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden bg-white dark:bg-ink-900">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm whitespace-nowrap">
+                <thead>
+                  <tr className="bg-ink-600 dark:bg-ink-700 text-white text-xs">
+                    <th className="px-3 py-2.5 text-left font-medium">IP</th>
+                    <th className="px-3 py-2.5 text-left font-medium">Type</th>
+                    <th className="px-3 py-2.5 text-left font-medium">Protocol</th>
+                    <th className="px-3 py-2.5 text-left font-medium">Region</th>
+                    <th className="px-3 py-2.5 text-left font-medium">City</th>
+                    <th className="px-3 py-2.5 text-left font-medium">ISP</th>
+                    <th className="px-3 py-2.5 text-left font-medium">Speed</th>
+                    <th className="px-3 py-2.5 text-right font-medium">Price /day</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {marketplaceListings.isLoading && (
+                    <tr><td colSpan={8} className="text-center py-10 text-ink-400 text-xs">Loading…</td></tr>
+                  )}
+                  {!marketplaceListings.isLoading && listings.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="text-center py-10 text-ink-400">
+                        <WifiOff className="h-7 w-7 mx-auto mb-2 opacity-40" />
+                        <p className="text-xs">No proxies available with these filters.</p>
+                      </td>
+                    </tr>
+                  )}
+                  {listings.map((l, i) => (
+                    <tr key={l.id}
+                      onClick={() => setBuyListing(l)}
+                      className={clsx('border-b border-ink-100 dark:border-ink-800 cursor-pointer transition',
+                        i % 2 === 1 ? 'bg-ink-50/40 dark:bg-ink-800/10' : '',
+                        'hover:bg-brand-50/60 dark:hover:bg-brand-900/10')}>
+                      <td className="px-3 py-2 text-brand-500 dark:text-brand-400 font-mono text-xs font-medium">
+                        {l.ip_display ?? '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        <span className="flex items-center gap-1 text-ink-600 dark:text-ink-300">
+                          {l.connection_type === 'wifi'
+                            ? <Wifi className="h-3 w-3 text-brand-500 shrink-0" />
+                            : <Smartphone className="h-3 w-3 text-purple-500 shrink-0" />}
+                          {l.connection_type === 'wifi' ? 'WiFi' : 'Cell'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-ink-600 dark:text-ink-300">
+                        {l.protocol === 'socks5' ? 'Socks' : 'Https'}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-ink-600 dark:text-ink-300">
+                        {l.state_name ?? l.state_code ?? l.country_name ?? '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-ink-600 dark:text-ink-300">{l.city ?? '—'}</td>
+                      <td className="px-3 py-2 text-xs text-ink-600 dark:text-ink-300 max-w-[130px] truncate">{l.isp ?? '—'}</td>
+                      <td className="px-3 py-2 text-xs">
+                        <span className={clsx('font-medium',
+                          l.speed_ms <= 15 ? 'text-emerald-600 dark:text-emerald-400'
+                          : l.speed_ms <= 30 ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-ink-400')}>
+                          {l.speed_ms}ms
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <span className="text-brand-500 dark:text-brand-400 font-bold">
+                          $ {(l.price_minor / 3000).toFixed(2)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {listingMeta && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-ink-100 dark:border-ink-800 text-xs text-ink-500">
+                <span>
+                  {listingTotal === 0
+                    ? '0 Proxies'
+                    : `${((shopPage - 1) * 20) + 1} - ${Math.min(shopPage * 20, listingTotal)} of ${listingTotal.toLocaleString()} Proxies`}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setShopPage(p => Math.max(1, p - 1))} disabled={shopPage === 1}
+                    className="px-2 py-1 border border-ink-200 dark:border-ink-700 rounded disabled:opacity-40 hover:bg-ink-50 dark:hover:bg-ink-800 transition">
+                    ←
+                  </button>
+                  {Array.from({ length: Math.min(5, lastPage) }, (_, i) => {
+                    let pg = i + 1;
+                    if (lastPage > 5 && shopPage > 3) pg = shopPage - 2 + i;
+                    if (pg < 1 || pg > lastPage) return null;
+                    return (
+                      <button key={pg} onClick={() => setShopPage(pg)}
+                        className={clsx('px-2.5 py-1 border rounded transition',
+                          shopPage === pg
+                            ? 'bg-brand-500 text-white border-brand-500'
+                            : 'border-ink-200 dark:border-ink-700 hover:bg-ink-50 dark:hover:bg-ink-800')}>
+                        {pg}
+                      </button>
+                    );
+                  })}
+                  {lastPage > 5 && shopPage < lastPage - 2 && <span className="px-1 text-ink-300">…</span>}
+                  {lastPage > 5 && shopPage < lastPage - 1 && (
+                    <button onClick={() => setShopPage(lastPage)}
+                      className="px-2.5 py-1 border border-ink-200 dark:border-ink-700 rounded hover:bg-ink-50 dark:hover:bg-ink-800 transition">
+                      {lastPage}
+                    </button>
+                  )}
+                  <button onClick={() => setShopPage(p => Math.min(lastPage, p + 1))} disabled={shopPage === lastPage}
+                    className="px-2 py-1 border border-ink-200 dark:border-ink-700 rounded disabled:opacity-40 hover:bg-ink-50 dark:hover:bg-ink-800 transition">
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── History ──────────────────────────────────────────────── */}
+      {activeTab === 'history' && (
         <div className="space-y-2">
           {history.isLoading && <p className="text-sm text-ink-400">Loading…</p>}
           {!history.isLoading && historyItems.length === 0 && (
@@ -1130,155 +1254,20 @@ export default function MyProxiesPage() {
         </div>
       )}
 
-      {/* ─── Shop Tab ────────────────────────────────────────────── */}
-      {pageTab === 'shop' && (
-        <div className="space-y-4">
-          {/* Filters */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="flex rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden text-sm">
-              {(['wifi', 'cell'] as const).map((t) => (
-                <button key={t} onClick={() => { setShopType(t); setShopPage(1); }}
-                  className={clsx('px-3 py-1.5 flex items-center gap-1.5 transition', shopType === t
-                    ? 'bg-ink-900 dark:bg-white text-white dark:text-ink-900 font-medium'
-                    : 'text-ink-500 hover:text-ink-800 dark:hover:text-ink-200')}>
-                  {t === 'wifi' ? <Wifi className="h-3.5 w-3.5" /> : <Smartphone className="h-3.5 w-3.5" />}
-                  {t === 'wifi' ? 'WiFi' : 'Cellular'}
-                </button>
-              ))}
-            </div>
-            <div className="flex rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden text-sm">
-              {(['http', 'socks5'] as const).map((p) => (
-                <button key={p} onClick={() => { setShopProtocol(p); setShopPage(1); }}
-                  className={clsx('px-3 py-1.5 transition', shopProtocol === p
-                    ? 'bg-ink-900 dark:bg-white text-white dark:text-ink-900 font-medium'
-                    : 'text-ink-500 hover:text-ink-800 dark:hover:text-ink-200')}>
-                  {p.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            {marketplaceListings.data && (
-              <span className="text-xs text-ink-400 ml-auto">
-                {marketplaceListings.data.meta.total} proxies available
-              </span>
-            )}
-          </div>
-
-          {/* List */}
-          <div className="rounded-xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 overflow-hidden">
-            {/* Header */}
-            <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_80px_90px] gap-2 px-4 py-2.5 text-[10px] font-medium text-ink-400 uppercase tracking-wide border-b border-ink-100 dark:border-ink-800">
-              <span>Location / ISP</span>
-              <span>Type</span>
-              <span>Speed</span>
-              <span>Protocol</span>
-              <span className="text-right">Price / day</span>
-            </div>
-
-            {marketplaceListings.isLoading && (
-              <div className="text-center py-12 text-ink-400 text-sm">Loading…</div>
-            )}
-
-            {!marketplaceListings.isLoading && (marketplaceListings.data?.items ?? []).length === 0 && (
-              <div className="text-center py-12 text-ink-400">
-                <WifiOff className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">No proxies available with these filters.</p>
-              </div>
-            )}
-
-            {(marketplaceListings.data?.items ?? []).map((listing, i) => (
-              <div key={listing.id}
-                className={clsx('grid grid-cols-[1fr_auto] sm:grid-cols-[2fr_1fr_1fr_80px_90px] gap-2 items-center px-4 py-3 hover:bg-ink-50 dark:hover:bg-ink-800/50 transition',
-                  i > 0 && 'border-t border-ink-50 dark:border-ink-800')}>
-
-                {/* Location + ISP */}
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="text-xl leading-none shrink-0">{flag(listing.country_code)}</span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium dark:text-white truncate">
-                      {listing.city ?? listing.country_name}
-                      {listing.state_code && <span className="text-ink-400 font-normal">, {listing.state_code}</span>}
-                    </p>
-                    <p className="text-xs text-ink-500 truncate">{listing.isp ?? listing.country_name}</p>
-                  </div>
-                </div>
-
-                {/* Type */}
-                <div className="hidden sm:flex items-center gap-1 text-xs text-ink-500">
-                  {listing.connection_type === 'wifi'
-                    ? <Wifi className="h-3.5 w-3.5 text-brand-500" />
-                    : <Smartphone className="h-3.5 w-3.5 text-purple-500" />}
-                  {listing.connection_type === 'wifi' ? 'WiFi' : 'Cell'}
-                </div>
-
-                {/* Speed */}
-                <div className="hidden sm:block">
-                  <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full',
-                    listing.speed_ms <= 15 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : listing.speed_ms <= 30 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                    : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400')}>
-                    {listing.speed_ms}ms
-                  </span>
-                </div>
-
-                {/* Protocol */}
-                <div className="hidden sm:block">
-                  <span className="text-xs bg-ink-100 dark:bg-ink-800 text-ink-600 dark:text-ink-400 px-2 py-0.5 rounded font-mono">
-                    {listing.protocol.toUpperCase()}
-                  </span>
-                </div>
-
-                {/* Price + Buy */}
-                <div className="flex items-center justify-end gap-2 col-span-1 sm:col-span-1">
-                  <div className="text-right">
-                    <p className="text-sm font-semibold dark:text-white">{fmt(Math.ceil(listing.price_minor / 30))}</p>
-                    <p className="text-[10px] text-ink-400 hidden sm:block">/day</p>
-                  </div>
-                  <button
-                    onClick={() => setBuyListing(listing)}
-                    className="flex items-center gap-1 bg-brand-500 hover:bg-brand-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition shrink-0">
-                    <ShoppingCart className="h-3 w-3" />
-                    <span className="hidden sm:inline">Buy</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {marketplaceListings.data && marketplaceListings.data.meta.last_page > 1 && (
-            <div className="flex items-center justify-center gap-3">
-              <button onClick={() => setShopPage(p => Math.max(1, p - 1))}
-                disabled={shopPage === 1}
-                className="btn-ghost p-1.5 disabled:opacity-40">
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="text-sm text-ink-500">
-                Page {shopPage} of {marketplaceListings.data.meta.last_page}
-              </span>
-              <button onClick={() => setShopPage(p => Math.min(marketplaceListings.data!.meta.last_page, p + 1))}
-                disabled={shopPage === marketplaceListings.data.meta.last_page}
-                className="btn-ghost p-1.5 disabled:opacity-40">
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── Modals ───────────────────────────────────────────────── */}
+      {/* ── Modals ───────────────────────────────────────────────── */}
       {showIpModal && <IpWhitelistModal currentIps={ips} onClose={() => setShowIpModal(false)} />}
       {credsSub    && <CredentialsModal sub={credsSub} onClose={() => setCredsSub(null)} />}
       {buyListing  && <BuyListingModal listing={buyListing} walletMinor={walletMinor} accessIp={ips[0] ?? ''} onClose={() => setBuyListing(null)} />}
       {showOneByOne && (
         <OneByOneConfigModal
           walletMinor={walletMinor} ips={ips} countries={countries}
-          onClose={() => { setShowOneByOne(false); setSelectedPlan(null); }}
+          onClose={() => setShowOneByOne(false)}
         />
       )}
       {showSocial && (
         <SocialConfigModal
           walletMinor={walletMinor} ips={ips} countries={countries}
-          onClose={() => { setShowSocial(false); setSelectedPlan(null); }}
+          onClose={() => setShowSocial(false)}
         />
       )}
     </div>
