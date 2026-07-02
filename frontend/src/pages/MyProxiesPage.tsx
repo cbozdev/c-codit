@@ -833,8 +833,8 @@ function BuyListingModal({ listing, walletMinor, accessIp, onClose }: {
   listing: ProxyListing; walletMinor: number; accessIp: string; onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const [durationIdx, setDurationIdx] = useState(4);
-  const days = DURATIONS[durationIdx]?.days ?? 30;
+  const [durationIdx, setDurationIdx] = useState(0);
+  const days = DURATIONS[durationIdx]?.days ?? 1;
   const priceMinor = listing.price_minor * Math.ceil(days / 30);
   const insufficient = walletMinor < priceMinor;
 
