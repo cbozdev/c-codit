@@ -106,7 +106,9 @@ function IpWhitelistModal({ currentIps, onClose }: { currentIps: string[]; onClo
 
 type TestResult = { success: boolean; ip?: string; country?: string; city?: string | null; speed_ms?: number; error?: string };
 
-function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: () => void }) {
+function CredentialsModal({ sub, onClose, onSetupIpAuth }: {
+  sub: ProxySubscription; onClose: () => void; onSetupIpAuth?: () => void;
+}) {
   const [showPw, setShowPw] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
 
@@ -153,9 +155,19 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
               <p className="text-[10px] text-emerald-500 mt-1.5">If your IP changes, update "Your IPs" in the header to re-enable this.</p>
             </div>
           ) : (
-            <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3">
-              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1">IP Auth not active</p>
-              <p className="text-xs text-amber-600 dark:text-amber-400">Set your IP in "Your IPs" (top of page) to enable credential-free access.</p>
+            <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3 space-y-2">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                Credentials required — IP Auth not active
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Save your IP address once and connect without username &amp; password from that IP.
+              </p>
+              {onSetupIpAuth && (
+                <button onClick={onSetupIpAuth}
+                  className="w-full px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition text-center">
+                  Add Your IP Address →
+                </button>
+              )}
             </div>
           )}
 
@@ -1258,7 +1270,7 @@ export default function MyProxiesPage() {
 
       {/* ── Modals ───────────────────────────────────────────────── */}
       {showIpModal && <IpWhitelistModal currentIps={ips} onClose={() => setShowIpModal(false)} />}
-      {credsSub    && <CredentialsModal sub={credsSub} onClose={() => setCredsSub(null)} />}
+      {credsSub    && <CredentialsModal sub={credsSub} onClose={() => setCredsSub(null)} onSetupIpAuth={() => { setCredsSub(null); setShowIpModal(true); }} />}
       {buyListing  && <BuyListingModal listing={buyListing} walletMinor={walletMinor} accessIp={ips[0] ?? ''} onClose={() => setBuyListing(null)} />}
       {showOneByOne && (
         <OneByOneConfigModal
