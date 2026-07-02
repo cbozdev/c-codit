@@ -107,6 +107,8 @@ export type ProxySubscription = {
   proxy_url_ip?: string | null;
   location_country: string;
   location_city: string | null;
+  isp: string | null;
+  state_code: string | null;
   bandwidth_gb_total: number;
   bandwidth_gb_used: number;
   bandwidth_percent: number;

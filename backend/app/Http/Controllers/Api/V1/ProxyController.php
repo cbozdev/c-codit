@@ -617,6 +617,8 @@ class ProxyController extends Controller
             'username'             => $sub->username,
             'location_country'     => $sub->location_country,
             'location_city'        => $sub->location_city,
+            'isp'                  => $sub->config['isp'] ?? null,
+            'state_code'           => $sub->config['state_code'] ?? null,
             'bandwidth_gb_total'   => (float) $sub->bandwidth_gb_total,
             'bandwidth_gb_used'    => (float) $sub->bandwidth_gb_used,
             'bandwidth_percent'    => $sub->bandwidthPercent(),

@@ -698,7 +698,6 @@ function PlanCards({ selected, onSelect }: { selected: Plan; onSelect: (p: Plan)
 
 function ActiveProxyRow({ sub, onViewCreds }: { sub: ProxySubscription; onViewCreds: () => void }) {
   const qc     = useQueryClient();
-  const config = (sub as any).config as Record<string, unknown> | null;
   const [showRefundConfirm, setShowRefundConfirm] = useState(false);
 
   const toggleAR = useMutation({
@@ -724,7 +723,7 @@ function ActiveProxyRow({ sub, onViewCreds }: { sub: ProxySubscription; onViewCr
   const hoursLeft   = Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 3600000));
   const provisioned = sub.provisioned_at ? new Date(sub.provisioned_at) : null;
   const canRefund   = provisioned && (Date.now() - provisioned.getTime()) < 3600000;
-  const stateCode   = config?.state_code as string | null;
+  const stateCode   = sub.state_code;
 
   return (
     <>
@@ -754,7 +753,7 @@ function ActiveProxyRow({ sub, onViewCreds }: { sub: ProxySubscription; onViewCr
         </td>
         {/* ISP */}
         <td className="py-3 pr-4 text-xs text-ink-500 max-w-[120px] truncate">
-          {(config?.isp as string) ?? sub.provider}
+          {sub.isp ?? sub.provider}
         </td>
         {/* Expires */}
         <td className="py-3 pr-4 text-xs">
