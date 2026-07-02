@@ -125,8 +125,8 @@ function CredentialsModal({ sub, onClose }: { sub: ProxySubscription; onClose: (
   const proxyUrl = data?.proxy_url ?? `${creds.protocol}://${creds.username}:***@${creds.host}:${creds.port}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-ink-900 rounded-2xl shadow-2xl w-full max-w-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white dark:bg-ink-900 rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-ink-100 dark:border-ink-800">
           <div>
             <h2 className="font-semibold dark:text-white">{sub.location_country} Proxy Credentials</h2>
@@ -966,7 +966,8 @@ export default function MyProxiesPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const activeItems  = active.data?.items ?? [];
+  const now = Date.now();
+  const activeItems  = (active.data?.items ?? []).filter(s => s.status === 'active' && (!s.expires_at || new Date(s.expires_at).getTime() > now));
   const historyItems = history.data?.items ?? [];
   const countries    = marketplaceCountries.data;
   const ips          = whitelist.data?.ips ?? [];
