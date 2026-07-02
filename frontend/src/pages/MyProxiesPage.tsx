@@ -1211,8 +1211,8 @@ export default function MyProxiesPage() {
                 {/* Price + Buy */}
                 <div className="flex items-center justify-end gap-2 col-span-1 sm:col-span-1">
                   <div className="text-right">
-                    <p className="text-sm font-semibold dark:text-white">{listing.price}</p>
-                    <p className="text-[10px] text-ink-400 hidden sm:block">/mo</p>
+                    <p className="text-sm font-semibold dark:text-white">{fmt(Math.ceil(listing.price_minor / 30))}</p>
+                    <p className="text-[10px] text-ink-400 hidden sm:block">/day</p>
                   </div>
                   <button
                     onClick={() => setBuyListing(listing)}
