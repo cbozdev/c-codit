@@ -1856,11 +1856,17 @@ function ProxyAdminTab() {
   });
 
   const syncListings = useMutation({
-    mutationFn: (file: File) => {
-      const form = new FormData();
-      form.append('file', file);
-      return apiCall<{ count: number }>({ method: 'POST', url: '/admin/proxy/sync-listings', data: form });
-    },
+    mutationFn: (file: File) =>
+      new Promise<{ count: number }>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const data = ev.target?.result as string;
+          apiCall<{ count: number }>({ method: 'POST', url: '/admin/proxy/sync-listings', data: { data } })
+            .then(resolve).catch(reject);
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsText(file);
+      }),
     onSuccess: (r) => { toast.success(`${r.count} proxy listings imported.`); qc.invalidateQueries({ queryKey: ['proxy', 'marketplace'] }); },
     onError: (e) => toast.error((e as Error).message),
   });
