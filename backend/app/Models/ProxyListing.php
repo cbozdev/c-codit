@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
 
 class ProxyListing extends Model
 {
@@ -11,6 +12,7 @@ class ProxyListing extends Model
         'state_code', 'state_name', 'city', 'isp', 'zip',
         'ip_display', 'connection_type', 'protocol',
         'speed_ms', 'price_minor', 'is_available', 'sort_order',
+        'proxy_host', 'proxy_port', 'proxy_username', 'proxy_password_encrypted',
     ];
 
     protected function casts(): array
@@ -20,10 +22,31 @@ class ProxyListing extends Model
             'speed_ms'     => 'integer',
             'price_minor'  => 'integer',
             'sort_order'   => 'integer',
+            'proxy_port'   => 'integer',
         ];
     }
 
     public function getRouteKeyName(): string { return 'public_id'; }
+
+    public function isIspProxy(): bool
+    {
+        return ! empty($this->proxy_host) && ! empty($this->proxy_port);
+    }
+
+    public function getProxyPassword(): ?string
+    {
+        if (! $this->proxy_password_encrypted) return null;
+        try {
+            return Crypt::decryptString($this->proxy_password_encrypted);
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    public function setProxyPassword(string $password): void
+    {
+        $this->proxy_password_encrypted = Crypt::encryptString($password);
+    }
 
     public function priceFormatted(): string
     {

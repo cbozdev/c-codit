@@ -249,6 +249,11 @@ class ProxyProvisioningService
         bool         $speedUpgrade = false,
         ?string      $accessIp    = null,
     ): ProxySubscription {
+        // ISP static listings have stored credentials — bypass Decodo API provisioning
+        if ($listing->isIspProxy()) {
+            return $this->purchaseIspListing($user, $listing, $durationDays, $speedUpgrade, $accessIp);
+        }
+
         // Price = daily rate (base/30) × days, with optional +50% speed upgrade
         $dailyRate   = (int) ceil($listing->price_minor / 30);
         $amountMinor = (int) round($dailyRate * $durationDays * ($speedUpgrade ? 1.5 : 1.0));
@@ -342,6 +347,98 @@ class ProxyProvisioningService
                 'subscription_id' => $sub->public_id,
                 'listing_id'      => $listing->public_id,
                 'country'         => $listing->country_code,
+                'amount_minor'    => $amountMinor,
+            ]);
+
+            return $sub->fresh();
+        });
+    }
+
+    // ─── ISP static proxy — use stored listing credentials directly ───────────
+
+    private function purchaseIspListing(
+        User         $user,
+        ProxyListing $listing,
+        int          $durationDays,
+        bool         $speedUpgrade,
+        ?string      $accessIp,
+    ): ProxySubscription {
+        $dailyRate    = (int) ceil($listing->price_minor / 30);
+        $amountMinor  = (int) round($dailyRate * $durationDays * ($speedUpgrade ? 1.5 : 1.0));
+        $walletAmount = Money::minor($amountMinor, 'USD');
+        $wallet       = $this->wallets->getOrCreate($user, 'USD');
+        $idempKey     = 'isp_listing:' . $listing->public_id . ':' . $user->id . ':' . now()->timestamp;
+
+        $holdTx = $this->wallets->holdForPurchase(
+            wallet:         $wallet,
+            amount:         $walletAmount,
+            idempotencyKey: $idempKey,
+            reference:      $wallet,
+            description:    "ISP Proxy: {$listing->city}" . ($listing->state_code ? ", {$listing->state_code}" : ''),
+        );
+
+        return DB::transaction(function () use (
+            $user, $listing, $holdTx, $durationDays, $amountMinor, $speedUpgrade, $accessIp
+        ) {
+            $sub = new ProxySubscription([
+                'public_id'                => (string) Str::uuid(),
+                'user_id'                  => $user->id,
+                'provider'                 => 'decodo',
+                'provider_subscription_id' => 'isp:' . $listing->public_id,
+                'proxy_type'               => 'isp_static',
+                'protocol'                 => $listing->protocol,
+                'host'                     => $listing->proxy_host,
+                'port'                     => $listing->proxy_port,
+                'username'                 => $listing->proxy_username,
+                'location_country'         => strtoupper($listing->country_code),
+                'location_city'            => $listing->city,
+                'bandwidth_gb_total'       => 0,
+                'bandwidth_gb_used'        => 0,
+                'ip_count'                 => 1,
+                'threads'                  => 1,
+                'status'                   => 'active',
+                'is_trial'                 => false,
+                'duration_days'            => $durationDays,
+                'expires_at'               => now()->addDays($durationDays),
+                'provisioned_at'           => now(),
+                'config'                   => [
+                    'listing_id'      => $listing->public_id,
+                    'connection_type' => $listing->connection_type,
+                    'isp'             => $listing->isp,
+                    'state_code'      => $listing->state_code,
+                    'state_name'      => $listing->state_name,
+                    'ip_display'      => $listing->ip_display,
+                    'speed_upgrade'   => $speedUpgrade,
+                    'access_ip'       => $accessIp,
+                    'amount_minor'    => $amountMinor,
+                ],
+            ]);
+
+            $password = $listing->getProxyPassword();
+            if ($password) {
+                $sub->setPassword($password);
+            }
+            $sub->save();
+
+            // Mark listing as sold so it won't be double-sold
+            $listing->update(['is_available' => false]);
+
+            ProxyUsageLog::create([
+                'subscription_id' => $sub->id,
+                'user_id'         => $user->id,
+                'event_type'      => 'provisioned',
+                'bandwidth_mb'    => 0,
+                'data'            => ['provider' => 'decodo', 'listing_id' => $listing->public_id, 'type' => 'isp_static'],
+            ]);
+
+            $this->wallets->settleSuspense($holdTx, 'isp_listing_settle:' . $listing->public_id . ':' . $sub->public_id);
+
+            Audit::log('proxy.isp_listing_purchased', $user, [
+                'subscription_id' => $sub->public_id,
+                'listing_id'      => $listing->public_id,
+                'country'         => $listing->country_code,
+                'host'            => $listing->proxy_host,
+                'port'            => $listing->proxy_port,
                 'amount_minor'    => $amountMinor,
             ]);
 

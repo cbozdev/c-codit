@@ -305,24 +305,34 @@ class ProxyAdminController extends Controller
                 default       => 9700,
             };
 
+            // Encrypt ISP proxy password if provided
+            $proxyPasswordEncrypted = null;
+            if (! empty($proxy['proxy_password'])) {
+                $proxyPasswordEncrypted = \Illuminate\Support\Facades\Crypt::encryptString($proxy['proxy_password']);
+            }
+
             $rows[] = [
-                'public_id'       => (string) \Illuminate\Support\Str::uuid(),
-                'country_code'    => $countryCode,
-                'country_name'    => $proxy['country_name'] ?? $countryCode,
-                'state_code'      => strtoupper($proxy['state_code'] ?? $proxy['state'] ?? '') ?: null,
-                'state_name'      => $proxy['state_name'] ?? null,
-                'city'            => $proxy['city'] ?? null,
-                'isp'             => $proxy['isp'] ?? null,
-                'zip'             => $proxy['zip'] ?? null,
-                'ip_display'      => $ipDisplay,
-                'connection_type' => $connType,
-                'protocol'        => $proto,
-                'speed_ms'        => max(1, (int) ($proxy['speed_ms'] ?? $proxy['ping'] ?? 120)),
-                'price_minor'     => $priceMinor,
-                'is_available'    => (bool) ($proxy['available'] ?? $proxy['is_available'] ?? true),
-                'sort_order'      => $order++,
-                'created_at'      => $now,
-                'updated_at'      => $now,
+                'public_id'                => (string) \Illuminate\Support\Str::uuid(),
+                'country_code'             => $countryCode,
+                'country_name'             => $proxy['country_name'] ?? $countryCode,
+                'state_code'               => strtoupper($proxy['state_code'] ?? $proxy['state'] ?? '') ?: null,
+                'state_name'               => $proxy['state_name'] ?? null,
+                'city'                     => $proxy['city'] ?? null,
+                'isp'                      => $proxy['isp'] ?? null,
+                'zip'                      => $proxy['zip'] ?? null,
+                'ip_display'               => $ipDisplay,
+                'connection_type'          => $connType,
+                'protocol'                 => $proto,
+                'speed_ms'                 => max(1, (int) ($proxy['speed_ms'] ?? $proxy['ping'] ?? 120)),
+                'price_minor'              => $priceMinor,
+                'is_available'             => (bool) ($proxy['available'] ?? $proxy['is_available'] ?? true),
+                'sort_order'               => $order++,
+                'proxy_host'               => $proxy['proxy_host'] ?? null,
+                'proxy_port'               => isset($proxy['proxy_port']) ? (int) $proxy['proxy_port'] : null,
+                'proxy_username'           => $proxy['proxy_username'] ?? null,
+                'proxy_password_encrypted' => $proxyPasswordEncrypted,
+                'created_at'               => $now,
+                'updated_at'               => $now,
             ];
         }
 
