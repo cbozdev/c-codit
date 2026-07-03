@@ -270,6 +270,44 @@ class ProxyController extends Controller
             $this->decodo->updateSubUserAllowedIps($masterSubUserId, $ips);
         }
 
+        // Update ISP sub-user if the user has active ISP subscriptions.
+        // The ISP sub-user ID is shared across all ISP buyers, so we aggregate
+        // all active ISP users' IPs to avoid overwriting each other's whitelists.
+        $ispSubUserId = config('services.decodo.isp_sub_user_id');
+        if ($ispSubUserId) {
+            $hasIspSub = ProxySubscription::where('user_id', $user->id)
+                ->where('status', 'active')
+                ->where('proxy_type', 'isp_static')
+                ->exists();
+
+            if ($hasIspSub) {
+                // Collect IPs from ALL active ISP proxy owners so we don't erase other users
+                $allIspUserIds = ProxySubscription::where('status', 'active')
+                    ->where('proxy_type', 'isp_static')
+                    ->pluck('user_id')
+                    ->unique();
+
+                $allIspIps = \App\Models\UserIpWhitelist::whereIn('user_id', $allIspUserIds)
+                    ->pluck('ip_address')
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                $this->decodo->updateSubUserAllowedIps($ispSubUserId, $allIspIps);
+
+                // Mark all this user's ISP subs as IP-auth enabled
+                ProxySubscription::where('user_id', $user->id)
+                    ->where('status', 'active')
+                    ->where('proxy_type', 'isp_static')
+                    ->get()
+                    ->each(function (ProxySubscription $sub) {
+                        $config = $sub->config ?? [];
+                        $config['ip_auth_enabled'] = true;
+                        $sub->update(['config' => $config]);
+                    });
+            }
+        }
+
         ProxySubscription::where('user_id', $user->id)
             ->where('status', 'active')
             ->get()

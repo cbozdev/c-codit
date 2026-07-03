@@ -147,6 +147,19 @@ class DecodoService
 
     // ─── IP Whitelist (allow sub-user to connect without username/password) ─────
 
+    public function listSubUsers(): array
+    {
+        if (! $this->hasApiKey()) return [];
+        try {
+            $res = Http::withHeaders($this->apiHeaders())
+                ->timeout(10)
+                ->get(self::API_BASE . '/v2/sub-users');
+            return $res->successful() ? ($res->json('data') ?? $res->json() ?? []) : [];
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
     public function updateSubUserAllowedIps(string $subUserId, array $ips): bool
     {
         if (! $this->hasApiKey() || ! is_numeric($subUserId)) {

@@ -236,6 +236,14 @@ class ProxyAdminController extends Controller
         ]);
     }
 
+    // ─── Decodo sub-user list (for finding ISP sub-user ID) ──────────────────
+
+    public function decodoSubUsers(\App\Services\Proxy\DecodoService $decodo)
+    {
+        $users = $decodo->listSubUsers();
+        return ApiResponse::ok(['sub_users' => $users]);
+    }
+
     // ─── Import marketplace listings from uploaded JSON/CSV ──────────────────
 
     public function syncListings(Request $request)

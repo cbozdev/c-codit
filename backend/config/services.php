@@ -94,6 +94,7 @@ return [
         'password'         => env('DECODO_PASSWORD'),
         'enabled'          => (bool) env('DECODO_ENABLED', true),
         'sub_user_id'      => env('DECODO_SUB_USER_ID'),
+        'isp_sub_user_id'  => env('DECODO_ISP_SUB_USER_ID'),
         'unsupported_types'=> [],
     ],
 
