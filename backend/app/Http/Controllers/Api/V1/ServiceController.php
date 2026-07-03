@@ -924,6 +924,9 @@ class ServiceController extends Controller
         if (! in_array($order->status, ['completed', 'provisioning', 'pending'])) {
             return ApiResponse::fail('This order cannot be cancelled.', null, 422);
         }
+        if (! empty(($order->delivery['sms_code'] ?? null))) {
+            return ApiResponse::fail('A code was already received for this number. Refunds are not available after a code has been delivered.', null, 422);
+        }
 
         $holdTx = $order->transaction;
         if (! $holdTx) {
