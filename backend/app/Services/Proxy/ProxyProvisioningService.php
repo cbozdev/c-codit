@@ -3,6 +3,7 @@
 namespace App\Services\Proxy;
 
 use App\Models\ProxyListing;
+use App\Models\UserIpWhitelist;
 use App\Models\ProxySubscription;
 use App\Models\ProxyTrial;
 use App\Models\ProxyUsageLog;
@@ -632,16 +633,28 @@ class ProxyProvisioningService
     public function syncUsage(ProxySubscription $sub): void
     {
         try {
+            $wasActive = $sub->status === 'active';
+
             $usage       = $this->getProviderService($sub->provider)->getUsage($sub->provider_subscription_id);
             $previousUsed= $sub->bandwidth_gb_used;
             $newUsed     = $usage['bandwidth_gb_used'] ?? $sub->bandwidth_gb_used;
             $delta       = max(0, $newUsed - $previousUsed);
+            $nowExpired  = $sub->isExpired();
 
             $sub->update([
                 'bandwidth_gb_used' => $newUsed,
                 'last_synced_at'    => now(),
-                'status'            => $sub->isExpired() ? 'expired' : $sub->status,
+                'status'            => $nowExpired ? 'expired' : $sub->status,
             ]);
+
+            // Re-list ISP proxy and strip IP from Decodo whitelist on expiry
+            if ($wasActive && $nowExpired && $sub->proxy_type === 'isp_static') {
+                $listingId = $sub->config['listing_id'] ?? null;
+                if ($listingId) {
+                    ProxyListing::where('public_id', $listingId)->update(['is_available' => true]);
+                }
+                $this->syncIspWhitelist($sub->user_id);
+            }
 
             if ($delta > 0) {
                 ProxyUsageLog::create([
@@ -711,13 +724,29 @@ class ProxyProvisioningService
 
     public function cancel(ProxySubscription $sub): void
     {
-        try {
-            $this->getProviderService($sub->provider)->cancelSubscription($sub->provider_subscription_id);
-        } catch (\Throwable $e) {
-            Log::warning('proxy.cancel.provider_error', ['error' => $e->getMessage()]);
+        $isIsp = $sub->proxy_type === 'isp_static';
+
+        if (! $isIsp) {
+            try {
+                $this->getProviderService($sub->provider)->cancelSubscription($sub->provider_subscription_id);
+            } catch (\Throwable $e) {
+                Log::warning('proxy.cancel.provider_error', ['error' => $e->getMessage()]);
+            }
         }
 
         $sub->update(['status' => 'cancelled']);
+
+        // Re-list the ISP proxy so it can be sold again
+        if ($isIsp) {
+            $listingId = $sub->config['listing_id'] ?? null;
+            if ($listingId) {
+                ProxyListing::where('public_id', $listingId)
+                    ->update(['is_available' => true]);
+            }
+
+            // Rebuild Decodo ISP whitelist without this user's IPs
+            $this->syncIspWhitelist($sub->user_id);
+        }
 
         ProxyUsageLog::create([
             'subscription_id' => $sub->id,
@@ -725,6 +754,28 @@ class ProxyProvisioningService
             'event_type'      => 'cancel',
             'bandwidth_mb'    => 0,
         ]);
+    }
+
+    // Rebuild the Decodo ISP IP whitelist from all remaining active ISP users,
+    // optionally excluding a user who just cancelled.
+    private function syncIspWhitelist(?int $excludeUserId = null): void
+    {
+        $ispSubUserId = config('services.decodo.isp_sub_user_id');
+        if (! $ispSubUserId) return;
+
+        $activeIspUserIds = ProxySubscription::where('status', 'active')
+            ->where('proxy_type', 'isp_static')
+            ->when($excludeUserId, fn($q) => $q->where('user_id', '!=', $excludeUserId))
+            ->pluck('user_id')
+            ->unique();
+
+        $ips = UserIpWhitelist::whereIn('user_id', $activeIspUserIds)
+            ->pluck('ip_address')
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->getProviderService('decodo')->updateSubUserAllowedIps($ispSubUserId, $ips);
     }
 
     // ─── Rotate credentials ───────────────────────────────────────────────────
