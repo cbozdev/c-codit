@@ -24,8 +24,41 @@ const DURATIONS: { days: number; label: string }[] = [
   { days: 30, label: '1 Month'  },
 ];
 
+const BASE_30D: Record<string, number> = {
+  'wifi-http':   1650, 'wifi-socks5':  1950,
+  'cell-http':   2250, 'cell-socks5':  2550,
+};
+
+function calcPrice(connection: string, protocol: string, days: number, speedUpgrade: boolean): number {
+  const daily = Math.ceil((BASE_30D[`${connection}-${protocol}`] ?? 1650) / 30);
+  const base  = Math.round(daily * days);
+  return speedUpgrade ? Math.round(base * 1.5) : base;
+}
+
 function fmt(minor: number): string {
   return '$' + (minor / 100).toFixed(2);
+}
+
+function ConfigGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-2">{label}</p>
+      <div className="flex gap-2">{children}</div>
+    </div>
+  );
+}
+
+function ConfigBtn({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button onClick={onClick}
+      className={clsx('flex-1 py-2 rounded-lg border text-xs font-medium transition',
+        active
+          ? 'bg-ink-900 dark:bg-white border-ink-900 dark:border-white text-white dark:text-ink-900'
+          : 'border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-300 hover:border-ink-400',
+      )}>
+      {label}
+    </button>
+  );
 }
 
 function copyText(text: string, label = 'Copied') {
@@ -248,6 +281,165 @@ function CredRow({ label, value, noCopy = false }: { label: string; value: strin
   );
 }
 
+// ─── 1 By 1 Modal ────────────────────────────────────────────────────────────
+
+function OneByOneModal({ walletMinor, ips, countries, onClose }: {
+  walletMinor: number; ips: string[]; countries: MarketplaceCountries | undefined; onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [connection, setConnection]   = useState<'wifi' | 'cell'>('wifi');
+  const [protocol, setProtocol]       = useState<'http' | 'socks5'>('http');
+  const [durationIdx, setDurationIdx] = useState(0);
+  const [speedUpgrade, setSpeed]      = useState(false);
+  const [accessIp, setAccessIp]       = useState(ips[0] ?? '');
+  const [country, setCountry]         = useState('US');
+  const [state, setState]             = useState('');
+
+  const days       = DURATIONS[durationIdx]?.days ?? 1;
+  const priceMinor = calcPrice(connection, protocol, days, speedUpgrade);
+  const insufficient = walletMinor < priceMinor;
+
+  const worldCountries = countries?.world ?? [];
+  const usStates       = countries?.us_states ?? [];
+
+  const buy = useMutation({
+    mutationFn: () => apiCall<ProxySubscription[]>({
+      method: 'POST', url: '/proxy/social-buy',
+      data: {
+        connection_type:  connection,
+        protocol,
+        duration_days:    days,
+        quantity:         1,
+        country_code:     country || undefined,
+        state_code:       state   || undefined,
+        speed_upgrade:    speedUpgrade,
+        session_type:     'sticky',
+        rotation_minutes: 30,
+        access_ip:        accessIp || undefined,
+      },
+    }),
+    onSuccess: () => {
+      toast.success('Proxy activated!');
+      qc.invalidateQueries({ queryKey: ['proxy', 'my'] });
+      qc.invalidateQueries({ queryKey: ['wallet'] });
+      onClose();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/60 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white dark:bg-ink-900 rounded-2xl shadow-2xl w-full max-w-lg my-auto">
+        <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold dark:text-white">1 By 1 — Select Location</h2>
+            <p className="text-xs text-ink-500 mt-0.5">1 sticky residential proxy · fixed IP per session</p>
+          </div>
+          <button onClick={onClose} className="btn-ghost p-1.5 text-ink-400"><X className="h-4 w-4" /></button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          <div>
+            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">Country</p>
+            <select className="input text-sm w-full" value={country} onChange={(e) => { setCountry(e.target.value); setState(''); }}>
+              <option value="US">🇺🇸 United States</option>
+              {worldCountries.map((c) => (
+                <option key={c.code} value={c.code}>{c.name} ({c.count})</option>
+              ))}
+            </select>
+          </div>
+
+          {country === 'US' && usStates.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">State</p>
+              <select className="input text-sm w-full" value={state} onChange={(e) => setState(e.target.value)}>
+                <option value="">Any state</option>
+                {usStates.map((s) => <option key={s.code} value={s.code}>{s.name} ({s.count})</option>)}
+              </select>
+            </div>
+          )}
+
+          <ConfigGroup label="Connection">
+            {(['wifi', 'cell'] as const).map((v) => (
+              <ConfigBtn key={v} active={connection === v} onClick={() => setConnection(v)} label={v === 'wifi' ? 'WiFi' : 'Cellular'} />
+            ))}
+          </ConfigGroup>
+
+          <ConfigGroup label="Protocol">
+            {(['http', 'socks5'] as const).map((v) => (
+              <ConfigBtn key={v} active={protocol === v} onClick={() => setProtocol(v)} label={v === 'socks5' ? 'SOCKS5' : 'HTTPS'} />
+            ))}
+          </ConfigGroup>
+
+          <div>
+            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-2">
+              Period · <span className="text-ink-900 dark:text-white">{DURATIONS[durationIdx]?.label}</span>
+            </p>
+            <input type="range" min={0} max={4} step={1} value={durationIdx}
+              onChange={(e) => setDurationIdx(Number(e.target.value))} className="w-full accent-brand-500" />
+            <div className="flex justify-between text-[10px] text-ink-400 mt-1">
+              {DURATIONS.map(({ days: d, label }, i) => (
+                <span key={d} className={clsx(durationIdx === i && 'text-brand-600 font-semibold')}>
+                  {label}<br />{fmt(calcPrice(connection, protocol, d, speedUpgrade))}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <label className="flex items-center justify-between rounded-xl border border-ink-200 dark:border-ink-700 p-3 cursor-pointer hover:border-brand-400 transition">
+            <div>
+              <p className="text-sm font-medium dark:text-white">Double the speed limit</p>
+              <p className="text-xs text-ink-500">Upgrade to high speed (+50%)</p>
+            </div>
+            <input type="checkbox" className="sr-only" checked={speedUpgrade} onChange={(e) => setSpeed(e.target.checked)} />
+            <div className={clsx('h-5 w-10 rounded-full transition-colors relative shrink-0',
+              speedUpgrade ? 'bg-brand-500' : 'bg-ink-200 dark:bg-ink-700')}>
+              <span className={clsx('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
+                speedUpgrade ? 'translate-x-5' : 'translate-x-0.5')} />
+            </div>
+          </label>
+
+          <div>
+            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">Your Access IP (optional)</p>
+            <input className="input font-mono text-sm w-full" placeholder="Your device IP"
+              value={accessIp} onChange={(e) => setAccessIp(e.target.value.trim())} />
+          </div>
+
+          <div className="rounded-xl bg-ink-50 dark:bg-ink-800 p-3 space-y-1.5 text-sm">
+            <div className="flex justify-between text-ink-500">
+              <span>1 proxy · {DURATIONS[durationIdx]?.label} · {country}{state ? `-${state}` : ''}</span>
+              <span>{connection === 'cell' ? 'Cellular' : 'WiFi'} · {protocol.toUpperCase()}</span>
+            </div>
+            <div className="flex justify-between font-bold dark:text-white border-t border-ink-200 dark:border-ink-700 pt-1.5">
+              <span>Total</span><span>{fmt(priceMinor)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-ink-400">
+              <span>Wallet</span>
+              <span className={insufficient ? 'text-rose-600 font-medium' : ''}>{fmt(walletMinor)}</span>
+            </div>
+          </div>
+
+          {insufficient && (
+            <p className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">
+              Insufficient balance. Please top up your wallet.
+            </p>
+          )}
+          <p className="text-[11px] text-ink-400">
+            Refund within 1 hour if the proxy doesn't work.
+          </p>
+        </div>
+
+        <div className="flex gap-3 p-5 pt-0">
+          <button onClick={onClose} className="btn-outline flex-1">Cancel</button>
+          <button onClick={() => buy.mutate()} disabled={buy.isPending || insufficient} className="btn-primary flex-1">
+            {buy.isPending ? 'Processing…' : `Buy Now · ${fmt(priceMinor)}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Active Proxy Row ─────────────────────────────────────────────────────────
 
 function ActiveProxyRow({ sub, onViewCreds }: { sub: ProxySubscription; onViewCreds: () => void }) {
@@ -458,6 +650,7 @@ export default function MyProxiesPage() {
   const [shopGeo, setShopGeo]           = useState<'us' | 'world'>('us');
   const [shopPage, setShopPage]         = useState(1);
   const [showIpModal, setShowIpModal]   = useState(false);
+  const [showOneByOne, setShowOneByOne] = useState(false);
 
   const wallet = useQuery({
     queryKey: ['wallet'],
@@ -541,6 +734,18 @@ export default function MyProxiesPage() {
         </div>
       )}
 
+
+      {/* ── Plan Card ────────────────────────────────────────────── */}
+      <div className="mb-6">
+        <button onClick={() => setShowOneByOne(true)}
+          className="rounded-xl border border-ink-200 dark:border-ink-700 p-4 text-left hover:border-brand-400 hover:shadow-sm transition bg-white dark:bg-ink-900 w-full sm:w-64">
+          <p className="font-semibold text-sm dark:text-white">1 By 1</p>
+          <p className="text-xs text-ink-500 mt-0.5">Socks5 / Https · choose location</p>
+          <p className="text-[11px] text-ink-400 mt-3">as low as</p>
+          <p className="text-lg font-bold dark:text-white leading-tight">$ 0.55</p>
+          <p className="text-[11px] text-ink-400">per proxy / day</p>
+        </button>
+      </div>
 
       {/* ── Active / History nav ─────────────────────────────────── */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -812,9 +1017,10 @@ export default function MyProxiesPage() {
       )}
 
       {/* ── Modals ───────────────────────────────────────────────── */}
-      {showIpModal && <IpWhitelistModal currentIps={ips} onClose={() => setShowIpModal(false)} />}
-      {credsSub    && <CredentialsModal sub={credsSub} onClose={() => setCredsSub(null)} onSetupIpAuth={() => { setCredsSub(null); setShowIpModal(true); }} />}
-      {buyListing  && <BuyListingModal listing={buyListing} walletMinor={walletMinor} accessIp={ips[0] ?? ''} onClose={() => setBuyListing(null)} />}
+      {showIpModal  && <IpWhitelistModal currentIps={ips} onClose={() => setShowIpModal(false)} />}
+      {credsSub     && <CredentialsModal sub={credsSub} onClose={() => setCredsSub(null)} onSetupIpAuth={() => { setCredsSub(null); setShowIpModal(true); }} />}
+      {buyListing   && <BuyListingModal listing={buyListing} walletMinor={walletMinor} accessIp={ips[0] ?? ''} onClose={() => setBuyListing(null)} />}
+      {showOneByOne && <OneByOneModal walletMinor={walletMinor} ips={ips} countries={countries} onClose={() => setShowOneByOne(false)} />}
     </div>
   );
 }
