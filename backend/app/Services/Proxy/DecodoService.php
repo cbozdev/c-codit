@@ -51,10 +51,9 @@ class DecodoService
         $protocol    = $options['protocol'] ?? 'http';
         $duration    = (int) ($options['duration_days'] ?? 30);
 
-        if ($this->hasApiKey() && $this->isResidential($proxyType)) {
-            return $this->createViaApi($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
-        }
-
+        // Always use main account gateway credentials for residential proxies.
+        // API sub-users are created without bandwidth allocation by default,
+        // which causes "no exit node" errors despite an active plan.
         return $this->createViaGateway($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
     }
 
