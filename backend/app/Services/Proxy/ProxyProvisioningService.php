@@ -159,7 +159,7 @@ class ProxyProvisioningService
                     'username'        => $result['username'],
                     'password'        => $result['password'],
                     'protocol'        => $protocol,
-                    'proxy_url'       => "{$protocol}://{$result['username']}:{$result['password']}@{$result['host']}:{$result['port']}",
+                    'proxy_url'       => "{$protocol}://{$result['username']}:" . rawurlencode($result['password']) . "@{$result['host']}:{$result['port']}",
                     'expires_at'      => $result['expires_at'],
                 ],
             ]);

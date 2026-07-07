@@ -54,7 +54,7 @@ class ProxySubscription extends Model
 
     public function getProxyUrl(): string
     {
-        $pass = $this->getPassword() ?? '';
+        $pass = rawurlencode($this->getPassword() ?? '');
         return "{$this->protocol}://{$this->username}:{$pass}@{$this->host}:{$this->port}";
     }
 
@@ -95,7 +95,7 @@ class ProxySubscription extends Model
             'password'     => $this->getPassword(),
             'protocol'     => $this->protocol,
             'proxy_url'    => $this->getProxyUrl(),
-            'proxy_url_ip' => $ip ? "{$this->protocol}://{$this->username}:{$pass}@{$ip}:{$this->port}" : null,
+            'proxy_url_ip' => $ip ? "{$this->protocol}://{$this->username}:" . rawurlencode($pass) . "@{$ip}:{$this->port}" : null,
         ];
     }
 
