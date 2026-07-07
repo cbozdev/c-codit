@@ -4,13 +4,12 @@ import toast from 'react-hot-toast';
 import { apiCall } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import type {
-  MarketplaceCountries, MarketplacePage, ProxyListing,
   ProxySubscription, ProxyTrialStatus, Wallet,
 } from '@/types/api';
 import {
   Copy, Eye, EyeOff, RotateCcw, Wifi, WifiOff,
   CheckCircle2, AlertCircle, X,
-  Zap, Smartphone,
+  Zap,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -623,90 +622,11 @@ function ActiveProxyRow({ sub, onViewCreds }: { sub: ProxySubscription; onViewCr
 }
 
 // ─── Country flag emoji helper ─────────────────────────────────────────────────
-function flag(cc: string) {
-  return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(c.charCodeAt(0) + 127397));
-}
-
-// ─── Marketplace Buy Modal ────────────────────────────────────────────────────
-function BuyListingModal({ listing, walletMinor, accessIp, onClose }: {
-  listing: ProxyListing; walletMinor: number; accessIp: string; onClose: () => void;
-}) {
-  const qc = useQueryClient();
-  const [durationIdx, setDurationIdx] = useState(0);
-  const days = DURATIONS[durationIdx]?.days ?? 1;
-  const priceMinor = Math.round(listing.price_minor * days / 30);
-  const insufficient = walletMinor < priceMinor;
-
-  const buy = useMutation({
-    mutationFn: () => apiCall<ProxySubscription>({
-      method: 'POST',
-      url: `/proxy/marketplace/${listing.id}/buy`,
-      data: { duration_days: days, access_ip: accessIp || undefined },
-    }),
-    onSuccess: () => {
-      toast.success('Proxy activated!');
-      qc.invalidateQueries({ queryKey: ['proxy', 'my'] });
-      qc.invalidateQueries({ queryKey: ['wallet'] });
-      onClose();
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-950/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-ink-900 rounded-2xl shadow-2xl w-full max-w-sm">
-        <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold dark:text-white">
-              {flag(listing.country_code)} {listing.city ?? listing.country_name}
-            </h2>
-            <p className="text-xs text-ink-500 mt-0.5">
-              {listing.isp ?? listing.country_name} · {listing.protocol.toUpperCase()} · {listing.speed_ms}ms
-            </p>
-          </div>
-          <button onClick={onClose} className="btn-ghost p-1.5 text-ink-400"><X className="h-4 w-4" /></button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-2">Duration</p>
-            <input type="range" min={0} max={4} step={1} value={durationIdx}
-              onChange={(e) => setDurationIdx(Number(e.target.value))} className="w-full accent-brand-500" />
-            <div className="flex justify-between text-[10px] text-ink-400 mt-1">
-              {DURATIONS.map(({ days: d, label }, i) => (
-                <span key={d} className={clsx(durationIdx === i && 'text-brand-600 font-semibold')}>
-                  {label}<br />{fmt(Math.round(listing.price_minor * d / 30))}
-                </span>
-              ))}
-            </div>
-          </div>
-          {insufficient && (
-            <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
-              Insufficient balance. Top up your wallet to continue.
-            </p>
-          )}
-          <button
-            onClick={() => buy.mutate()}
-            disabled={buy.isPending || insufficient}
-            className="btn-primary w-full justify-center disabled:opacity-50">
-            {buy.isPending ? 'Activating…' : `Buy · ${fmt(priceMinor)}`}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function MyProxiesPage() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab]       = useState<'active' | 'history'>('active');
   const [credsSub, setCredsSub]         = useState<ProxySubscription | null>(null);
-  const [buyListing, setBuyListing]     = useState<ProxyListing | null>(null);
-  const [shopProtocol, setShopProtocol] = useState('');
-  const [shopType, setShopType]         = useState('');
-  const [shopState, setShopState]       = useState('');
-  const [shopGeo, setShopGeo]           = useState<'us' | 'world'>('us');
-  const [shopPage, setShopPage]         = useState(1);
   const [showIpModal, setShowIpModal]   = useState(false);
   const [showOneByOne, setShowOneByOne] = useState(false);
 
@@ -735,21 +655,6 @@ export default function MyProxiesPage() {
     staleTime: 60_000,
   });
 
-  const marketplaceCountries = useQuery({
-    queryKey: ['proxy', 'marketplace', 'countries'],
-    queryFn:  () => apiCall<MarketplaceCountries>({ url: '/proxy/marketplace/countries' }),
-    staleTime: 300_000,
-  });
-
-  const marketplaceListings = useQuery({
-    queryKey: ['proxy', 'marketplace', 'listings', shopProtocol, shopType, shopState, shopGeo, shopPage],
-    queryFn:  () => apiCall<MarketplacePage>({
-      url: `/proxy/marketplace?protocol=${shopProtocol}&type=${shopType}&state_code=${shopGeo === 'us' ? shopState : ''}&per_page=20&page=${shopPage}`,
-    }),
-    enabled: activeTab === 'active',
-    staleTime: 60_000,
-  });
-
   const trialStatus = useQuery({
     queryKey: ['proxy', 'trial-status'],
     queryFn:  () => apiCall<ProxyTrialStatus>({ url: '/proxy/trial-status' }),
@@ -769,18 +674,10 @@ export default function MyProxiesPage() {
   const now          = Date.now();
   const activeItems  = (active.data?.items ?? []).filter(s => s.status === 'active' && (!s.expires_at || new Date(s.expires_at).getTime() > now));
   const historyItems = history.data?.items ?? [];
-  const countries    = marketplaceCountries.data;
-  const ips          = whitelist.data?.ips ?? [];
-  const walletMinor  = wallet.data?.balance_minor ?? 0;
-  const walletBal    = wallet.data?.balance ?? '$0.00';
-  const trial        = trialStatus.data;
-  const usStates     = countries?.us_states ?? [];
-  const usTotal      = countries?.us_total ?? 0;
-  const worldTotal   = countries?.world_total ?? 0;
-  const listings     = marketplaceListings.data?.items ?? [];
-  const listingMeta  = marketplaceListings.data?.meta;
-  const listingTotal = listingMeta?.total ?? 0;
-  const lastPage     = listingMeta?.last_page ?? 1;
+  const ips         = whitelist.data?.ips ?? [];
+  const walletMinor = wallet.data?.balance_minor ?? 0;
+  const walletBal   = wallet.data?.balance ?? '$0.00';
+  const trial       = trialStatus.data;
 
   return (
     <div className="max-w-5xl">
@@ -870,185 +767,6 @@ export default function MyProxiesPage() {
         <p className="text-sm text-ink-400 mb-4">Loading…</p>
       )}
 
-      {/* ── Available proxies section ────────────────────────────── */}
-      {activeTab === 'active' && (
-        <div>
-          <p className="text-sm font-semibold text-ink-700 dark:text-ink-300 mb-3">
-            Available proxies
-            {listingTotal > 0 && <span className="font-normal text-ink-400 ml-1">({listingTotal.toLocaleString()})</span>}
-          </p>
-
-          {/* Geo tabs */}
-          <div className="flex gap-2 mb-3">
-            {([
-              { key: 'us',    label: `US${usTotal > 0 ? ` - ${usTotal.toLocaleString()}` : ''}` },
-              { key: 'world', label: `WORLD MIX${worldTotal > 0 ? ` - ${worldTotal.toLocaleString()}` : ''}` },
-            ] as const).map(g => (
-              <button key={g.key}
-                onClick={() => { setShopGeo(g.key); setShopState(''); setShopPage(1); }}
-                className={clsx('px-4 py-1.5 text-xs font-medium border rounded-lg transition',
-                  shopGeo === g.key
-                    ? 'border-emerald-500 text-emerald-700 dark:text-emerald-400 bg-white dark:bg-ink-900'
-                    : 'border-ink-200 dark:border-ink-700 text-ink-500 hover:text-ink-700 dark:hover:text-ink-300 bg-white dark:bg-ink-900')}>
-                {g.label}
-              </button>
-            ))}
-          </div>
-
-          {/* US State grid */}
-          {shopGeo === 'us' && usStates.length > 0 && (
-            <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-10 gap-x-3 gap-y-0.5 p-3 mb-3 border border-ink-200 dark:border-ink-700 rounded-lg bg-white dark:bg-ink-900">
-              {usStates.map(s => (
-                <button key={s.code}
-                  onClick={() => { setShopState(shopState === s.code ? '' : s.code); setShopPage(1); }}
-                  className={clsx('text-[11px] py-0.5 text-left whitespace-nowrap transition',
-                    shopState === s.code
-                      ? 'text-brand-600 dark:text-brand-400 font-semibold'
-                      : 'text-ink-500 dark:text-ink-400 hover:text-ink-800 dark:hover:text-ink-200')}>
-                  {s.code} - {s.count}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Filter row */}
-          <div className="flex flex-wrap gap-2 mb-2">
-            <select value={shopType} onChange={e => { setShopType(e.target.value); setShopPage(1); }}
-              className="input text-xs py-1.5 px-2 h-auto w-auto">
-              <option value="">All Types</option>
-              <option value="wifi">WiFi</option>
-              <option value="cell">Cell</option>
-            </select>
-            <select value={shopProtocol} onChange={e => { setShopProtocol(e.target.value); setShopPage(1); }}
-              className="input text-xs py-1.5 px-2 h-auto w-auto">
-              <option value="">All Protocols</option>
-              <option value="http">HTTP</option>
-              <option value="socks5">SOCKS5</option>
-            </select>
-            {shopState && (
-              <button onClick={() => { setShopState(''); setShopPage(1); }}
-                className="text-xs px-3 py-1.5 border border-brand-300 text-brand-600 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-900/20 transition flex items-center gap-1">
-                {shopState} <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-
-          {/* Proxy table */}
-          <div className="rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden bg-white dark:bg-ink-900">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm whitespace-nowrap">
-                <thead>
-                  <tr className="bg-ink-600 dark:bg-ink-700 text-white text-xs">
-                    <th className="px-3 py-2.5 text-left font-medium">IP</th>
-                    <th className="px-3 py-2.5 text-left font-medium">Type</th>
-                    <th className="px-3 py-2.5 text-left font-medium">Protocol</th>
-                    <th className="px-3 py-2.5 text-left font-medium">Region</th>
-                    <th className="px-3 py-2.5 text-left font-medium">City</th>
-                    <th className="px-3 py-2.5 text-left font-medium">ISP</th>
-                    <th className="px-3 py-2.5 text-left font-medium">Speed</th>
-                    <th className="px-3 py-2.5 text-right font-medium">Price /day</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {marketplaceListings.isLoading && (
-                    <tr><td colSpan={8} className="text-center py-10 text-ink-400 text-xs">Loading…</td></tr>
-                  )}
-                  {!marketplaceListings.isLoading && listings.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="text-center py-10 text-ink-400">
-                        <WifiOff className="h-7 w-7 mx-auto mb-2 opacity-40" />
-                        <p className="text-xs">No proxies available with these filters.</p>
-                      </td>
-                    </tr>
-                  )}
-                  {listings.map((l, i) => (
-                    <tr key={l.id}
-                      onClick={() => setBuyListing(l)}
-                      className={clsx('border-b border-ink-100 dark:border-ink-800 cursor-pointer transition',
-                        i % 2 === 1 ? 'bg-ink-50/40 dark:bg-ink-800/10' : '',
-                        'hover:bg-brand-50/60 dark:hover:bg-brand-900/10')}>
-                      <td className="px-3 py-2 text-brand-500 dark:text-brand-400 font-mono text-xs font-medium">
-                        {l.ip_display ?? '—'}
-                      </td>
-                      <td className="px-3 py-2 text-xs">
-                        <span className="flex items-center gap-1 text-ink-600 dark:text-ink-300">
-                          {l.connection_type === 'wifi'
-                            ? <Wifi className="h-3 w-3 text-brand-500 shrink-0" />
-                            : <Smartphone className="h-3 w-3 text-purple-500 shrink-0" />}
-                          {l.connection_type === 'wifi' ? 'WiFi' : 'Cell'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-xs text-ink-600 dark:text-ink-300">
-                        {l.protocol === 'socks5' ? 'Socks' : 'Https'}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-ink-600 dark:text-ink-300">
-                        {l.state_name ?? l.state_code ?? l.country_name ?? '—'}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-ink-600 dark:text-ink-300">{l.city ?? '—'}</td>
-                      <td className="px-3 py-2 text-xs text-ink-600 dark:text-ink-300 max-w-[130px] truncate">{l.isp ?? '—'}</td>
-                      <td className="px-3 py-2 text-xs">
-                        <span className={clsx('font-medium',
-                          l.speed_ms <= 15 ? 'text-emerald-600 dark:text-emerald-400'
-                          : l.speed_ms <= 30 ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-ink-400')}>
-                          {l.speed_ms}ms
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <span className="text-brand-500 dark:text-brand-400 font-bold">
-                          $ {(l.price_minor / 3000).toFixed(2)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            {listingMeta && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-ink-100 dark:border-ink-800 text-xs text-ink-500">
-                <span>
-                  {listingTotal === 0
-                    ? '0 Proxies'
-                    : `${((shopPage - 1) * 20) + 1} - ${Math.min(shopPage * 20, listingTotal)} of ${listingTotal.toLocaleString()} Proxies`}
-                </span>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setShopPage(p => Math.max(1, p - 1))} disabled={shopPage === 1}
-                    className="px-2 py-1 border border-ink-200 dark:border-ink-700 rounded disabled:opacity-40 hover:bg-ink-50 dark:hover:bg-ink-800 transition">
-                    ←
-                  </button>
-                  {Array.from({ length: Math.min(5, lastPage) }, (_, i) => {
-                    let pg = i + 1;
-                    if (lastPage > 5 && shopPage > 3) pg = shopPage - 2 + i;
-                    if (pg < 1 || pg > lastPage) return null;
-                    return (
-                      <button key={pg} onClick={() => setShopPage(pg)}
-                        className={clsx('px-2.5 py-1 border rounded transition',
-                          shopPage === pg
-                            ? 'bg-brand-500 text-white border-brand-500'
-                            : 'border-ink-200 dark:border-ink-700 hover:bg-ink-50 dark:hover:bg-ink-800')}>
-                        {pg}
-                      </button>
-                    );
-                  })}
-                  {lastPage > 5 && shopPage < lastPage - 2 && <span className="px-1 text-ink-300">…</span>}
-                  {lastPage > 5 && shopPage < lastPage - 1 && (
-                    <button onClick={() => setShopPage(lastPage)}
-                      className="px-2.5 py-1 border border-ink-200 dark:border-ink-700 rounded hover:bg-ink-50 dark:hover:bg-ink-800 transition">
-                      {lastPage}
-                    </button>
-                  )}
-                  <button onClick={() => setShopPage(p => Math.min(lastPage, p + 1))} disabled={shopPage === lastPage}
-                    className="px-2 py-1 border border-ink-200 dark:border-ink-700 rounded disabled:opacity-40 hover:bg-ink-50 dark:hover:bg-ink-800 transition">
-                    Next →
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* ── History ──────────────────────────────────────────────── */}
       {activeTab === 'history' && (
@@ -1077,8 +795,7 @@ export default function MyProxiesPage() {
       {/* ── Modals ───────────────────────────────────────────────── */}
       {showIpModal  && <IpWhitelistModal currentIps={ips} onClose={() => setShowIpModal(false)} />}
       {credsSub     && <CredentialsModal sub={credsSub} onClose={() => setCredsSub(null)} onSetupIpAuth={() => { setCredsSub(null); setShowIpModal(true); }} />}
-      {buyListing   && <BuyListingModal listing={buyListing} walletMinor={walletMinor} accessIp={ips[0] ?? ''} onClose={() => setBuyListing(null)} />}
-      {showOneByOne && <OneByOneModal walletMinor={walletMinor} ips={ips} onClose={() => setShowOneByOne(false)} />}
+{showOneByOne && <OneByOneModal walletMinor={walletMinor} ips={ips} onClose={() => setShowOneByOne(false)} />}
     </div>
   );
 }

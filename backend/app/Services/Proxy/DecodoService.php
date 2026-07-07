@@ -123,15 +123,21 @@ class DecodoService
         [$host, $port] = $this->resolveEndpoint($proxyType, $protocol, $sessionType);
         $resolvedIp = $this->resolveIp($host);
 
-        // For residential sticky sessions Decodo uses the endpoint:port method (port 10001-10010)
-        // with a plain username — no "user-" prefix, no country/state params, no session ID.
-        // Country/state params in the username are only for rotating (port 10000).
+        // For residential sticky sessions Decodo uses the endpoint:port method (port 10001-10010).
+        // The session ID in the username is not needed — the port provides stickiness.
+        // We still use the parametric "user-" prefix format for country/state targeting.
         $isResidentialSticky = str_starts_with($proxyType, 'residential')
             && in_array($sessionType, ['sticky', 'static'], true);
 
-        $gatewayUsername = $isResidentialSticky
-            ? $username
-            : $this->buildGatewayUsername($username, $country, $state, $sessionType, $sessionId);
+        // Pass 'rotating' as sessionType so buildGatewayUsername skips adding session-xxx.
+        // Country and state targeting still come through normally.
+        $gatewayUsername = $this->buildGatewayUsername(
+            $username,
+            $country,
+            $state,
+            $isResidentialSticky ? 'rotating' : $sessionType,
+            $sessionId,
+        );
 
         Log::info('decodo.gateway_credential_provisioned', [
             'proxy_type'      => $proxyType,
