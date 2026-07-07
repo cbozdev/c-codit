@@ -123,13 +123,25 @@ class DecodoService
         [$host, $port] = $this->resolveEndpoint($proxyType, $protocol, $sessionType);
         $resolvedIp = $this->resolveIp($host);
 
+        // For residential sticky sessions Decodo uses the endpoint:port method (port 10001-10010)
+        // with a plain username — no "user-" prefix, no country/state params, no session ID.
+        // Country/state params in the username are only for rotating (port 10000).
+        $isResidentialSticky = str_starts_with($proxyType, 'residential')
+            && in_array($sessionType, ['sticky', 'static'], true);
+
+        $gatewayUsername = $isResidentialSticky
+            ? $username
+            : $this->buildGatewayUsername($username, $country, $state, $sessionType, $sessionId);
+
         Log::info('decodo.gateway_credential_provisioned', [
-            'proxy_type'  => $proxyType,
-            'country'     => $country,
-            'state'       => $state,
-            'host'        => $host,
-            'port'        => $port,
-            'resolved_ip' => $resolvedIp,
+            'proxy_type'      => $proxyType,
+            'country'         => $country,
+            'state'           => $state,
+            'session_type'    => $sessionType,
+            'gateway_username'=> $gatewayUsername,
+            'host'            => $host,
+            'port'            => $port,
+            'resolved_ip'     => $resolvedIp,
         ]);
 
         return [
@@ -137,7 +149,7 @@ class DecodoService
             'host'                     => $host,
             'resolved_ip'              => $resolvedIp,
             'port'                     => $port,
-            'username'                 => $this->buildGatewayUsername($username, $country, $state, $sessionType, $sessionId),
+            'username'                 => $gatewayUsername,
             'password'                 => $password,
             'bandwidth_gb_total'       => (float) ($options['bandwidth_gb'] ?? 0),
             'expires_at'               => now()->addDays($duration)->toISOString(),
