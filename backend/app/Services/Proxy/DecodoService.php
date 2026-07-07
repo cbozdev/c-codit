@@ -120,7 +120,7 @@ class DecodoService
         }
 
         $sessionId  = Str::random(16);
-        [$host, $port] = $this->resolveEndpoint($proxyType, $protocol);
+        [$host, $port] = $this->resolveEndpoint($proxyType, $protocol, $sessionType);
         $resolvedIp = $this->resolveIp($host);
 
         Log::info('decodo.gateway_credential_provisioned', [
@@ -384,7 +384,7 @@ class DecodoService
         return ['Authorization' => config('services.decodo.api_key')];
     }
 
-    private function resolveEndpoint(string $proxyType, string $protocol): array
+    private function resolveEndpoint(string $proxyType, string $protocol, string $sessionType = 'rotating'): array
     {
         $hostname = match (true) {
             str_starts_with($proxyType, 'datacenter') => 'dc.decodo.com',
@@ -393,9 +393,15 @@ class DecodoService
             default                                    => 'gate.decodo.com',
         };
 
-        $port = match ($protocol) {
-            'socks5' => 7000,
-            default  => 10000,
+        // Decodo residential sticky sessions require port 10001 (not 10000).
+        // Port 10000 is rotating only. Sticky port range is 10001–10010.
+        $isResidentialSticky = str_starts_with($proxyType, 'residential')
+            && in_array($sessionType, ['sticky', 'static'], true);
+
+        $port = match (true) {
+            $protocol === 'socks5'   => 7000,
+            $isResidentialSticky     => 10001,
+            default                  => 10000,
         };
 
         // Always store the hostname — Decodo rotates gateway IPs so a
