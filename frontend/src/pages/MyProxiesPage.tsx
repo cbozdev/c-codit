@@ -162,7 +162,7 @@ function IpWhitelistModal({ currentIps, onClose }: { currentIps: string[]; onClo
               />
             </div>
           ))}
-          <p className="text-xs text-ink-400 pt-1">Access is limited to these IPs. IP can be changed every 30 min.</p>
+          <p className="text-xs text-ink-400 pt-1">Access is limited to these IPs. You can update them at any time.</p>
         </div>
         <div className="flex gap-3 p-5 pt-0">
           <button onClick={onClose} className="btn-outline flex-1">Cancel</button>
