@@ -14,6 +14,67 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
+// ─── Static residential geo data (Decodo residential gateway) ─────────────────
+
+const US_STATES: { code: string; name: string }[] = [
+  { code: 'AL', name: 'Alabama' },       { code: 'AK', name: 'Alaska' },
+  { code: 'AZ', name: 'Arizona' },       { code: 'AR', name: 'Arkansas' },
+  { code: 'CA', name: 'California' },    { code: 'CO', name: 'Colorado' },
+  { code: 'CT', name: 'Connecticut' },   { code: 'DE', name: 'Delaware' },
+  { code: 'FL', name: 'Florida' },       { code: 'GA', name: 'Georgia' },
+  { code: 'HI', name: 'Hawaii' },        { code: 'ID', name: 'Idaho' },
+  { code: 'IL', name: 'Illinois' },      { code: 'IN', name: 'Indiana' },
+  { code: 'IA', name: 'Iowa' },          { code: 'KS', name: 'Kansas' },
+  { code: 'KY', name: 'Kentucky' },      { code: 'LA', name: 'Louisiana' },
+  { code: 'ME', name: 'Maine' },         { code: 'MD', name: 'Maryland' },
+  { code: 'MA', name: 'Massachusetts' }, { code: 'MI', name: 'Michigan' },
+  { code: 'MN', name: 'Minnesota' },     { code: 'MS', name: 'Mississippi' },
+  { code: 'MO', name: 'Missouri' },      { code: 'MT', name: 'Montana' },
+  { code: 'NE', name: 'Nebraska' },      { code: 'NV', name: 'Nevada' },
+  { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
+  { code: 'NM', name: 'New Mexico' },    { code: 'NY', name: 'New York' },
+  { code: 'NC', name: 'North Carolina' },{ code: 'ND', name: 'North Dakota' },
+  { code: 'OH', name: 'Ohio' },          { code: 'OK', name: 'Oklahoma' },
+  { code: 'OR', name: 'Oregon' },        { code: 'PA', name: 'Pennsylvania' },
+  { code: 'RI', name: 'Rhode Island' },  { code: 'SC', name: 'South Carolina' },
+  { code: 'SD', name: 'South Dakota' },  { code: 'TN', name: 'Tennessee' },
+  { code: 'TX', name: 'Texas' },         { code: 'UT', name: 'Utah' },
+  { code: 'VT', name: 'Vermont' },       { code: 'VA', name: 'Virginia' },
+  { code: 'WA', name: 'Washington' },    { code: 'WV', name: 'West Virginia' },
+  { code: 'WI', name: 'Wisconsin' },     { code: 'WY', name: 'Wyoming' },
+  { code: 'DC', name: 'D.C.' },
+];
+
+const WORLD_COUNTRIES: { code: string; name: string }[] = [
+  { code: 'GB', name: '🇬🇧 United Kingdom' },
+  { code: 'CA', name: '🇨🇦 Canada' },
+  { code: 'AU', name: '🇦🇺 Australia' },
+  { code: 'DE', name: '🇩🇪 Germany' },
+  { code: 'FR', name: '🇫🇷 France' },
+  { code: 'NL', name: '🇳🇱 Netherlands' },
+  { code: 'JP', name: '🇯🇵 Japan' },
+  { code: 'SG', name: '🇸🇬 Singapore' },
+  { code: 'IN', name: '🇮🇳 India' },
+  { code: 'BR', name: '🇧🇷 Brazil' },
+  { code: 'NG', name: '🇳🇬 Nigeria' },
+  { code: 'ZA', name: '🇿🇦 South Africa' },
+  { code: 'KE', name: '🇰🇪 Kenya' },
+  { code: 'GH', name: '🇬🇭 Ghana' },
+  { code: 'IT', name: '🇮🇹 Italy' },
+  { code: 'ES', name: '🇪🇸 Spain' },
+  { code: 'PL', name: '🇵🇱 Poland' },
+  { code: 'SE', name: '🇸🇪 Sweden' },
+  { code: 'NO', name: '🇳🇴 Norway' },
+  { code: 'CH', name: '🇨🇭 Switzerland' },
+  { code: 'MX', name: '🇲🇽 Mexico' },
+  { code: 'AR', name: '🇦🇷 Argentina' },
+  { code: 'KR', name: '🇰🇷 South Korea' },
+  { code: 'ID', name: '🇮🇩 Indonesia' },
+  { code: 'TR', name: '🇹🇷 Turkey' },
+  { code: 'UA', name: '🇺🇦 Ukraine' },
+  { code: 'RU', name: '🇷🇺 Russia' },
+];
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const DURATIONS: { days: number; label: string }[] = [
@@ -283,8 +344,8 @@ function CredRow({ label, value, noCopy = false }: { label: string; value: strin
 
 // ─── 1 By 1 Modal ────────────────────────────────────────────────────────────
 
-function OneByOneModal({ walletMinor, ips, countries, onClose }: {
-  walletMinor: number; ips: string[]; countries: MarketplaceCountries | undefined; onClose: () => void;
+function OneByOneModal({ walletMinor, ips, onClose }: {
+  walletMinor: number; ips: string[]; onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [connection, setConnection]   = useState<'wifi' | 'cell'>('wifi');
@@ -298,9 +359,6 @@ function OneByOneModal({ walletMinor, ips, countries, onClose }: {
   const days       = DURATIONS[durationIdx]?.days ?? 1;
   const priceMinor = calcPrice(connection, protocol, days, speedUpgrade);
   const insufficient = walletMinor < priceMinor;
-
-  const worldCountries = countries?.world ?? [];
-  const usStates       = countries?.us_states ?? [];
 
   const buy = useMutation({
     mutationFn: () => apiCall<ProxySubscription[]>({
@@ -343,18 +401,18 @@ function OneByOneModal({ walletMinor, ips, countries, onClose }: {
             <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">Country</p>
             <select className="input text-sm w-full" value={country} onChange={(e) => { setCountry(e.target.value); setState(''); }}>
               <option value="US">🇺🇸 United States</option>
-              {worldCountries.map((c) => (
-                <option key={c.code} value={c.code}>{c.name} ({c.count})</option>
+              {WORLD_COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.name}</option>
               ))}
             </select>
           </div>
 
-          {country === 'US' && usStates.length > 0 && (
+          {country === 'US' && (
             <div>
               <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">State</p>
               <select className="input text-sm w-full" value={state} onChange={(e) => setState(e.target.value)}>
                 <option value="">Any state</option>
-                {usStates.map((s) => <option key={s.code} value={s.code}>{s.name} ({s.count})</option>)}
+                {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
               </select>
             </div>
           )}
@@ -1020,7 +1078,7 @@ export default function MyProxiesPage() {
       {showIpModal  && <IpWhitelistModal currentIps={ips} onClose={() => setShowIpModal(false)} />}
       {credsSub     && <CredentialsModal sub={credsSub} onClose={() => setCredsSub(null)} onSetupIpAuth={() => { setCredsSub(null); setShowIpModal(true); }} />}
       {buyListing   && <BuyListingModal listing={buyListing} walletMinor={walletMinor} accessIp={ips[0] ?? ''} onClose={() => setBuyListing(null)} />}
-      {showOneByOne && <OneByOneModal walletMinor={walletMinor} ips={ips} countries={countries} onClose={() => setShowOneByOne(false)} />}
+      {showOneByOne && <OneByOneModal walletMinor={walletMinor} ips={ips} onClose={() => setShowOneByOne(false)} />}
     </div>
   );
 }
