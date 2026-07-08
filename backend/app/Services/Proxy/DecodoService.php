@@ -123,11 +123,16 @@ class DecodoService
         [$host, $port] = $this->resolveEndpoint($proxyType, $protocol, $sessionType);
         $resolvedIp = $this->resolveIp($host);
 
+        // Port 10001 handles stickiness natively — don't add session-xxx to the username.
+        // Including session-xxx on port 10001 conflicts with state targeting.
+        $isResidentialSticky = str_starts_with($proxyType, 'residential')
+            && in_array($sessionType, ['sticky', 'static'], true);
+
         $gatewayUsername = $this->buildGatewayUsername(
             $username,
             $country,
             $state,
-            $sessionType,
+            $isResidentialSticky ? 'rotating' : $sessionType,
             $sessionId,
         );
 
@@ -403,8 +408,14 @@ class DecodoService
             default                                    => 'gate.decodo.com',
         };
 
+        // Residential sticky sessions use port 10001 (endpoint:port stickiness).
+        // Session-ID-based stickiness on port 10000 is not supported with state targeting.
+        $isResidentialSticky = str_starts_with($proxyType, 'residential')
+            && in_array($sessionType, ['sticky', 'static'], true);
+
         $port = match (true) {
             $protocol === 'socks5' => 7000,
+            $isResidentialSticky   => 10001,
             default                => 10000,
         };
 
