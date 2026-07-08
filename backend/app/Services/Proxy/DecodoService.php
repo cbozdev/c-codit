@@ -95,12 +95,10 @@ class DecodoService
         $protocol    = $options['protocol'] ?? 'http';
         $duration    = (int) ($options['duration_days'] ?? 30);
 
-        // Residential proxies use sub-users when an API key is available so that
-        // deleting the sub-user immediately revokes access on refund/cancel.
-        if ($this->hasApiKey() && str_starts_with($proxyType, 'residential')) {
-            return $this->createViaApi($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
-        }
-
+        // Sub-users are disabled for residential proxies — Decodo allocates 0 bandwidth
+        // to API-created sub-users by default, causing "no exit node" errors.
+        // Gateway credentials are used instead; revocation on refund is not possible
+        // without a working sub-user setup.
         return $this->createViaGateway($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
     }
 
