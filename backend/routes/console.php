@@ -2,6 +2,9 @@
 
 use Illuminate\Support\Facades\Schedule;
 
+// Auto-cancel SMS number orders that expired without receiving a code
+Schedule::command('orders:auto-cancel-expired')->everyMinute()->onOneServer();
+
 // Periodic cleanup of expired idempotency keys
 Schedule::call(function () {
     \DB::table('idempotency_keys')
