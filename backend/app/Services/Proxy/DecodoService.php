@@ -51,9 +51,12 @@ class DecodoService
         $protocol    = $options['protocol'] ?? 'http';
         $duration    = (int) ($options['duration_days'] ?? 30);
 
-        // Always use main account gateway credentials for residential proxies.
-        // API sub-users are created without bandwidth allocation by default,
-        // which causes "no exit node" errors despite an active plan.
+        // Residential proxies use sub-users when an API key is available so that
+        // deleting the sub-user immediately revokes access on refund/cancel.
+        if ($this->hasApiKey() && str_starts_with($proxyType, 'residential')) {
+            return $this->createViaApi($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
+        }
+
         return $this->createViaGateway($proxyType, $country, $state, $sessionType, $protocol, $duration, $options);
     }
 
@@ -64,13 +67,17 @@ class DecodoService
         $subPassword = $this->generateSecurePassword();
         $sessionId   = Str::random(16);
 
+        $bandwidthGb    = (float) ($options['bandwidth_gb'] ?? 1);
+        $trafficBytes   = (int) ($bandwidthGb * 1024 * 1024 * 1024);
+
         try {
             $res = Http::withHeaders($this->apiHeaders())
                 ->timeout(10)
                 ->post(self::API_BASE . '/v2/sub-users', [
-                    'username'     => $subUsername,
-                    'password'     => $subPassword,
-                    'service_type' => 'residential_proxies',
+                    'username'      => $subUsername,
+                    'password'      => $subPassword,
+                    'service_type'  => 'residential_proxies',
+                    'traffic_limit' => $trafficBytes,
                 ]);
         } catch (\Throwable $e) {
             Log::warning('decodo.sub_user_create_exception', ['error' => $e->getMessage()]);
@@ -85,7 +92,7 @@ class DecodoService
         // Decodo returns the sub-user ID; fall back to username if not present
         $subUserId = $res->json('id') ?? $res->json('sub_user_id') ?? $subUsername;
 
-        [$host, $port] = $this->resolveEndpoint('residential', $protocol);
+        [$host, $port] = $this->resolveEndpoint($proxyType, $protocol, $sessionType);
         $resolvedIp    = $this->resolveIp($host);
 
         Log::info('decodo.sub_user_provisioned', [

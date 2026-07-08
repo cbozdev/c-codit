@@ -598,6 +598,16 @@ class ProxyProvisioningService
     {
         $amountMinor = (int) ($sub->config['amount_minor'] ?? 0);
 
+        // Cancel with provider first (revokes sub-user credentials immediately)
+        try {
+            $this->getProviderService($sub->provider)->cancelSubscription($sub->provider_subscription_id);
+        } catch (\Throwable $e) {
+            Log::warning('proxy.refund.provider_cancel_failed', [
+                'sub'   => $sub->public_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         DB::transaction(function () use ($sub, $user, $amountMinor) {
             $sub->update(['status' => 'cancelled']);
 
