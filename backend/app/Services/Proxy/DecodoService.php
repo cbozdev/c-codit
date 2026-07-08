@@ -40,6 +40,50 @@ class DecodoService
         return $this->staticLocations();
     }
 
+    /**
+     * Returns available US states from Decodo's residential pool.
+     * Result is cached for 10 minutes to avoid hammering the API.
+     * Returns an array of lowercase state codes that currently have IPs.
+     */
+    public function getAvailableUsStates(): array
+    {
+        return \Illuminate\Support\Facades\Cache::remember('decodo.us_states', 600, function () {
+            try {
+                $res = Http::withHeaders($this->apiHeaders())
+                    ->timeout(8)
+                    ->get(self::API_BASE . '/v2/residential/locations', ['country' => 'us']);
+
+                if ($res->successful()) {
+                    $data = $res->json();
+                    // Response may be array of objects with 'state' or 'state_code' field
+                    $states = [];
+                    $items  = $data['data'] ?? $data;
+                    if (is_array($items)) {
+                        foreach ($items as $item) {
+                            $code = $item['state_code'] ?? $item['state'] ?? $item['code'] ?? null;
+                            if ($code) {
+                                $states[] = strtolower($code);
+                            }
+                        }
+                    }
+                    if (! empty($states)) {
+                        return $states;
+                    }
+                }
+
+                Log::info('decodo.us_states_fallback', [
+                    'status' => $res->status(),
+                    'body'   => substr($res->body(), 0, 300),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('decodo.us_states_error', ['error' => $e->getMessage()]);
+            }
+
+            // Fallback: treat all states as available (client uses static low-coverage list)
+            return [];
+        });
+    }
+
     // ─── Create subscription ──────────────────────────────────────────────────
 
     public function createSubscription(array $options): array

@@ -143,6 +143,7 @@ Route::prefix('v1')->group(function () {
         Route::middleware('throttle:api')->prefix('proxy')->group(function () {
             Route::get('/plans',                         [ProxyController::class, 'plans']);
             Route::get('/locations',                     [ProxyController::class, 'locations']);
+            Route::get('/us-state-availability',         [ProxyController::class, 'usStateAvailability']);
             Route::get('/price-estimate',                [ProxyController::class, 'priceEstimate']);
             Route::get('/trial-status',                  [ProxyController::class, 'trialStatus']);
             Route::get('/my',                            [ProxyController::class, 'index']);

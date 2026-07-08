@@ -80,6 +80,12 @@ class ProxyController extends Controller
         return ApiResponse::ok($locations);
     }
 
+    public function usStateAvailability()
+    {
+        $available = $this->decodo->getAvailableUsStates();
+        return ApiResponse::ok(['states' => $available, 'from_api' => ! empty($available)]);
+    }
+
     public function priceEstimate(Request $request)
     {
         $request->validate([

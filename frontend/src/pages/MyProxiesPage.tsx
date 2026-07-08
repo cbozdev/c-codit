@@ -358,6 +358,18 @@ function OneByOneModal({ walletMinor, ips, onClose }: {
   const [country, setCountry]         = useState('US');
   const [state, setState]             = useState('');
 
+  const { data: stateAvailData } = useQuery({
+    queryKey: ['proxy', 'us-state-availability'],
+    queryFn: () => apiCall<{ states: string[]; from_api: boolean }>({ url: '/proxy/us-state-availability' }),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const unavailableState = country === 'US' && state
+    ? (stateAvailData?.from_api
+        ? !stateAvailData.states.includes(state.toLowerCase())
+        : LOW_COVERAGE_STATES.has(state))
+    : false;
+
   const days       = DURATIONS[durationIdx]?.days ?? 1;
   const priceMinor = calcPrice(connection, protocol, days, speedUpgrade);
   const insufficient = walletMinor < priceMinor;
@@ -412,14 +424,18 @@ function OneByOneModal({ walletMinor, ips, onClose }: {
           {country === 'US' && (
             <div>
               <p className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1.5">State</p>
-              <select className="input text-sm w-full" value={state} onChange={(e) => setState(e.target.value)}>
+              <select
+                className={clsx('input text-sm w-full', unavailableState && 'border-rose-400 dark:border-rose-500')}
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+              >
                 <option value="">Any state</option>
                 {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
               </select>
-              {state && LOW_COVERAGE_STATES.has(state) && (
-                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+              {state && unavailableState && (
+                <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400 flex items-start gap-1">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  Limited residential IPs in {US_STATES.find(s2 => s2.code === state)?.name}. Your proxy may connect through a nearby state instead.
+                  No residential IPs available in {US_STATES.find(s2 => s2.code === state)?.name} right now. Please select a different state or choose "Any state".
                 </p>
               )}
             </div>
@@ -497,7 +513,7 @@ function OneByOneModal({ walletMinor, ips, onClose }: {
 
         <div className="flex gap-3 p-5 pt-0">
           <button onClick={onClose} className="btn-outline flex-1">Cancel</button>
-          <button onClick={() => buy.mutate()} disabled={buy.isPending || insufficient} className="btn-primary flex-1">
+          <button onClick={() => buy.mutate()} disabled={buy.isPending || insufficient || unavailableState} className="btn-primary flex-1">
             {buy.isPending ? 'Processing…' : `Buy Now · ${fmt(priceMinor)}`}
           </button>
         </div>
