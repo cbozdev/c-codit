@@ -13,6 +13,9 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
+// States with very few residential IPs in Decodo's pool — targeting may fall back to any US IP
+const LOW_COVERAGE_STATES = new Set(['HI', 'AK', 'WY', 'ND', 'SD', 'VT', 'MT', 'RI', 'DE', 'DC']);
+
 // ─── Static residential geo data (Decodo residential gateway) ─────────────────
 
 const US_STATES: { code: string; name: string }[] = [
@@ -413,6 +416,12 @@ function OneByOneModal({ walletMinor, ips, onClose }: {
                 <option value="">Any state</option>
                 {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
               </select>
+              {state && LOW_COVERAGE_STATES.has(state) && (
+                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  Limited residential IPs in {US_STATES.find(s2 => s2.code === state)?.name}. Your proxy may connect through a nearby state instead.
+                </p>
+              )}
             </div>
           )}
 
