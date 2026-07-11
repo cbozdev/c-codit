@@ -222,26 +222,40 @@ class ServicePurchaseService
             throw $e;
         }
 
-        DB::transaction(function () use ($order, $holdTx, $result, $serviceSlug, $duration) {
-            $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
-            $order->update([
-                'status'            => 'completed',
-                'provider_order_id' => $result['provider_order_id'],
-                'provider_response' => $result['raw'] ?? null,
-                'delivery'          => [
-                    'phone_number'      => $result['phone_number'],
-                    'expires_at'        => $result['expires_at'],
-                    'number_type'       => 'LTR',
-                    'duration'          => $duration,
-                    'service_name'      => ucfirst($serviceSlug),
-                    'country'           => $country === 'GB' ? 'United Kingdom' : 'United States',
-                    'auto_renew_enable' => $result['auto_renew_enable'] ?? false,
-                    'allow_flag'        => $result['allow_flag'] ?? true,
-                    'allow_reuse'       => $result['allow_reuse'] ?? false,
-                ],
-                'provisioned_at' => now(),
+        // Number provisioned at PvaDeals — settle wallet and mark order complete.
+        // Wrapped separately so settlement errors are logged distinctly from purchase errors.
+        try {
+            DB::transaction(function () use ($order, $holdTx, $result, $serviceSlug, $duration) {
+                $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
+                $order->update([
+                    'status'            => 'completed',
+                    'provider_order_id' => $result['provider_order_id'],
+                    'provider_response' => $result['raw'] ?? null,
+                    'delivery'          => [
+                        'phone_number'      => $result['phone_number'],
+                        'expires_at'        => $result['expires_at'],
+                        'number_type'       => 'LTR',
+                        'duration'          => $duration,
+                        'service_name'      => ucfirst($serviceSlug),
+                        'country'           => $country === 'GB' ? 'United Kingdom' : 'United States',
+                        'auto_renew_enable' => $result['auto_renew_enable'] ?? false,
+                        'allow_flag'        => $result['allow_flag'] ?? true,
+                        'allow_reuse'       => $result['allow_reuse'] ?? false,
+                    ],
+                    'provisioned_at' => now(),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            // Number is live at PvaDeals even though settlement failed — log and surface details.
+            Log::error('ltr.settlement.error', [
+                'order'   => $order->public_id,
+                'class'   => get_class($e),
+                'error'   => $e->getMessage(),
+                'result'  => $result,
+                'trace'   => collect(explode("\n", $e->getTraceAsString()))->take(10)->implode("\n"),
             ]);
-        });
+            throw $e;
+        }
 
         UserNotify::send($user, 'order_completed', 'LTR number ready', 'Your long-term rental number is ready.', ['order_id' => $order->public_id]);
         $this->maybeRewardReferrer($user);

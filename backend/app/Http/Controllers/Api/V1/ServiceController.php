@@ -154,8 +154,17 @@ class ServiceController extends Controller
         } catch (\App\Services\Ledger\InsufficientFundsException $e) {
             return ApiResponse::fail('Insufficient wallet balance. Please top up first.', null, 402);
         } catch (\Throwable $e) {
-            \Log::error('ltr.purchase.error', ['error' => $e->getMessage()]);
-            return ApiResponse::fail('Service temporarily unavailable. Your wallet has been refunded.', null, 503);
+            \Log::error('ltr.purchase.error', [
+                'class' => get_class($e),
+                'error' => $e->getMessage(),
+                'file'  => $e->getFile() . ':' . $e->getLine(),
+            ]);
+            // DEBUG: expose error class so we can diagnose without log access. Remove after fix.
+            return ApiResponse::fail(
+                '[DEBUG] ' . get_class($e) . ': ' . $e->getMessage(),
+                ['file' => basename($e->getFile()) . ':' . $e->getLine()],
+                503
+            );
         }
 
         return ApiResponse::ok(new ServiceOrderResource($order), 'LTR number purchased.');
