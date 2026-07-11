@@ -230,6 +230,7 @@ Route::prefix('v1')->group(function () {
             // Transactions
             Route::get('/transactions', [AdminController::class, 'transactions']);
             Route::post('/transactions/{id}/refund', [AdminController::class, 'refundTransaction']);
+            Route::post('/orders/{publicId}/recover-ltr', [AdminController::class, 'recoverLtrOrder']);
 
             // Services
             Route::get('/services',                             [AdminController::class, 'services']);

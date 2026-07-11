@@ -638,6 +638,51 @@ class AdminController extends Controller
         return ApiResponse::ok(null, 'Transaction refunded successfully.');
     }
 
+    /**
+     * Recover a stuck LTR provisioning order by supplying the phone number and PvaDeals order ID.
+     * Use when PvaDeals provisioned the number but our code failed to parse the response.
+     */
+    public function recoverLtrOrder(Request $request, string $publicId)
+    {
+        $request->validate([
+            'phone_number'      => ['required', 'string', 'max:20'],
+            'provider_order_id' => ['required', 'string', 'max:80'],
+            'expires_at'        => ['nullable', 'string'],
+        ]);
+
+        $order = ServiceOrder::where('public_id', $publicId)
+            ->where('status', 'provisioning')
+            ->firstOrFail();
+
+        $delivery = array_merge((array) ($order->delivery ?? []), [
+            'phone_number' => '+' . ltrim($request->input('phone_number'), '+'),
+            'number_type'  => 'LTR',
+            'recovered_by' => 'admin',
+        ]);
+
+        DB::transaction(function () use ($order, $delivery, $request) {
+            if ($order->transaction && $order->transaction->status->value === 'processing') {
+                $this->wallets->settleSuspense(
+                    $order->transaction,
+                    'svcsettle:' . $order->public_id,
+                );
+            }
+
+            $order->update([
+                'status'            => 'completed',
+                'provider_order_id' => $request->input('provider_order_id'),
+                'delivery'          => $delivery,
+                'provisioned_at'    => now(),
+            ]);
+        });
+
+        Audit::log('admin.ltr_order_recovered', $order, [
+            'phone' => $request->input('phone_number'),
+        ], actorType: 'admin');
+
+        return ApiResponse::ok(null, 'LTR order recovered successfully.');
+    }
+
     // ─── App Settings ─────────────────────────────────────────────────────────
 
     public function getSettings()

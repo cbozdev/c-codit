@@ -44,27 +44,6 @@ class AutoCancelExpiredOrders extends Command
             }
         }
 
-        // 2. Stuck provisioning orders — no number delivered after 30 min
-        $stuck = ServiceOrder::where('status', 'provisioning')
-            ->where('created_at', '<', now()->subMinutes(30))
-            ->whereNull('refunded_at')
-            ->whereNull('provider_order_id')
-            ->whereHas('service', fn ($q) => $q->whereIn('provider', self::SMS_PROVIDERS))
-            ->with(['service', 'transaction'])
-            ->get();
-
-        foreach ($stuck as $order) {
-            try {
-                $this->cancelOrder($order, $wallets, 'Purchase did not complete — refunded automatically');
-                Log::info('orders.stuck_provisioning_refunded', ['order' => $order->public_id]);
-            } catch (\Throwable $e) {
-                Log::warning('orders.stuck_refund_failed', [
-                    'order' => $order->public_id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
         return 0;
     }
 
@@ -99,7 +78,7 @@ class AutoCancelExpiredOrders extends Command
             return;
         }
 
-        DB::transaction(function () use ($wallets, $holdTx, $order) {
+        DB::transaction(function () use ($wallets, $holdTx, $order, $reason) {
             $freshTx   = $holdTx->fresh();
             $statusStr = $freshTx->status instanceof \BackedEnum
                 ? $freshTx->status->value

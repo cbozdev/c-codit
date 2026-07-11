@@ -361,18 +361,26 @@ class PvaDealsService implements SmsNumberProvider
             $data = $data['requests'][0];
         }
 
-        if (empty($data['_id']) || empty($data['number'])) {
-            Log::error('pvadeals.ltr.unexpected_response', ['body' => $res->body()]);
+        // PvaDeals uses '_id' (MongoDB) in most endpoints but 'requestId' in webhooks
+        $orderId = $data['_id'] ?? $data['requestId'] ?? $data['id'] ?? null;
+        $phone   = $data['number'] ?? $data['phoneNumber'] ?? $data['phone'] ?? null;
+
+        if (! $orderId || ! $phone) {
+            Log::error('pvadeals.ltr.unexpected_response', [
+                'body'    => $res->body(),
+                'orderId' => $orderId,
+                'phone'   => $phone,
+            ]);
             throw new ServiceUnavailableException('Number provisioning failed. Please try again.');
         }
 
         $actualDuration = $isAllServices ? ($cc === 'GB' ? 30 : 28) : $duration;
 
         return [
-            'provider_order_id' => (string) $data['_id'],
-            'phone_number'      => '+' . ltrim((string) $data['number'], '+'),
-            'expires_at'        => $data['endTime'] ?? now()->addDays($actualDuration)->toISOString(),
-            'auto_renew_enable' => (bool) ($data['autoRenewEnable'] ?? false),
+            'provider_order_id' => (string) $orderId,
+            'phone_number'      => '+' . ltrim((string) $phone, '+'),
+            'expires_at'        => $data['endTime'] ?? $data['expiresAt'] ?? now()->addDays($actualDuration)->toISOString(),
+            'auto_renew_enable' => (bool) ($data['autoRenewEnable'] ?? $data['auto_renew'] ?? false),
             'allow_flag'        => (bool) ($data['allowFlag'] ?? true),
             'allow_reuse'       => false,
             'number_type'       => 'LTR',
