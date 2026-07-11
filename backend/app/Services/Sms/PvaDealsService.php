@@ -341,17 +341,29 @@ class PvaDealsService implements SmsNumberProvider
         $res = $this->client()->asJson()->post('/purchase-ltr', $payload);
 
         Log::info('pvadeals.ltr.purchase.response', [
-            'status' => $res->status(),
-            'body'   => substr($res->body(), 0, 400),
+            'status'  => $res->status(),
+            'body'    => $res->body(),
+            'payload' => $payload,
         ]);
 
         if (! $res->successful() || empty($res->json('success'))) {
-            throw new ServiceUnavailableException('No LTR numbers available. Please try again later.');
+            throw new ServiceUnavailableException(
+                $res->json('message') ?? 'No LTR numbers available. Please try again later.'
+            );
         }
 
-        $data = $res->json('data') ?? null;
-        if (! $data || empty($data['_id']) || empty($data['number'])) {
-            throw new \RuntimeException('PVADeals LTR unexpected response: ' . substr($res->body(), 0, 200));
+        // PvaDeals may return data directly or nested under 'data'
+        $raw  = $res->json();
+        $data = $raw['data'] ?? $raw;
+
+        // Some responses nest the item under 'requests[0]'
+        if (isset($data['requests'][0])) {
+            $data = $data['requests'][0];
+        }
+
+        if (empty($data['_id']) || empty($data['number'])) {
+            Log::error('pvadeals.ltr.unexpected_response', ['body' => $res->body()]);
+            throw new ServiceUnavailableException('Number provisioning failed. Please try again.');
         }
 
         $actualDuration = $isAllServices ? ($cc === 'GB' ? 30 : 28) : $duration;

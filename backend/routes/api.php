@@ -17,6 +17,35 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', HealthController::class);
 Route::get('/v1/settings', [AdminController::class, 'getSettings']); // public app settings
 
+// TEMP DEBUG — PvaDeals catalog + purchase-ltr test
+Route::get('/v1/debug-pvadeals', function (\Illuminate\Http\Request $req) {
+    if ($req->query('s') !== 'ccodit2026') abort(404);
+
+    $pva     = app(\App\Services\Sms\PvaDealsService::class);
+    $service = $req->query('svc', 'whatsapp');
+    $dur     = (int) $req->query('dur', 3);
+    $cc      = $req->query('cc', 'US');
+
+    // Clear cache if requested
+    if ($req->query('clear')) {
+        \Illuminate\Support\Facades\Cache::forget('pvadeals.catalog.v2');
+    }
+
+    $catalog  = $pva->getPublicCatalog();
+    $price    = $pva->getLtrPrice($service, $dur, $cc);
+    $ltrEntry = collect($catalog)->firstWhere('slug', $service);
+
+    return response()->json([
+        'catalog_count'  => count($catalog),
+        'matched_entry'  => $ltrEntry,
+        'ltr_price'      => $price ? $price->amountMinor : null,
+        'has_price'      => $price !== null,
+        'service_query'  => $service,
+        'duration_query' => $dur,
+        'country_query'  => $cc,
+    ]);
+});
+
 // TEMP DEBUG — remove after biller_code investigation
 Route::get('/v1/debug-flw-data', function (\Illuminate\Http\Request $req) {
     if ($req->query('s') !== 'ccodit2026') abort(404);
