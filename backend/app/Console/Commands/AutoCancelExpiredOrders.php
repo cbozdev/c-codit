@@ -23,6 +23,7 @@ class AutoCancelExpiredOrders extends Command
 
     public function handle(WalletService $wallets): int
     {
+        // 1. Expired orders with no code received
         $orders = ServiceOrder::whereIn('status', ['pending', 'provisioning', 'completed'])
             ->where('expires_at', '<', now())
             ->whereNull('refunded_at')
@@ -30,10 +31,6 @@ class AutoCancelExpiredOrders extends Command
             ->with(['service', 'transaction'])
             ->get()
             ->filter(fn ($o) => empty($o->delivery['sms_code'] ?? null));
-
-        if ($orders->isEmpty()) {
-            return 0;
-        }
 
         foreach ($orders as $order) {
             try {
@@ -47,10 +44,31 @@ class AutoCancelExpiredOrders extends Command
             }
         }
 
+        // 2. Stuck provisioning orders — no number delivered after 30 min
+        $stuck = ServiceOrder::where('status', 'provisioning')
+            ->where('created_at', '<', now()->subMinutes(30))
+            ->whereNull('refunded_at')
+            ->whereNull('provider_order_id')
+            ->whereHas('service', fn ($q) => $q->whereIn('provider', self::SMS_PROVIDERS))
+            ->with(['service', 'transaction'])
+            ->get();
+
+        foreach ($stuck as $order) {
+            try {
+                $this->cancelOrder($order, $wallets, 'Purchase did not complete — refunded automatically');
+                Log::info('orders.stuck_provisioning_refunded', ['order' => $order->public_id]);
+            } catch (\Throwable $e) {
+                Log::warning('orders.stuck_refund_failed', [
+                    'order' => $order->public_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return 0;
     }
 
-    private function cancelOrder(ServiceOrder $order, WalletService $wallets): void
+    private function cancelOrder(ServiceOrder $order, WalletService $wallets, string $reason = 'Number expired — no code received'): void
     {
         // Cancel with provider (best-effort)
         try {
@@ -91,7 +109,7 @@ class AutoCancelExpiredOrders extends Command
                 $wallets->refundSuspense(
                     $freshTx,
                     'auto_cancel:' . $order->public_id,
-                    'Number expired — no code received',
+                    $reason,
                 );
             } else {
                 $wallet = $freshTx->wallet;
@@ -101,13 +119,13 @@ class AutoCancelExpiredOrders extends Command
                     amount:           $amount,
                     cashAccountCode:  ChartOfAccounts::SUSPENSE,
                     idempotencyKey:   'auto_cancel:' . $order->public_id,
-                    description:      'Refund: number expired — no code received',
+                    description:      'Refund: ' . $reason,
                 );
             }
 
             $order->update([
                 'status'         => 'refunded',
-                'failure_reason' => 'Number expired — no code received',
+                'failure_reason' => $reason,
                 'refunded_at'    => now(),
             ]);
         });
