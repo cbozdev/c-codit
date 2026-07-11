@@ -159,12 +159,7 @@ class ServiceController extends Controller
                 'error' => $e->getMessage(),
                 'file'  => $e->getFile() . ':' . $e->getLine(),
             ]);
-            // DEBUG: expose error class so we can diagnose without log access. Remove after fix.
-            return ApiResponse::fail(
-                '[DEBUG] ' . get_class($e) . ': ' . $e->getMessage(),
-                ['file' => basename($e->getFile()) . ':' . $e->getLine()],
-                503
-            );
+            return ApiResponse::fail('Service temporarily unavailable. Please try again.', null, 503);
         }
 
         return ApiResponse::ok(new ServiceOrderResource($order), 'LTR number purchased.');

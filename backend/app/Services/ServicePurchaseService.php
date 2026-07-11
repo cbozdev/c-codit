@@ -225,7 +225,7 @@ class ServicePurchaseService
         // Number provisioned at PvaDeals — settle wallet and mark order complete.
         // Wrapped separately so settlement errors are logged distinctly from purchase errors.
         try {
-            DB::transaction(function () use ($order, $holdTx, $result, $serviceSlug, $duration) {
+            DB::transaction(function () use ($order, $holdTx, $result, $serviceSlug, $duration, $country) {
                 $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
                 $order->update([
                     'status'            => 'completed',
