@@ -12,8 +12,9 @@ class ServiceOrderResource extends JsonResource
         return [
             'id'                => $this->public_id,
             'service'           => $this->whenLoaded('service', fn () => [
-                'code' => $this->service->code,
-                'name' => $this->service->name,
+                'code'     => $this->service->code,
+                'name'     => $this->service->name,
+                'provider' => $this->service->provider,
             ]),
             'status'            => $this->status,
             'amount_minor'      => (int) $this->amount_minor,
