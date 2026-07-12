@@ -429,8 +429,19 @@ class PvaDealsService implements SmsNumberProvider
         try {
             $res  = $this->client()->post("/flag/{$providerOrderId}");
             $body = $res->json();
-            return $res->successful() && ! empty($body['success']);
-        } catch (\Throwable) {
+            $ok   = $res->successful() && ! empty($body['success']);
+            Log::info('pvadeals.cancel', [
+                'order_id' => $providerOrderId,
+                'status'   => $res->status(),
+                'body'     => $body,
+                'success'  => $ok,
+            ]);
+            return $ok;
+        } catch (\Throwable $e) {
+            Log::error('pvadeals.cancel.exception', [
+                'order_id' => $providerOrderId,
+                'error'    => $e->getMessage(),
+            ]);
             return false;
         }
     }
@@ -439,6 +450,13 @@ class PvaDealsService implements SmsNumberProvider
     {
         try {
             $res = $this->client()->get("/request/{$providerOrderId}");
+
+            Log::info('pvadeals.fetchCode', [
+                'order_id' => $providerOrderId,
+                'status'   => $res->status(),
+                'body'     => substr($res->body(), 0, 500),
+            ]);
+
             if (! $res->successful()) return null;
 
             $data    = $res->json('data') ?? [];
@@ -450,7 +468,11 @@ class PvaDealsService implements SmsNumberProvider
             }
 
             return null;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::error('pvadeals.fetchCode.exception', [
+                'order_id' => $providerOrderId,
+                'error'    => $e->getMessage(),
+            ]);
             return null;
         }
     }

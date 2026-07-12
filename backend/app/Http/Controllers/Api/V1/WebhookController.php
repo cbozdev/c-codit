@@ -113,6 +113,7 @@ class WebhookController extends Controller
             'event'      => $event,
             'request_id' => $requestId,
             'has_message' => ! empty($message),
+            'payload'     => $request->all(),
         ]);
 
         // LTR auto-renew: update provider_order_id to new request ID
@@ -151,7 +152,7 @@ class WebhookController extends Controller
 
         try {
             $order = ServiceOrder::where('provider_order_id', (string) $requestId)
-                ->whereIn('status', ['completed', 'pending'])
+                ->whereIn('status', ['completed', 'pending', 'provisioning'])
                 ->first();
 
             if ($order) {
