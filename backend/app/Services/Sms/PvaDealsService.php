@@ -490,7 +490,7 @@ class PvaDealsService implements SmsNumberProvider
             $message = (string) ($data['message'] ?? $data['sms'] ?? $data['code'] ?? '');
 
             if ($message) {
-                preg_match('/\b(\d{4,8})\b/', $message, $m);
+                preg_match('/\b(\d{4,8}|\d{3,4}[- ]\d{3,4})\b/', $message, $m);
                 if (! empty($m[1])) return $m[1];
             }
 

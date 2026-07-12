@@ -187,9 +187,10 @@ class WebhookController extends Controller
         }
 
         // Extract numeric code from full SMS message
+        // Matches 4-8 consecutive digits OR 3-4 digits, dash/space, 3-4 digits (e.g. WhatsApp "936-281")
         $code = null;
         if ($message) {
-            preg_match('/\b(\d{4,8})\b/', (string) $message, $m);
+            preg_match('/\b(\d{4,8}|\d{3,4}[- ]\d{3,4})\b/', (string) $message, $m);
             $code = $m[1] ?? null;
         }
 
