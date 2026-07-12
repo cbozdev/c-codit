@@ -59,7 +59,7 @@ export type Service = {
 
 export type ServiceOrder = {
   id: string;
-  service?: { code: string; name: string; provider: string };
+  service?: { code: string; name: string; provider: string; category: string };
   status: 'pending' | 'provisioning' | 'completed' | 'failed' | 'refunded';
   amount_minor: number;
   amount: string;
