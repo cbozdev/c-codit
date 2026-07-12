@@ -30,50 +30,49 @@ Route::get('/v1/recover-ltr-orders', function (\Illuminate\Http\Request $req) {
         ['provider_order_id' => '6a52d88ce9a8314c793ad9ee', 'phone' => '+14709969430', 'code' => '195-368', 'expires_at' => '2026-07-14T23:58:04.812Z'],
     ];
 
-    $stuck = \App\Models\ServiceOrder::where('provider', 'pvadeals')
-        ->whereIn('status', ['provisioning', 'refunded', 'cancelled'])
+    // First pass: show what we found regardless of status
+    $found = \App\Models\ServiceOrder::where('provider', 'pvadeals')
         ->whereNull('provider_order_id')
-        ->whereBetween('created_at', ['2026-07-11 23:00:00', '2026-07-12 01:00:00'])
+        ->whereBetween('created_at', ['2026-07-11 22:00:00', '2026-07-12 02:00:00'])
+        ->orderBy('created_at')
+        ->get(['id', 'public_id', 'status', 'provider_order_id', 'created_at']);
+
+    if ($found->isEmpty()) {
+        return response()->json(['message' => 'No matching pvadeals orders found in that window.', 'found' => []]);
+    }
+
+    $stuck = \App\Models\ServiceOrder::where('provider', 'pvadeals')
+        ->whereNull('provider_order_id')
+        ->whereBetween('created_at', ['2026-07-11 22:00:00', '2026-07-12 02:00:00'])
         ->orderBy('created_at')
         ->get();
-
-    if ($stuck->isEmpty()) {
-        return response()->json(['message' => 'No stuck orders found in that window.', 'count' => 0]);
-    }
 
     $results = [];
     foreach ($stuck->values() as $i => $order) {
         $pva = $numbers[$i] ?? null;
         if (! $pva) {
-            $results[] = ['order' => $order->public_id, 'status' => 'skipped — no PvaDeals entry'];
+            $results[] = ['order' => $order->public_id, 'created' => (string)$order->created_at, 'status' => 'skipped — no PvaDeals entry'];
             continue;
         }
 
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($order, $pva) {
-                $delivery = array_merge((array) ($order->delivery ?? []), [
-                    'phone_number' => $pva['phone'],
-                    'number_type'  => 'LTR',
-                    'sms_code'     => $pva['code'],
-                    'sms_text'     => 'Your WhatsApp Business code ' . $pva['code'],
-                    'expires_at'   => $pva['expires_at'],
-                    'recovered_by' => 'recover-ltr-orders endpoint',
-                ]);
+            $delivery = array_merge((array) ($order->delivery ?? []), [
+                'phone_number' => $pva['phone'],
+                'number_type'  => 'LTR',
+                'sms_code'     => $pva['code'],
+                'sms_text'     => 'Your WhatsApp Business code ' . $pva['code'],
+                'expires_at'   => $pva['expires_at'],
+                'recovered_by' => 'recover-ltr-orders endpoint',
+            ]);
 
-                if ($order->transaction && $order->transaction->status->value === 'processing') {
-                    app(\App\Services\WalletService::class)
-                        ->settleSuspense($order->transaction, 'svcsettle:' . $order->public_id);
-                }
+            $order->update([
+                'status'            => 'completed',
+                'provider_order_id' => $pva['provider_order_id'],
+                'delivery'          => $delivery,
+                'provisioned_at'    => now(),
+            ]);
 
-                $order->update([
-                    'status'            => 'completed',
-                    'provider_order_id' => $pva['provider_order_id'],
-                    'delivery'          => $delivery,
-                    'provisioned_at'    => now(),
-                ]);
-            });
-
-            $results[] = ['order' => $order->public_id, 'phone' => $pva['phone'], 'code' => $pva['code'], 'status' => 'recovered'];
+            $results[] = ['order' => $order->public_id, 'phone' => $pva['phone'], 'code' => $pva['code'], 'was' => $order->getOriginal('status'), 'status' => 'recovered'];
             \Illuminate\Support\Facades\Log::info('pvadeals.recover_ltr.success', ['order' => $order->public_id, 'phone' => $pva['phone']]);
         } catch (\Throwable $e) {
             $results[] = ['order' => $order->public_id, 'status' => 'error', 'error' => $e->getMessage()];
@@ -81,7 +80,7 @@ Route::get('/v1/recover-ltr-orders', function (\Illuminate\Http\Request $req) {
         }
     }
 
-    return response()->json(['recovered' => count(array_filter($results, fn($r) => $r['status'] === 'recovered')), 'results' => $results]);
+    return response()->json(['found_count' => $found->count(), 'found' => $found->toArray(), 'recovered' => count(array_filter($results, fn($r) => $r['status'] === 'recovered')), 'results' => $results]);
 });
 
 // TEMP DEBUG — PvaDeals catalog + purchase-ltr test
