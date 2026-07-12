@@ -15,6 +15,7 @@ class ServiceOrderResource extends JsonResource
                 'code'     => $this->service->code,
                 'name'     => $this->service->name,
                 'provider' => $this->service->provider,
+                'category' => $this->service->category,
             ]),
             'status'            => $this->status,
             'amount_minor'      => (int) $this->amount_minor,

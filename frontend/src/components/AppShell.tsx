@@ -15,6 +15,7 @@ const NAV = [
   { to: '/wallet',       label: 'Wallet',       icon: Wallet,          tourId: 'nav-wallet' },
   { to: '/transactions', label: 'Transactions', icon: ListOrdered,     tourId: 'nav-transactions' },
   { to: '/services',     label: 'Services',     icon: Layers,          tourId: 'nav-services' },
+  { to: '/str-numbers',  label: 'STR Numbers',  icon: Phone,           tourId: 'nav-str' },
   { to: '/ltr-numbers',  label: 'LTR Numbers',  icon: Phone,           tourId: 'nav-ltr' },
   { to: '/proxy',        label: 'Proxies',      icon: Globe,           tourId: 'nav-proxy' },
   { to: '/referral',     label: 'Referral',     icon: Users,           tourId: undefined },
