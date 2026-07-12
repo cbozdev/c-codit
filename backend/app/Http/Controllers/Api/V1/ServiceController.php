@@ -932,6 +932,14 @@ class ServiceController extends Controller
             return ApiResponse::fail('A code was already received for this number. Refunds are not available after a code has been delivered.', null, 422);
         }
 
+        // LTR pvadeals numbers cannot be cancelled — allowFlag is false and the rental is non-refundable
+        if (
+            ($order->delivery['number_type'] ?? '') === 'LTR' &&
+            ($order->service->provider ?? '') === 'pvadeals'
+        ) {
+            return ApiResponse::fail('Long-term rental numbers cannot be cancelled early. Your number is active until ' . ($order->delivery['expires_at'] ?? 'expiry') . '.', null, 422);
+        }
+
         $holdTx = $order->transaction;
         if (! $holdTx) {
             return ApiResponse::fail('No transaction found for this order.', null, 422);

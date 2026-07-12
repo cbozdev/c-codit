@@ -77,7 +77,9 @@ export default function OrderDetailPage() {
   const urgentTime  = timeLeft < 120 && timeLeft > 0;
   const isExpired   = timeLeft === 0 && !!provisionedAt && !smsCode;
   const isVirtualNumber = !!phoneNumber || o?.service?.code?.includes('vnum');
-  const isRefunded  = o?.status === 'refunded';
+  const isRefunded     = o?.status === 'refunded';
+  const isLtrPvadeals  = (delivery?.number_type as string | null) === 'LTR' && o?.service?.provider === 'pvadeals';
+  const ltrExpiresAt   = delivery?.expires_at as string | null;
 
   // Pull service name from request metadata
   const request = o?.request as Record<string, unknown> | null;
@@ -216,8 +218,8 @@ export default function OrderDetailPage() {
             </button>
           </div>
 
-          {/* Timer */}
-          {!smsCode && !isRefunded && (
+          {/* Timer — STR only */}
+          {!smsCode && !isRefunded && !isLtrPvadeals && (
             <div className={clsx(
               'flex items-center gap-2 text-sm rounded-lg px-3 py-2 mb-4',
               isExpired   ? 'bg-rose-500/20 text-rose-300'
@@ -235,6 +237,14 @@ export default function OrderDetailPage() {
                   </span>
                 </span>
               )}
+            </div>
+          )}
+
+          {/* LTR expiry notice */}
+          {isLtrPvadeals && !isRefunded && (
+            <div className="flex items-center gap-2 text-sm rounded-lg px-3 py-2 mb-4 bg-ink-800 text-ink-300">
+              <Clock className="h-4 w-4 shrink-0" />
+              <span>LTR rental — expires {ltrExpiresAt ? formatDate(ltrExpiresAt) : 'at end of rental period'}</span>
             </div>
           )}
 
@@ -300,33 +310,42 @@ export default function OrderDetailPage() {
                     toast.error((e as Error).message ?? 'Could not check for code.');
                   }
                 }}
-                className="btn-outline flex-1 text-sm border-ink-700 text-ink-300 hover:bg-ink-800"
+                className={clsx('btn-outline text-sm border-ink-700 text-ink-300 hover:bg-ink-800', isLtrPvadeals ? 'w-full' : 'flex-1')}
               >
                 <RefreshCw className="h-4 w-4" />
                 Check for code
               </button>
-              <button
-                onClick={() => {
-                  if (confirm('Cancel this number? You will receive a full refund.')) {
-                    cancel.mutate();
-                  }
-                }}
-                disabled={cancel.isPending}
-                className="btn flex-1 text-sm border border-rose-800 bg-rose-950/40 text-rose-400 hover:bg-rose-950/80"
-              >
-                <XCircle className="h-4 w-4" />
-                {cancel.isPending ? 'Cancelling…' : 'Cancel & refund'}
-              </button>
+              {!isLtrPvadeals && (
+                <button
+                  onClick={() => {
+                    if (confirm('Cancel this number? You will receive a full refund.')) {
+                      cancel.mutate();
+                    }
+                  }}
+                  disabled={cancel.isPending}
+                  className="btn flex-1 text-sm border border-rose-800 bg-rose-950/40 text-rose-400 hover:bg-rose-950/80"
+                >
+                  <XCircle className="h-4 w-4" />
+                  {cancel.isPending ? 'Cancelling…' : 'Cancel & refund'}
+                </button>
+              )}
             </div>
           )}
 
           {!smsCode && !isRefunded && (
             <div className="mt-4 flex items-start gap-2 text-xs text-ink-400">
               <Shield className="h-3.5 w-3.5 mt-0.5 shrink-0 text-brand-500" />
-              <span>
-                Enter this number on the platform you're verifying. The SMS code appears above automatically.
-                If no code arrives within 10 minutes, cancel for a full refund.
-              </span>
+              {isLtrPvadeals ? (
+                <span>
+                  Enter this number on the platform you're verifying. Codes appear here automatically.
+                  LTR numbers cannot be cancelled — they are active until expiry.
+                </span>
+              ) : (
+                <span>
+                  Enter this number on the platform you're verifying. The SMS code appears above automatically.
+                  If no code arrives within 10 minutes, cancel for a full refund.
+                </span>
+              )}
             </div>
           )}
         </div>
