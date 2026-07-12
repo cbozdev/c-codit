@@ -200,8 +200,15 @@ class PvaDealsService implements SmsNumberProvider
     {
         $cc = $this->normalizeCountry($country) ?? 'US';
 
-        // ALL_SERVICES fixed pricing
-        if ($duration === 28) return Money::fromDecimal('12.99', 'USD'); // US All-Services
+        $isAllSvc = in_array(strtolower(trim($service)), ['all_services', 'all services', 'all'], true)
+            || $duration === 28;
+
+        if ($isAllSvc) {
+            // Prices from PvaDeals docs: US 28-day = $12.99, UK 30-day = $6.99
+            return $cc === 'GB'
+                ? Money::fromDecimal('6.99', 'USD')
+                : Money::fromDecimal('12.99', 'USD');
+        }
 
         $svc = $this->findService($service, $cc);
         if (! $svc) return null;
@@ -364,8 +371,9 @@ class PvaDealsService implements SmsNumberProvider
         // PvaDeals uses '_id' (MongoDB) in most endpoints but 'requestId' in webhooks
         $orderId = $data['_id'] ?? $data['requestId'] ?? $data['id'] ?? null;
         $phone   = $data['number'] ?? $data['phoneNumber'] ?? $data['phone'] ?? null;
+        $status  = strtoupper((string) ($data['status'] ?? ''));
 
-        if (! $orderId || ! $phone) {
+        if (! $orderId) {
             Log::error('pvadeals.ltr.unexpected_response', [
                 'body'    => $res->body(),
                 'orderId' => $orderId,
@@ -376,15 +384,34 @@ class PvaDealsService implements SmsNumberProvider
 
         $actualDuration = $isAllServices ? ($cc === 'GB' ? 30 : 28) : $duration;
 
+        // PENDING: ALL_SERVICES numbers may arrive asynchronously.
+        // Return without a phone number — number_purchased webhook will deliver it.
+        if ($status === 'PENDING' || ! $phone) {
+            Log::info('pvadeals.ltr.pending', ['order_id' => $orderId, 'status' => $status]);
+            return [
+                'provider_order_id' => (string) $orderId,
+                'phone_number'      => null,
+                'expires_at'        => $data['endTime'] ?? $data['expiresAt'] ?? null,
+                'auto_renew_enable' => false,
+                'allow_flag'        => (bool) ($data['allowFlag'] ?? false),
+                'allow_reuse'       => false,
+                'number_type'       => 'LTR',
+                'duration'          => $actualDuration,
+                'pending'           => true,
+                'raw'               => $data,
+            ];
+        }
+
         return [
             'provider_order_id' => (string) $orderId,
             'phone_number'      => '+' . ltrim((string) $phone, '+'),
             'expires_at'        => $data['endTime'] ?? $data['expiresAt'] ?? now()->addDays($actualDuration)->toISOString(),
             'auto_renew_enable' => (bool) ($data['autoRenewEnable'] ?? $data['auto_renew'] ?? false),
-            'allow_flag'        => (bool) ($data['allowFlag'] ?? true),
+            'allow_flag'        => (bool) ($data['allowFlag'] ?? false),
             'allow_reuse'       => false,
             'number_type'       => 'LTR',
             'duration'          => $actualDuration,
+            'pending'           => false,
             'raw'               => $data,
         ];
     }

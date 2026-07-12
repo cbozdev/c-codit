@@ -223,12 +223,15 @@ class ServicePurchaseService
         }
 
         // Number provisioned at PvaDeals — settle wallet and mark order complete.
+        // If PvaDeals returned PENDING (ALL_SERVICES async), keep order in provisioning
+        // until the number_purchased webhook delivers the phone number.
         // Wrapped separately so settlement errors are logged distinctly from purchase errors.
+        $isPending = ! empty($result['pending']);
         try {
-            DB::transaction(function () use ($order, $holdTx, $result, $serviceSlug, $duration, $country) {
+            DB::transaction(function () use ($order, $holdTx, $result, $serviceSlug, $duration, $country, $isPending) {
                 $this->wallets->settleSuspense($holdTx, 'svcsettle:'.$order->public_id);
                 $order->update([
-                    'status'            => 'completed',
+                    'status'            => $isPending ? 'provisioning' : 'completed',
                     'provider_order_id' => $result['provider_order_id'],
                     'provider_response' => $result['raw'] ?? null,
                     'delivery'          => [
@@ -239,10 +242,10 @@ class ServicePurchaseService
                         'service_name'      => ucfirst($serviceSlug),
                         'country'           => $country === 'GB' ? 'United Kingdom' : 'United States',
                         'auto_renew_enable' => $result['auto_renew_enable'] ?? false,
-                        'allow_flag'        => $result['allow_flag'] ?? true,
+                        'allow_flag'        => $result['allow_flag'] ?? false,
                         'allow_reuse'       => $result['allow_reuse'] ?? false,
                     ],
-                    'provisioned_at' => now(),
+                    'provisioned_at' => $isPending ? null : now(),
                 ]);
             });
         } catch (\Throwable $e) {
@@ -257,7 +260,9 @@ class ServicePurchaseService
             throw $e;
         }
 
-        UserNotify::send($user, 'order_completed', 'LTR number ready', 'Your long-term rental number is ready.', ['order_id' => $order->public_id]);
+        if (! $isPending) {
+            UserNotify::send($user, 'order_completed', 'LTR number ready', 'Your long-term rental number is ready.', ['order_id' => $order->public_id]);
+        }
         $this->maybeRewardReferrer($user);
         Audit::log('service.purchased', $order, ['amount_minor' => $finalAmount->amountMinor]);
         return $order->fresh();

@@ -79,6 +79,7 @@ export default function OrderDetailPage() {
   const isVirtualNumber = !!phoneNumber || o?.service?.code?.includes('vnum');
   const isRefunded     = o?.status === 'refunded';
   const isLtrPvadeals  = (delivery?.number_type as string | null) === 'LTR' && o?.service?.provider === 'pvadeals';
+  const ltrAllowFlag   = isLtrPvadeals ? !!(delivery?.allow_flag) : true;
   const ltrExpiresAt   = delivery?.expires_at as string | null;
 
   // Pull service name from request metadata
@@ -315,7 +316,7 @@ export default function OrderDetailPage() {
                 <RefreshCw className="h-4 w-4" />
                 Check for code
               </button>
-              {!isLtrPvadeals && (
+              {(!isLtrPvadeals || ltrAllowFlag) && (
                 <button
                   onClick={() => {
                     if (confirm('Cancel this number? You will receive a full refund.')) {
@@ -335,7 +336,7 @@ export default function OrderDetailPage() {
           {!smsCode && !isRefunded && (
             <div className="mt-4 flex items-start gap-2 text-xs text-ink-400">
               <Shield className="h-3.5 w-3.5 mt-0.5 shrink-0 text-brand-500" />
-              {isLtrPvadeals ? (
+              {isLtrPvadeals && !ltrAllowFlag ? (
                 <span>
                   Enter this number on the platform you're verifying. Codes appear here automatically.
                   LTR numbers cannot be cancelled — they are active until expiry.

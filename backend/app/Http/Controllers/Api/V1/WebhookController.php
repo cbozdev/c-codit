@@ -135,6 +135,53 @@ class WebhookController extends Controller
             return response()->json(['status' => 'ok'], 200);
         }
 
+        // number_purchased: fires for ALL_SERVICES PENDING once the number is assigned
+        if ($event === 'number_purchased') {
+            $number = $request->input('number');
+            if ($requestId && $number) {
+                try {
+                    $order = ServiceOrder::where('provider_order_id', (string) $requestId)
+                        ->where('status', 'provisioning')
+                        ->first();
+                    if ($order) {
+                        $delivery = array_merge((array) ($order->delivery ?? []), [
+                            'phone_number' => '+' . ltrim((string) $number, '+'),
+                        ]);
+                        $order->update([
+                            'status'         => 'completed',
+                            'delivery'       => $delivery,
+                            'provisioned_at' => now(),
+                        ]);
+                        Log::channel('webhooks')->info('pvadeals.number_purchased', [
+                            'order'  => $order->public_id,
+                            'number' => $number,
+                        ]);
+                        \App\Support\UserNotify::send(
+                            $order->user,
+                            'order_completed',
+                            'LTR number ready',
+                            'Your long-term rental number is ready.',
+                            ['order_id' => $order->public_id],
+                        );
+                    }
+                } catch (\Throwable $e) {
+                    Log::channel('webhooks')->error('pvadeals.number_purchased.error', ['error' => $e->getMessage()]);
+                }
+            }
+            return response()->json(['status' => 'ok'], 200);
+        }
+
+        // sms_blocked: SMS arrived but didn't match the rented service — log only
+        if ($event === 'sms_blocked') {
+            Log::channel('webhooks')->info('pvadeals.sms_blocked', [
+                'request_id'      => $requestId,
+                'blocked_service' => $request->input('blockedService'),
+                'match_type'      => $request->input('matchType'),
+                'matched_value'   => $request->input('matchedValue'),
+            ]);
+            return response()->json(['status' => 'ok'], 200);
+        }
+
         if ($event !== 'sms_received' || ! $requestId) {
             return response()->json(['status' => 'ok'], 200);
         }
