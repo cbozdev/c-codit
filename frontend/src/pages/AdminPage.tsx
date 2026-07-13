@@ -836,32 +836,73 @@ function ServicesTab() {
         </Modal>
       )}
 
-      {/* Markup modal */}
+      {/* Markup / Pricing modal */}
       {markupTarget && (
         <Modal onClose={() => setMarkupTarget(null)}>
-          <h3 className="font-semibold text-lg">Update markup — {markupTarget.name}</h3>
-          <p className="text-sm text-ink-600 mt-1">
-            The markup is added on top of the provider's cost before charging the user.
-          </p>
-          <div className="mt-4">
-            <label className="label">Markup percentage</label>
+          <h3 className="font-semibold text-lg dark:text-white">Pricing — {markupTarget.name}</h3>
+          <p className="text-sm text-ink-500 mt-0.5">Set your markup to control what customers pay and your profit.</p>
+
+          {/* Markup input */}
+          <div className="mt-5">
+            <label className="label">Markup %</label>
             <div className="relative">
               <input type="number" min="0" max="500" step="0.5"
                 className="input pr-8" value={markup}
                 onChange={(e) => setMarkup(e.target.value)} autoFocus />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-500">%</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 text-sm">%</span>
             </div>
-            <p className="mt-1 text-xs text-ink-500">
-              Example: provider charges $0.80 with 15% markup → user pays $0.92
-            </p>
           </div>
+
+          {/* Live preview */}
+          {(() => {
+            const pct = parseFloat(markup);
+            if (isNaN(pct) || pct < 0) return null;
+            const EXAMPLES = [0.30, 0.50, 0.80, 1.00, 3.45, 6.99, 12.99];
+            return (
+              <div className="mt-4 rounded-xl border border-ink-200 dark:border-ink-700 overflow-hidden">
+                <div className="px-4 py-2 bg-ink-50 dark:bg-ink-800 text-xs font-medium text-ink-500 uppercase tracking-wide">
+                  Price preview
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-ink-500 border-b border-ink-100 dark:border-ink-700">
+                      <th className="px-4 py-2 text-left font-medium">Provider cost</th>
+                      <th className="px-4 py-2 text-right font-medium">You charge</th>
+                      <th className="px-4 py-2 text-right font-medium text-brand-600">Your profit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
+                    {EXAMPLES.map((cost) => {
+                      const charge = cost * (1 + pct / 100);
+                      const profit = charge - cost;
+                      const margin = (profit / charge) * 100;
+                      return (
+                        <tr key={cost} className="dark:text-ink-200">
+                          <td className="px-4 py-2 text-ink-500">${cost.toFixed(2)}</td>
+                          <td className="px-4 py-2 text-right font-mono font-medium">${charge.toFixed(2)}</td>
+                          <td className="px-4 py-2 text-right font-mono font-semibold text-brand-600">
+                            +${profit.toFixed(2)}
+                            <span className="text-xs text-ink-400 ml-1">({margin.toFixed(0)}%)</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div className="px-4 py-2.5 bg-brand-50 dark:bg-brand-950/30 text-xs text-brand-700 dark:text-brand-300">
+                  Your margin: <strong>{((pct / (100 + pct)) * 100).toFixed(1)}%</strong> of every sale is profit.
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="flex gap-2 mt-5 justify-end">
             <button onClick={() => setMarkupTarget(null)} className="btn-outline">Cancel</button>
             <button
               onClick={() => updateMarkup.mutate({ code: markupTarget.code, pct: parseFloat(markup) })}
               disabled={!markup || isNaN(parseFloat(markup)) || updateMarkup.isPending}
               className="btn-primary">
-              {updateMarkup.isPending ? 'Saving…' : 'Save markup'}
+              {updateMarkup.isPending ? 'Saving…' : 'Save pricing'}
             </button>
           </div>
         </Modal>
