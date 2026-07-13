@@ -328,29 +328,38 @@ class AdminController extends Controller
             default => now()->subDays(30)->startOfDay(),
         };
 
-        $base = DB::table('service_orders')->where('status', 'completed');
-        if ($from) $base->where('created_at', '>=', $from);
+        // Effective cost: use stored cost_minor when available, otherwise estimate from markup_percent.
+        // estimated_cost = ROUND(amount_minor / (1 + markup_percent / 100))
+        $costExpr = 'COALESCE(
+            service_orders.cost_minor,
+            ROUND(service_orders.amount_minor / (1 + COALESCE(services.markup_percent, 15) / 100))
+        )';
 
-        $summary = (clone $base)->selectRaw('
-            COUNT(*) as orders,
-            COALESCE(SUM(amount_minor), 0) as revenue_minor,
-            COALESCE(SUM(cost_minor), 0) as cost_minor,
-            COALESCE(SUM(CASE WHEN cost_minor IS NOT NULL THEN amount_minor - cost_minor ELSE 0 END), 0) as profit_minor
-        ')->first();
+        $summary = DB::table('service_orders')
+            ->join('services', 'service_orders.service_id', '=', 'services.id')
+            ->where('service_orders.status', 'completed')
+            ->when($from, fn ($q) => $q->where('service_orders.created_at', '>=', $from))
+            ->selectRaw("
+                COUNT(*) as orders,
+                COALESCE(SUM(service_orders.amount_minor), 0) as revenue_minor,
+                COALESCE(SUM({$costExpr}), 0) as cost_minor,
+                COALESCE(SUM(service_orders.amount_minor - ({$costExpr})), 0) as profit_minor
+            ")
+            ->first();
 
         $byService = DB::table('service_orders')
             ->join('services', 'service_orders.service_id', '=', 'services.id')
             ->where('service_orders.status', 'completed')
             ->when($from, fn ($q) => $q->where('service_orders.created_at', '>=', $from))
-            ->selectRaw('
+            ->selectRaw("
                 services.name,
                 services.category,
                 services.markup_percent,
                 COUNT(*) as orders,
                 COALESCE(SUM(service_orders.amount_minor), 0) as revenue_minor,
-                COALESCE(SUM(service_orders.cost_minor), 0) as cost_minor,
-                COALESCE(SUM(CASE WHEN service_orders.cost_minor IS NOT NULL THEN service_orders.amount_minor - service_orders.cost_minor ELSE 0 END), 0) as profit_minor
-            ')
+                COALESCE(SUM({$costExpr}), 0) as cost_minor,
+                COALESCE(SUM(service_orders.amount_minor - ({$costExpr})), 0) as profit_minor
+            ")
             ->groupBy('services.id', 'services.name', 'services.category', 'services.markup_percent')
             ->orderByDesc('revenue_minor')
             ->get()
@@ -368,15 +377,16 @@ class AdminController extends Controller
             ]);
 
         $byDay = DB::table('service_orders')
-            ->where('status', 'completed')
-            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->selectRaw('
-                DATE(created_at) as date,
+            ->join('services', 'service_orders.service_id', '=', 'services.id')
+            ->where('service_orders.status', 'completed')
+            ->when($from, fn ($q) => $q->where('service_orders.created_at', '>=', $from))
+            ->selectRaw("
+                DATE(service_orders.created_at) as date,
                 COUNT(*) as orders,
-                COALESCE(SUM(amount_minor), 0) as revenue_minor,
-                COALESCE(SUM(CASE WHEN cost_minor IS NOT NULL THEN amount_minor - cost_minor ELSE 0 END), 0) as profit_minor
-            ')
-            ->groupByRaw('DATE(created_at)')
+                COALESCE(SUM(service_orders.amount_minor), 0) as revenue_minor,
+                COALESCE(SUM(service_orders.amount_minor - ({$costExpr})), 0) as profit_minor
+            ")
+            ->groupByRaw('DATE(service_orders.created_at)')
             ->orderBy('date')
             ->get()
             ->map(fn ($row) => [
