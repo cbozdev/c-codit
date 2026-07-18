@@ -6,7 +6,7 @@ import { apiCall } from '@/lib/api';
 import type { Paginated, ServiceOrder } from '@/types/api';
 import {
   Phone, Clock, RefreshCw, Copy, CheckCircle2, ExternalLink,
-  Flag, Plus, ArrowUpCircle, ShoppingCart,
+  Flag, Plus, ShoppingCart,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -200,19 +200,6 @@ function LtrRow({ order }: { order: ServiceOrder }) {
               </button>
             )}
 
-            {/* Upgrade duration — API not available, links to PvaDeals */}
-            {isActive && (
-              <a
-                href="https://app.pvadeals.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-400 hover:border-brand-400 hover:text-brand-600 transition"
-                title="Upgrade duration on PVADeals website"
-              >
-                <ArrowUpCircle className="h-3.5 w-3.5" />
-                Upgrade duration
-              </a>
-            )}
 
             {/* Flag number (cancel early) — only when allow_flag=true */}
             {isActive && allowFlag && (
