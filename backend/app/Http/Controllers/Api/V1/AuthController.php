@@ -52,10 +52,15 @@ class AuthController extends Controller
             return $u;
         });
 
-        event(new Registered($user));
+        // Fire-and-forget — email delivery must never block or crash registration
+        try {
+            event(new Registered($user));
+        } catch (\Throwable $e) {
+            Log::warning('register.verification_email_failed', ['error' => $e->getMessage(), 'user' => $user->id]);
+        }
+
         Audit::log('user.registered', $user, ['email' => $user->email], userId: $user->id);
 
-        // Welcome email — fire and forget; verification email is sent separately by Registered event
         try {
             Mail::to($user)->send(new WelcomeMail($user));
         } catch (\Throwable $e) {
